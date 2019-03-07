@@ -76,8 +76,9 @@ def graph_to_input_target(graph):
 
     input_node_fields = ("pos",)
     input_edge_fields = ("distance",)
-    target_node_fields = ("solution",)
-    target_edge_fields = ("solution",)
+
+    input_global_fields = ('attributes',)
+    target_global_fields = ('solution',)
 
     input_graph = graph.copy()
     target_graph = graph.copy()
@@ -87,7 +88,7 @@ def graph_to_input_target(graph):
             node_index, features=create_feature(node_feature, input_node_fields)
         )
         target_graph.add_node(
-            node_index, features=create_feature(node_feature, target_node_fields)
+            node_index, features=create_feature(node_feature, input_node_fields)
         )
 
     for receiver, sender, features in graph.edges(data=True):
@@ -95,10 +96,12 @@ def graph_to_input_target(graph):
             sender, receiver, features=create_feature(features, input_edge_fields)
         )
         target_graph.add_edge(
-            sender, receiver, features=create_feature(features, target_edge_fields)
+            sender, receiver, features=create_feature(features, input_edge_fields)
         )
 
-    input_graph.graph['features'] = input_graph.graph['features'] = np.array([0.0])
+    input_graph.graph['features'] = create_feature(input_graph.graph, input_global_fields)
+    target_graph.graph['features'] = create_feature(target_graph.graph, target_global_fields)
+
     return input_graph, target_graph
 
 
