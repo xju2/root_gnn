@@ -65,7 +65,7 @@ if __name__ == "__main__":
     log_name = 'big.log'
     log_every_seconds = 60
     iterations = 8000000
-    iter_per_job = 20000
+    iter_per_job = 10000
 
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
     out_str += '\n'
