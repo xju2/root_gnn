@@ -19,7 +19,7 @@ def create_feed_dict(generator, batch_size, input_ph, target_ph, is_trained=True
 
 
 def create_loss_ops(target_op, output_ops):
-    # only use edges
+    # only use globals
     loss_ops = [
         tf.losses.log_loss(target_op.globals, output_op.globals)
         for output_op in output_ops
@@ -40,8 +40,8 @@ def eval_output(target, output):
     test_target = []
     test_pred = []
     for td, od in zip(tdds, odds):
-        test_target.append(td['edges'])
-        test_pred.append(od['edges'])
+        test_target.append(td['globals'])
+        test_pred.append(od['globals'])
 
     test_target = np.concatenate(test_target, axis=0)
     test_pred   = np.concatenate(test_pred,   axis=0)

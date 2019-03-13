@@ -2,7 +2,6 @@
 convert hitgraphs to network-x and prepare graphs for graph-nets
 """
 import numpy as np
-from datasets.graph import load_graph
 import networkx as nx
 
 from graph_nets import utils_np
