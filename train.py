@@ -17,7 +17,7 @@ if __name__ == "__main__":
     input_dir = '/global/homes/x/xju/project/xju/gnn_examples/H4l_ggF_vs_VBF/input'
     input_data = dataset.dataset(input_dir, 'ggf.root', 'vbf.root', 'tree_incl_all')
 
-    n_graphs = 100
+    n_graphs = 500
 
     tf.reset_default_graph()
     input_graphs, target_graphs = input_data.get_graphs(n_graphs, is_training=False)
@@ -25,20 +25,24 @@ if __name__ == "__main__":
     target_ph = utils_tf.placeholders_from_networkxs(target_graphs, force_dynamic_num_graphs=True)
 
     model = GeneralClassifier()
-    num_processing_steps_tr = 6 
+    num_processing_steps_tr = 3
     output_ops_tr = model(input_ph, num_processing_steps_tr)
 
     loss_ops_tr = utils_train.create_loss_ops(target_ph, output_ops_tr)
-    loss_op_tr  = sum(loss_ops_tr)
-    # loss_op_tr = sum(loss_ops_tr) / num_processing_steps_tr
+    loss_op_tr = sum(loss_ops_tr) / num_processing_steps_tr
 
-    learning_rate = 0.001
+    global_step = tf.Variable(0, trainable=False)
+    start_learning_rate = 0.001
+    learning_rate = tf.train.exponential_decay(
+        start_learning_rate, global_step,
+        decay_steps=400,
+        decay_rate=0.96, staircase=True)
     optimizer = tf.train.AdamOptimizer(learning_rate)
     step_op = optimizer.minimize(loss_op_tr)
 
     input_ph, target_ph = utils_train.make_all_runnable_in_session(input_ph, target_ph)
 
-    output_dir = 'trained_results/try_003'
+    output_dir = 'trained_results/try_007'
     if not os.path.exists(output_dir):
             os.makedirs(output_dir)
     ckpt_name = 'checkpoint_{:05d}.ckpt'
@@ -115,7 +119,6 @@ if __name__ == "__main__":
             }
 
             test_values = sess.run({
-                "step": step_op,
                 "target": target_ph,
                 "loss": loss_op_tr,
                 "outputs": output_ops_tr

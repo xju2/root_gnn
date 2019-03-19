@@ -1,4 +1,5 @@
 
+import ROOT
 from ROOT import TFile
 import os
 import numpy as np
@@ -10,7 +11,7 @@ class index_mgr:
     def __init__(self, n_total, training_frac=0.8):
         self.max_tr = int(n_total*training_frac)
         self.total = n_total
-        self.n_tesst = n_total - self.max_tr
+        self.n_test = n_total - self.max_tr
         self.tr_idx = 0
         self.te_idx = self.max_tr
 
@@ -47,14 +48,19 @@ class dataset:
         mychain.GetEntry(evtid)
         myEvent = nx.DiGraph()
         node_idx = 0
-        scale = np.array([100, 2.5, np.pi])
+        scale = np.array([100, 2.5, np.pi, 1])
 
         if mychain.n_jets > 0:
             for idx_jet in reversed(np.argsort(list(mychain.jet_pt)).tolist()):
                 j_pt = mychain.jet_pt[idx_jet]
                 j_eta = mychain.jet_eta[idx_jet]
                 j_phi = mychain.jet_phi[idx_jet]
-                myEvent.add_node(node_idx, pos =np.array([j_pt,j_eta,j_phi])/scale)
+                j_m   = mychain.jet_m[idx_jet]
+                j_lv = ROOT.TLorentzVector()
+                j_lv.SetPtEtaPhiM(j_pt, j_eta, j_phi, j_m)
+                j_r = j_pt/j_lv.E()
+
+                myEvent.add_node(node_idx, pos =np.array([j_pt,j_eta,j_phi, j_r])/scale)
                 node_idx += 1
 
 
@@ -62,7 +68,11 @@ class dataset:
             l_pt  = mychain.lepton_pt[idx_lep]
             l_eta = mychain.lepton_eta[idx_lep]
             l_phi = mychain.lepton_phi[idx_lep]
-            myEvent.add_node(node_idx, pos= np.array([l_pt,l_eta,l_phi])/scale)
+            l_m   = l_pt/mychain.lepton_m[idx_lep]
+            l_lv = ROOT.TLorentzVector()
+            l_lv.SetPtEtaPhiM(l_pt, l_eta, l_phi, l_m)
+            l_r = l_pt/l_lv.E()
+            myEvent.add_node(node_idx, pos= np.array([l_pt,l_eta,l_phi, l_r])/scale)
             node_idx += 1
 
         for i in range(node_idx):

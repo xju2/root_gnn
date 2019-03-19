@@ -10,25 +10,23 @@ import sklearn.metrics
 import os
 import numpy as np
 
-from .utils_train import load_config
-from .utils_train import create_feed_dict
-from .utils_train import eval_output
-
-from .prepare import inputs_generator
-
+from . import utils_train
+from . import prepare
 from . import get_model
 
 import matplotlib.pyplot as plt
 
 ckpt_name = 'checkpoint_{:05d}.ckpt'
 
+fontsize=16
+minor_size = 14
 
 def create_trained_model(config_name, input_ckpt=None):
     """
     @config: configuration for train_nx_graph
     """
     # load configuration file
-    config = load_config(config_name)
+    config = utils_train.load_config(config_name)
     config_tr = config['train']
 
     log_every_seconds       = config_tr['time_lapse']
@@ -40,7 +38,7 @@ def create_trained_model(config_name, input_ckpt=None):
 
 
     # generate inputs
-    generate_input_target = inputs_generator(config['data']['output_nxgraph_dir'])
+    generate_input_target = prepare.inputs_generator(config['data']['output_nxgraph_dir'], n_train_fraction=0.8)
 
     # build TF graph
     tf.reset_default_graph()
@@ -64,14 +62,14 @@ def create_trained_model(config_name, input_ckpt=None):
         odds = []
         tdds = []
         for _ in range(n_test_graphs):
-            feed_dict = create_feed_dict(generate_input_target, batch_size, input_ph, target_ph, is_trained=False)
+            feed_dict = utils_train.create_feed_dict(generate_input_target, batch_size, input_ph, target_ph, is_trained=False)
             predictions = sess.run({
                 "outputs": output_ops_tr,
                 'target': target_ph
             }, feed_dict=feed_dict)
             output = predictions['outputs'][-1]
             target = predictions['target']
-            odd, tdd = eval_output(target, output)
+            odd, tdd = utils_train.eval_output(target, output)
             odds.append(odd)
             tdds.append(tdd)
         return np.concatenate(odds), np.concatenate(tdds)
@@ -85,30 +83,45 @@ def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5):
     precision = sklearn.metrics.precision_score(y_true, y_pred)
     recall    = sklearn.metrics.recall_score(y_true, y_pred)
 
-    print('Accuracy:  %.4f' % accuracy)
-    print('Precision: %.4f' % precision)
-    print('Recall:    %.4f' % recall)
+    print('Accuracy:            %.4f' % accuracy)
+    print('Precision (purity):  %.4f' % precision)
+    print('Recall (efficiency): %.4f' % recall)
 
     fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, odd)
 
 
-    fig, (ax0, ax1) = plt.subplots(ncols=2, figsize=(12,5))
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10), constrained_layout=True)
+    axs = axs.flatten()
+    ax0, ax1, ax2, ax3 = axs
 
     # Plot the model outputs
     # binning=dict(bins=50, range=(0,1), histtype='step', log=True)
     binning=dict(bins=50, histtype='step', log=True)
     ax0.hist(odd[y_true==False], label='fake', **binning)
     ax0.hist(odd[y_true], label='true', **binning)
-    ax0.set_xlabel('Model output')
+    ax0.set_xlabel('Model output', fontsize=fontsize)
+    ax0.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
     ax0.legend(loc=0)
 
     # Plot the ROC curve
     auc = sklearn.metrics.auc(fpr, tpr)
     ax1.plot(fpr, tpr)
     ax1.plot([0, 1], [0, 1], '--')
-    ax1.set_xlabel('False positive rate')
-    ax1.set_ylabel('True positive rate')
+    ax1.set_xlabel('False positive rate', fontsize=fontsize)
+    ax1.set_ylabel('True positive rate', fontsize=fontsize)
     ax1.set_title('ROC curve, AUC = %.4f' % auc)
+    ax1.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
 
-    plt.tight_layout()
+    p, r, t = sklearn.metrics.precision_recall_curve(y_true, odd)
+    ax2.plot(t, p[:-1], label='purity')
+    ax2.plot(t, r[:-1], label='efficiency')
+    ax2.set_xlabel('Cut on model score', fontsize=fontsize)
+    ax2.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
+    ax2.legend()
+
+    ax3.plot(p, r)
+    ax3.set_xlabel('Purity', fontsize=fontsize)
+    ax3.set_ylabel('Efficiency', fontsize=fontsize)
+    ax3.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
+
     plt.savefig('roc_graph_nets.eps')

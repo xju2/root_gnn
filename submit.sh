@@ -5,10 +5,10 @@ function get_code(){
 	echo $NUMBER
 }
 
-nJobs=5
+nJobs=3
 
-#EXE="run_train.sh"
-EXE="run_train_edison.sh"
+EXE="run_train.sh"
+#EXE="run_train_edison.sh"
 
 start=$(sbatch ${EXE})
 JOBID=$(get_code ${start})

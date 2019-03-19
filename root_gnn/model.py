@@ -7,8 +7,8 @@ from graph_nets import modules
 from graph_nets import utils_tf
 import sonnet as snt
 
-NUM_LAYERS = 4    # Hard-code number of layers in the edge/node/global models.
-LATENT_SIZE = 128 # Hard-code latent layer sizes for demos.
+NUM_LAYERS = 2    # Hard-code number of layers in the edge/node/global models.
+LATENT_SIZE = 16  # Hard-code latent layer sizes for demos.
 
 
 def make_mlp_model():
@@ -21,9 +21,8 @@ def make_mlp_model():
     A Sonnet module which contains the MLP and LayerNorm.
   """
   return snt.Sequential([
-      snt.LayerNorm(),
       snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
-                   activation=tf.nn.selu,
+                   activation=tf.nn.relu,
                    activate_final=True
                   ),
       snt.LayerNorm()
@@ -70,7 +69,7 @@ class GeneralClassifier(snt.AbstractModule):
     # Transforms the outputs into appropriate shapes.
     global_output_size = 1
     global_fn =lambda: snt.Sequential([
-        snt.nets.MLP([global_output_size],
+        snt.nets.MLP([LATENT_SIZE, global_output_size],
                      name='global_output'), tf.sigmoid])
 
     with self._enter_variable_scope():
@@ -85,6 +84,6 @@ class GeneralClassifier(snt.AbstractModule):
         core_input = utils_tf.concat([latent0, latent], axis=1)
         latent = self._core(core_input)
 
-    decoded_op = self._decoder(latent)
-    output_ops.append(self._output_transform(decoded_op))
+        decoded_op = self._decoder(latent)
+        output_ops.append(self._output_transform(decoded_op))
     return output_ops
