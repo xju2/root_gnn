@@ -125,3 +125,67 @@ def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5):
     ax3.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
 
     plt.savefig('roc_graph_nets.eps')
+
+
+
+import time
+time_format = '%d %b %Y %H:%M:%S'
+get2nd = lambda x: x.split()[1]
+
+def read_log(file_name):
+    time_info = []
+    data_info = []
+    itime = -1
+    with open(file_name) as f:
+        for line in f:
+            if line[0] != '#':
+                tt = time.strptime(line[:-1], time_format)
+                time_info.append(tt)
+                data_info.append([])
+                itime += 1
+            else:
+                items = line.split(',')
+                try:
+                    iteration = int(get2nd(items[0]))
+                except ValueError:
+                    continue
+                time_consumption = float(get2nd(items[1]))
+                loss_train = float(get2nd(items[2]))
+                loss_test  = float(get2nd(items[3]))
+                precision  = float(get2nd(items[4]))
+                recall     = float(get2nd(items[5]))
+                data_info[itime].append([iteration, time_consumption, loss_train,
+                                      loss_test, precision, recall])
+    return data_info, time_info
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+fontsize = 16
+minor_size = 14
+def plot_log_info(info, name, axs=None, with_test=False):
+    if type(info) is not 'numpy.ndarray':
+        info = np.array(info)
+    df = pd.DataFrame(info, columns=['iteration', 'time', 'loss_train', 'loss_test', 'precision', 'recall'])
+
+    # make plots
+    if axs is None:
+        fig, axs = plt.subplots(2, 2, figsize=(12, 10), constrained_layout=True)
+        axs = axs.flatten()
+
+    y_labels = ['Time [s]', 'Training Loss', 'Precision', 'Recall']
+    y_data   = ['time', 'loss_train', 'precision', 'recall']
+    x_label = 'Iterations'
+    x_data = 'iteration'
+    for ib, values in enumerate(zip(y_data, y_labels)):
+        ax = axs[ib]
+        df.plot(x=x_data, y=values[0], ax=ax, label=name)
+        if values[0] == 'loss_train' and with_test:
+            df.plot(x=x_data, y='loss_test', ax=ax, label=name)
+        ax.set_ylabel(values[1], fontsize=fontsize)
+        ax.set_xlabel(x_label, fontsize=fontsize)
+        ax.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
+        ax.legend(fontsize=fontsize)
+
+    return axs

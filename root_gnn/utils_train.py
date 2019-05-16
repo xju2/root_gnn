@@ -26,6 +26,13 @@ def create_loss_ops(target_op, output_ops):
     ]
     return loss_ops
 
+def create_softmax_loss(target_op, output_ops):
+    loss_ops = [
+        tf.losses.softmax_cross_entropy(target_op.globals, output_op.globals)
+        for output_op in output_ops
+    ]
+    return loss_ops
+
 
 def make_all_runnable_in_session(*args):
   """Lets an iterable of TF graphs be output from a session as NP graphs."""

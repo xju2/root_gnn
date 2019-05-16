@@ -5,7 +5,7 @@ function get_code(){
 	echo $NUMBER
 }
 
-nJobs=3
+nJobs=4
 
 EXE="run_train.sh"
 #EXE="run_train_edison.sh"
