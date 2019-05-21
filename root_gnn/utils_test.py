@@ -182,7 +182,7 @@ def plot_log_info(info, name, axs=None, with_test=False):
         ax = axs[ib]
         df.plot(x=x_data, y=values[0], ax=ax, label=name)
         if values[0] == 'loss_train' and with_test:
-            df.plot(x=x_data, y='loss_test', ax=ax, label=name)
+            df.plot(x=x_data, y='loss_test', ax=ax, label='TEST')
         ax.set_ylabel(values[1], fontsize=fontsize)
         ax.set_xlabel(x_label, fontsize=fontsize)
         ax.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)

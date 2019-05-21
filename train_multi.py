@@ -66,7 +66,7 @@ if __name__ == "__main__":
     target_ph = utils_tf.placeholders_from_networkxs(target_graphs, force_dynamic_num_graphs=True)
 
     model = MultiClassifier()
-    num_processing_steps_tr = 3
+    num_processing_steps_tr = 4
     output_ops_tr = model(input_ph, num_processing_steps_tr)
 
     loss_ops_tr = utils_train.create_softmax_loss(target_ph, output_ops_tr)
@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     input_ph, target_ph = utils_train.make_all_runnable_in_session(input_ph, target_ph)
 
-    output_dir = 'trained_results/multiclass_v01'
+    output_dir = 'trained_results/multiclass_v02'
     if not os.path.exists(output_dir):
             os.makedirs(output_dir)
     ckpt_name = 'checkpoint_{:05d}.ckpt'
@@ -110,7 +110,8 @@ if __name__ == "__main__":
     log_name = 'big.log'
     log_every_seconds = 60
     iterations = 8000000
-    iter_per_job = 10000
+    #iter_per_job = 10000
+    iter_per_job = 2000
 
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
     out_str += '\n'
