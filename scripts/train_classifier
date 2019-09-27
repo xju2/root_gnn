@@ -6,6 +6,7 @@ if __name__ == "__main__":
     import networkx as nx
     import numpy as np
     import pandas as pd
+    from sklearn.utils import shuffle
 
     from graph_nets import utils_tf
     from graph_nets import utils_np
@@ -24,7 +25,7 @@ if __name__ == "__main__":
     add_arg('bkg_file', type=str, help='background file')
     add_arg('--tree_name', type=str, help='tree name', default='tree_incl_all')
     add_arg('--batch_size', type=int, help='batch size', default=100)
-    add_arg('--outdir', type=str, help='output directory', default="trained_results")
+    add_arg('--outdir', type=str, help='output directory', default="trained_results/test")
 
     args = parser.parse_args()
 
@@ -40,19 +41,19 @@ if __name__ == "__main__":
     n_graphs = args.batch_size
 
     def prepare_graphs(n_graphs, is_training=True):
-        input_graphs = []
-        target_graphs = []
+        all_graphs = []
         def get_graphs(input_data, index):
             for iph in range(n_graphs):
                 nx_graph = input_data.generate_nxgraph(is_training=is_training)
                 nx_graph.graph['solution'] = index
                 input_g, target_g = prepare.graph_to_input_target(nx_graph)
-                input_graphs.append(input_g)
-                target_graphs.append(target_g)
+                all_graphs.append((input_g, target_g))
 
         get_graphs(f_bkg, 0)
         get_graphs(f_signal, 1)
-
+        all_graphs = shuffle(all_graphs)
+        input_graphs = [x[0] for x in all_graphs]
+        target_graphs = [x[1] for x in all_graphs]
         return input_graphs, target_graphs
 
     tf.reset_default_graph()
@@ -89,7 +90,7 @@ if __name__ == "__main__":
     print("last iteration:", last_iteration)
 
     sess = tf.Session()
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
 
     if last_iteration > 0:
         print("loading checkpoint:", os.path.join(output_dir, ckpt_name.format(last_iteration)))
@@ -121,7 +122,7 @@ if __name__ == "__main__":
             break
         else:
             irun += 1
-        input_graphs, target_graphs = input_data.get_graphs(n_graphs, is_training=True)
+        input_graphs, target_graphs = prepare_graphs(n_graphs, is_training=True)
 
         input_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(input_graphs)
         target_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(target_graphs)
@@ -144,7 +145,7 @@ if __name__ == "__main__":
         if elapsed_since_last_log > log_every_seconds:
             # save a checkpoint
             last_log_time = the_time
-            input_graphs, target_graphs = input_data.get_graphs(n_graphs, is_training=False)
+            input_graphs, target_graphs = prepare_graphs(n_graphs, is_training=False)
             input_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(input_graphs)
             target_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(target_graphs)
             feed_dict = {

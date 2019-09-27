@@ -37,7 +37,7 @@ if __name__ == "__main__":
     from root_gnn.model import MultiClassifier 
     import tensorflow as tf
 
-    input_dir = '/global/homes/x/xju/project/xju/gnn_examples/H4l_ggF_vs_VBF/h4l_minitree_prod_v20'
+    input_dir = '/global/project/projectdirs/atlas/xju/examples/gnn_examples/H4l_ggF_vs_VBF/h4l_minitree_prod_v20'
     tree_name = 'tree_incl_all'
     input_ggF = dataset.dataset(os.path.join(input_dir, 'ggf.root'), tree_name)
     input_VBF = dataset.dataset(os.path.join(input_dir, 'vbf.root'), tree_name)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
 
     sess = tf.Session()
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
 
     if last_iteration > 0:
         print("loading checkpoint:", os.path.join(output_dir, ckpt_name.format(last_iteration)))
