@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     from root_gnn import dataset
     from root_gnn import utils_train
-    from root_gnn.model import MultiClassifier 
+    from root_gnn.model import MultiClassifier
     import tensorflow as tf
 
     input_dir = '/global/project/projectdirs/atlas/xju/examples/gnn_examples/H4l_ggF_vs_VBF/h4l_minitree_prod_v20'
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     input_ph, target_ph = utils_train.make_all_runnable_in_session(input_ph, target_ph)
 
-    output_dir = 'trained_results/multiclass_v02'
+    output_dir = 'trained_results/multiclass_v03'
     if not os.path.exists(output_dir):
             os.makedirs(output_dir)
     ckpt_name = 'checkpoint_{:05d}.ckpt'

@@ -96,20 +96,3 @@ class dataset:
 
         return myEvent
 
-
-    def get_graphs(self, n_graphs, is_training=True):
-        input_graphs = [None]*n_graphs
-        target_graphs = [None]*n_graphs
-
-        for iph in range(n_graphs):
-            newgraph_signal = self._generate_graph(is_signal=True,
-                                                   is_training=is_training)
-            newgraph_bkg = self._generate_graph(is_signal=False,
-                                                is_training=is_training)
-
-            input_g1, target_g1 = prepare.graph_to_input_target(newgraph_signal)
-            input_g2, target_g2 = prepare.graph_to_input_target(newgraph_bkg)
-            input_graphs[iph*2:iph*2+1] = [input_g1, input_g2]
-            target_graphs[iph*2:iph*2+1] = [target_g1, target_g2]
-
-        return input_graphs, target_graphs

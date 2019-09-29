@@ -89,7 +89,6 @@ class GeneralClassifier(snt.AbstractModule):
         return output_ops
 
 
-
 class MultiClassifier(snt.AbstractModule):
     def __init__(self, name="MultiClassifier"):
         super(MultiClassifier, self).__init__(name=name)

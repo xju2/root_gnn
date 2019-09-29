@@ -36,7 +36,7 @@ if __name__ == "__main__":
     output_dir = args.outdir
 
     f_signal = dataset.dataset(sig_file, tree_name)
-    f_bkg = dataset.dataset(sig_file, tree_name)
+    f_bkg = dataset.dataset(bkg_file, tree_name)
 
     n_graphs = args.batch_size
 
@@ -45,13 +45,14 @@ if __name__ == "__main__":
         def get_graphs(input_data, index):
             for iph in range(n_graphs):
                 nx_graph = input_data.generate_nxgraph(is_training=is_training)
-                nx_graph.graph['solution'] = index
+                nx_graph.graph['solution'] = np.array([index])
                 input_g, target_g = prepare.graph_to_input_target(nx_graph)
                 all_graphs.append((input_g, target_g))
 
-        get_graphs(f_bkg, 0)
         get_graphs(f_signal, 1)
+        get_graphs(f_bkg, 0)
         all_graphs = shuffle(all_graphs)
+
         input_graphs = [x[0] for x in all_graphs]
         target_graphs = [x[1] for x in all_graphs]
         return input_graphs, target_graphs
@@ -62,7 +63,7 @@ if __name__ == "__main__":
     target_ph = utils_tf.placeholders_from_networkxs(target_graphs, force_dynamic_num_graphs=True)
 
     model = GeneralClassifier()
-    num_processing_steps_tr = 3
+    num_processing_steps_tr = 4
     output_ops_tr = model(input_ph, num_processing_steps_tr)
 
     loss_ops_tr = utils_train.create_loss_ops(target_ph, output_ops_tr)
