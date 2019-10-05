@@ -19,8 +19,8 @@ setup(
     url="https://github.com/xju2/root_gnn",
     packages=find_packages(),
     install_requires=[
-        "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
-        'tensorflow-gpu',
+        "graph_nets",
+        'tensorflow-gpu<2',
         "future",
         "networkx",
         "numpy",
