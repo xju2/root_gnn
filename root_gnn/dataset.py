@@ -3,30 +3,11 @@ import ROOT
 from ROOT import TFile
 import os
 import numpy as np
+import pandas as pd
 import networkx as nx
 
-from . import prepare
-
-class index_mgr:
-    def __init__(self, n_total, training_frac=0.8):
-        self.max_tr = int(n_total*training_frac)
-        self.total = n_total
-        self.n_test = n_total - self.max_tr
-        self.tr_idx = 0
-        self.te_idx = self.max_tr
-
-    def next(self, is_training=False):
-        if is_training:
-            self.tr_idx += 1
-            if self.tr_idx > self.max_tr:
-                self.tr_idx = 0
-            return self.tr_idx
-        else:
-            self.te_idx += 1
-            if self.te_idx > self.total:
-                self.te_idx = self.max_tr
-            return self.te_idx
-
+from root_gnn import prepare
+from root_gnn.utils import IndexMgr
 
 class dataset:
     def __init__(self, file_name, tree_name, branches=None):
@@ -39,7 +20,7 @@ class dataset:
             self.tree_.SetBranchStatus('weight', 1)
 
         # use 80% for training and 20% for testing
-        self.idx_ = index_mgr(self.tree_.GetEntries())
+        self.idx_ = IndexMgr(self.tree_.GetEntries())
 
 
     def generate_nxgraph(self, is_training=True):
@@ -95,4 +76,3 @@ class dataset:
         # myEvent.graph['solution'] = np.array([int(is_signal)])
 
         return myEvent
-

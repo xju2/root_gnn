@@ -10,7 +10,7 @@ description="Use Graph Network to perform analysis"
 
 setup(
     name="root_gnn",
-    version="0.0.1",
+    version="1.0.0",
     description="Library for using Graph Nural Networks in HEP analysis",
     long_description=description,
     author="Xiangyang Ju",
@@ -19,8 +19,8 @@ setup(
     url="https://github.com/xju2/root_gnn",
     packages=find_packages(),
     install_requires=[
-        "graph_nets",
-        'tensorflow-gpu<2',
+        'tensorflow >= 2.1',
+        "graph_nets >= 1.1",
         "future",
         "networkx",
         "numpy",
@@ -32,7 +32,7 @@ setup(
         "sklearn",
         'pyyaml>=5.1',
     ],
-    setup_requires=['graph_nets'],
+    setup_requires=[],
     classifiers=[
         "Programming Language :: Python :: 3.7",
     ],
@@ -40,5 +40,6 @@ setup(
         'scripts/train_classifier',
         'scripts/train_multiclassifier',
         'scripts/view_training_log',
+        'scripts/create_tfrecord',
     ],
 )
