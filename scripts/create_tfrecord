@@ -23,5 +23,4 @@ if __name__ == "__main__":
         df = store['table']
 
     data = TopTaggerDataset(args.input_file)
-    data.write_tfrecord(outname, n_evts_per_record)
-    # prepare.df_to_graphs(df)
+    data.process(save=True, outname=outname, n_evts_per_record=n_evts_per_record)

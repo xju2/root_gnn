@@ -13,13 +13,12 @@ import tensorflow as tf
 from graph_nets import utils_tf
 from graph_nets import graphs
 
-from root_gnn.utils import IndexMgr
 from root_gnn import tools_tf
 
 
 class TopTaggerDataset:
     def __init__(self, filename, with_padding=False):
-        self.process(filename)
+        self.filename = filename
         self.input_dtype = None
         self.input_shape = None
         self.target_dtype = None
@@ -27,9 +26,9 @@ class TopTaggerDataset:
         self.with_padding = with_padding
         self.n_files_saved = 0
 
-    def process(self, filename):
+    def process(self, save=False, outname=None, n_evts_per_record=10):
         self.graphs = []
-        with pd.HDFStore(filename, mode='r') as store:
+        with pd.HDFStore(self.filename, mode='r') as store:
             df = store['table']
         
         print("{:,} Events".format(df.shape[0]))
@@ -40,8 +39,9 @@ class TopTaggerDataset:
         features = ['E', 'PX', 'PY', 'PZ']
         scale = 0.001
         zeros = np.array([0.0], dtype=np.float32)
-        print(event['is_signal_new'])
         solution = 'is_signal_new'
+        if save and not outname:
+            raise ValueError("need output name in save mode")
 
         def make_graph(event):
             n_max_nodes = 200
@@ -93,12 +93,25 @@ class TopTaggerDataset:
             return [(input_graph, target_graph)]
 
         now = time.time()
+        logged_time = now
+        self.n_graphs_per_evt = 1
+
+        ievt = 0
+        self.n_evts = 0
         for ievt in range(df.shape[0]):
             self.graphs += make_graph(df.iloc[ievt])
-        self.n_evts = df.shape[0]
+            self.n_evts += 1
+            ievt += 1
+            # if ievt % 100 == 0:
+            #     print("{} mins processed {} events".format((time.time()-logged_time)/60, ievt))
+            #     logged_time = time.time()
+            if save and ievt % n_evts_per_record == 0:
+                self.tot_data = len(self.graphs)
+                self.write_tfrecord(outname, n_evts_per_record)
+                self.graphs = []
+                self.n_evts = 0
+
         self.tot_data = len(self.graphs)
-        self.idx_mgr = IndexMgr(self.tot_data)
-        self.n_graphs_per_evt = 1
         read_time = time.time() - now
         print("TopTaggerDataset added {} events, Total {} graphs, in {:.1f} mins".format(
             self.n_evts, len(self.graphs), read_time/60.))
