@@ -1,0 +1,13 @@
+tfrec_name: '*.tfrec'
+tfrec_dir_local: /global/homes/x/xju/work/TopTagger/tfrec
+output_dir: /global/homes/x/xju/work/TopTagger/trained
+prod_name: test_noedge
+model_name: GlobalClassifierNoEdgeInfo
+parameters:
+    time_lapse:  300 # how often save checkpoint in seconds
+    batch_size: 100
+    n_iters: 10
+    learning_rate: 0.000001
+    real_weight: 1.
+    fake_weight: 1.
+    epochs: 20

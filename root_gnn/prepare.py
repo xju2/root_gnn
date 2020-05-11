@@ -55,7 +55,7 @@ class TopTaggerDataset:
                 f_keynames = ['{}_{}'.format(x, inode) for x in features]
                 n_nodes += 1
                 nodes.append(event[f_keynames].values*scale)
-            nodes = np.array(nodes)
+            nodes = np.array(nodes, dtype=np.float32)
             # print(n_nodes, "nodes")
             # print("node features:", nodes.shape)
 
@@ -77,7 +77,7 @@ class TopTaggerDataset:
                 "edges": edges,
                 "senders": senders,
                 "receivers": receivers,
-                "globals": zeros
+                "globals": np.array([n_nodes], dtype=np.float32)
             }
             target_datadict = {
                 "n_node": n_nodes,
@@ -86,7 +86,7 @@ class TopTaggerDataset:
                 "edges": edges,
                 "senders": senders,
                 "receivers": receivers,
-                "globals": np.array(event[solution], dtype=np.float32)
+                "globals": np.array([event[solution]], dtype=np.float32)
             }
             input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
             target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])

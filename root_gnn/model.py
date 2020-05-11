@@ -1,3 +1,7 @@
+"""
+The implementation of Graph Networks are mostly inspired by the ones in deepmind/graphs_nets
+https://github.com/deepmind/graph_nets
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -5,10 +9,11 @@ from __future__ import print_function
 import tensorflow as tf
 from graph_nets import modules
 from graph_nets import utils_tf
+from graph_nets import blocks
 import sonnet as snt
 
-NUM_LAYERS = 4    # Hard-code number of layers in the edge/node/global models.
-LATENT_SIZE = 64  # Hard-code latent layer sizes for demos.
+NUM_LAYERS = 2    # Hard-code number of layers in the edge/node/global models.
+LATENT_SIZE = 128  # Hard-code latent layer sizes for demos.
 
 
 def make_mlp_model():
@@ -25,7 +30,7 @@ def make_mlp_model():
                    activation=tf.nn.relu,
                    activate_final=True
                   ),
-      snt.LayerNorm()
+    #   snt.LayerNorm()
   ])
 
 class MLPGraphIndependent(snt.Module):
@@ -49,7 +54,8 @@ class MLPGraphNetwork(snt.Module):
         self._network = modules.GraphNetwork(
             edge_model_fn=make_mlp_model,
             node_model_fn=make_mlp_model,
-            global_model_fn=make_mlp_model)
+            global_model_fn=make_mlp_model
+            )
 
     def __call__(self, inputs):
         return self._network(inputs)
@@ -83,6 +89,79 @@ class GeneralClassifier(snt.Module):
 
         decoded_op = self._decoder(latent)
         output_ops.append(self._output_transform(decoded_op))
+        return output_ops
+
+
+class InteractionNetwork(snt.Module):
+  """Implementation of an Interaction Network, similarly to
+  https://arxiv.org/abs/1612.00222, except that it does not require inputput 
+  edge features.
+  """
+
+  def __init__(self,
+               edge_model_fn,
+               node_model_fn,
+               reducer=tf.math.unsorted_segment_sum,
+               name="interaction_network"):
+    super(InteractionNetwork, self).__init__(name=name)
+    self._edge_block = blocks.EdgeBlock(
+        edge_model_fn=edge_model_fn, use_globals=False)
+    self._node_block = blocks.NodeBlock(
+        node_model_fn=node_model_fn,
+        use_received_edges=True,
+        use_sent_edges=True,
+        use_globals=False,
+        received_edges_reducer=reducer)
+
+  def __call__(self, graph):
+    return self._edge_block(self._node_block(graph))
+
+
+class GlobalClassifierNoEdgeInfo(snt.Module):
+
+    def __init__(self, name="GlobalClassifierNoEdgeInfo"):
+        super(GlobalClassifierNoEdgeInfo, self).__init__(name=name)
+
+        self._edge_block = blocks.EdgeBlock(
+            edge_model_fn=make_mlp_model,
+            use_edges=False,
+            use_receiver_nodes=True,
+            use_sender_nodes=True,
+            use_globals=False,
+            name='edge_encoder_block')
+        self._node_encoder_block = blocks.NodeBlock(
+            node_model_fn=make_mlp_model,
+            use_received_edges=False,
+            use_sent_edges=False,
+            use_nodes=True,
+            use_globals=False,
+            name='node_encoder_block'
+        )
+        self._global_block = blocks.GlobalBlock(
+            global_model_fn=make_mlp_model,
+            use_edges=True,
+            use_nodes=True,
+            use_globals=False,
+        )
+        self._core = MLPGraphNetwork()
+        # Transforms the outputs into appropriate shapes.
+        global_output_size = 1
+        global_fn =lambda: snt.Sequential([
+            snt.nets.MLP([LATENT_SIZE, global_output_size],
+                         name='global_output'), tf.sigmoid])
+
+        self._output_transform = modules.GraphIndependent(None, None, global_fn)
+
+    def __call__(self, input_op, num_processing_steps):
+        latent = self._global_block(self._edge_block(self._node_encoder_block(input_op)))
+        latent0 = latent
+
+        output_ops = []
+        for _ in range(num_processing_steps):
+            core_input = utils_tf.concat([latent0, latent], axis=1)
+            latent = self._core(core_input)
+
+        output_ops.append(self._output_transform(latent))
         return output_ops
 
 
