@@ -171,6 +171,8 @@ if __name__ == "__main__":
     # training_dataset = training_dataset.with_options(options)
     # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
     for epoch in range(n_epochs):
+        training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
+        testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
 
         total_loss = 0.
         num_batches = 0
@@ -199,22 +201,23 @@ if __name__ == "__main__":
                 last_log_time = time.time()
 
         loss_tr = total_loss/num_batches
+        print("{} batches".format(num_batches))
 
         elapsed = time.time() - start_time
-        outputs_te_list = []
-        targets_te_list = []
-        for inputs in testing_dataset.take(10).as_numpy_iterator():
+        inputs_te_list = []
+        target_te_list = []
+        for inputs in testing_dataset.take(global_batch_size).as_numpy_iterator():
             inputs_te, targets_te = inputs
-            outputs_te, loss_te = update_step(inputs_te, targets_te)
-            outputs_te_list.append(outputs_te[-1])
-            targets_te_list.append(targets_te)
-        outputs_te = utils_tf.concat(outputs_te_list, axis=0)
-        targets_te = utils_tf.concat(targets_te_list, axis=0)
-        correct_tr, solved_tr = compute_matrics(targets_te, outputs_te)
+            inputs_te_list.append(inputs_te)
+            target_te_list.append(targets_te)
+
+        inputs_te = utils_tf.concat(inputs_te_list, axis=0)
+        targets_te = utils_tf.concat(target_te_list, axis=0)
+        outputs_te, loss_te = update_step(inputs_te, targets_te)
+        print(outputs_te[-1].globals.shape)
+        print(targets_te.globals.shape)
+        correct_tr, solved_tr = compute_matrics(targets_te, outputs_te[-1])
         out_str = "# {:05d}, T {:.1f}, Ltr {:.4f}, Lge {:.4f}, Precision {:.4f}, Recall {:.4f}".format(
             epoch, elapsed, loss_tr, loss_te,
             correct_tr, solved_tr)
         print(out_str)
-
-        training_dataset = training_dataset.shuffle(global_batch_size*2, reshuffle_each_iteration=True)
-        testing_dataset = testing_dataset.shuffle(global_batch_size*2, reshuffle_each_iteration=True)

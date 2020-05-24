@@ -14,7 +14,7 @@ import sonnet as snt
 
 NUM_LAYERS = 2    # Hard-code number of layers in the edge/node/global models.
 LATENT_SIZE = 128  # Hard-code latent layer sizes for demos.
-
+# DROPOUT_RATE = 0.3
 
 def make_mlp_model():
   """Instantiates a new MLP, followed by LayerNorm.
@@ -27,10 +27,11 @@ def make_mlp_model():
   """
   return snt.Sequential([
       snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
-                   activation=tf.nn.relu,
-                   activate_final=True
+                   activation=tf.nn.leaky_relu,
+                   activate_final=True, 
+                #    dropout_rate=DROPOUT_RATE
                   ),
-    #   snt.LayerNorm()
+      snt.LayerNorm(axis=-1, create_scale=True, create_offset=False)
   ])
 
 class MLPGraphIndependent(snt.Module):
@@ -129,6 +130,7 @@ class GlobalClassifierNoEdgeInfo(snt.Module):
             use_sender_nodes=True,
             use_globals=False,
             name='edge_encoder_block')
+
         self._node_encoder_block = blocks.NodeBlock(
             node_model_fn=make_mlp_model,
             use_received_edges=False,
@@ -137,12 +139,14 @@ class GlobalClassifierNoEdgeInfo(snt.Module):
             use_globals=False,
             name='node_encoder_block'
         )
+
         self._global_block = blocks.GlobalBlock(
             global_model_fn=make_mlp_model,
             use_edges=True,
             use_nodes=True,
             use_globals=False,
         )
+        
         self._core = MLPGraphNetwork()
         # Transforms the outputs into appropriate shapes.
         global_output_size = 1
@@ -160,8 +164,8 @@ class GlobalClassifierNoEdgeInfo(snt.Module):
         for _ in range(num_processing_steps):
             core_input = utils_tf.concat([latent0, latent], axis=1)
             latent = self._core(core_input)
+            output_ops.append(self._output_transform(latent))
 
-        output_ops.append(self._output_transform(latent))
         return output_ops
 
 
