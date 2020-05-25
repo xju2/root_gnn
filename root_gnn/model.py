@@ -27,7 +27,7 @@ def make_mlp_model():
   """
   return snt.Sequential([
       snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
-                   activation=tf.nn.leaky_relu,
+                   activation=tf.nn.relu,
                    activate_final=True, 
                 #    dropout_rate=DROPOUT_RATE
                   ),

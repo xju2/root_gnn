@@ -15,6 +15,7 @@ if __name__ == "__main__":
     n_evts_per_record = args.evts_per_record
     outname = args.outname
 
+    print("Input Name {}".format(args.input_file))
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
 
