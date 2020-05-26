@@ -41,5 +41,6 @@ setup(
         'scripts/train_multiclassifier',
         'scripts/view_training_log',
         'scripts/create_tfrecord',
+        'scripts/evaluate_global_classifier',
     ],
 )

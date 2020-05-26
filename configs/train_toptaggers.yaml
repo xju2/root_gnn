@@ -4,7 +4,7 @@ output_dir: /global/homes/x/xju/work/TopTagger/trained
 prod_name: test_noedge_fullevts
 model_name: GlobalClassifierNoEdgeInfo
 parameters:
-    time_lapse:  60 # how often save checkpoint in seconds
+    time_lapse:  300 # how often save checkpoint in seconds
     batch_size: 50
     n_iters: 10
     learning_rate: 0.0005
