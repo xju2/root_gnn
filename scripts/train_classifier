@@ -72,6 +72,14 @@ if __name__ == "__main__":
     config_tr = config['parameters']
     global_batch_size = n_graphs   = config_tr['batch_size']   # need optimization
     num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
+    metric_name = config_tr['earlystop_metric']
+    metric_dict = {
+        "auc_te": 0.0, "acc_te": 0.0, "prec_te": 0.0, "rec_te": 0.0, "loss_te": 0.0
+    }
+    if metric_name not in metric_dict.keys():
+        msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
+        raise ValueError(msg)
+    acceptable_fails = config_tr['acceptable_failure']
 
     learning_rate = config_tr['learning_rate']
     optimizer = snt.optimizers.Adam(learning_rate)
@@ -163,8 +171,9 @@ if __name__ == "__main__":
     # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     # training_dataset = training_dataset.with_options(options)
     # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
-    previous_accuracy = 0.0
+    previous_metric = 0.0
     threshold = 0.5
+    n_fails = 0
     for epoch in range(n_epochs):
         training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
         testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
@@ -221,16 +230,21 @@ if __name__ == "__main__":
         truth_info = np.concatenate(truth_info, axis=0)
         y_true, y_pred = (truth_info > threshold), (predictions > threshold)
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
-        auc_te, accuracy_te, precision_te, recall_te = sklearn.metrics.auc(fpr, tpr),\
-            sklearn.metrics.accuracy_score(y_true, y_pred),\
-            sklearn.metrics.precision_score(y_true, y_pred),\
-            sklearn.metrics.recall_score(y_true, y_pred)
-        out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {:.4f}, AUC {:.4f}, A {:.4f}, P {:.4f}, R {:.4f}".format(
-            epoch, elapsed, loss_tr, loss_te, auc_te,
-            accuracy_te, precision_te, recall_te)
+        metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)
+        metric_dict['acc_te'] = sklearn.metrics.accuracy_score(y_true, y_pred)
+        metric_dict['pre_te'] = sklearn.metrics.precision_score(y_true, y_pred)
+        metric_dict['rec_te'] = sklearn.metrics.recall_score(y_true, y_pred)
+        metric_dict['loss_te'] = loss_te
+        out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {loss_te:.4f}, AUC {auc_te:.4f}, A {acc_te:.4f}, P {pre_te:.4f}, R {rec_te:.4f}".format(
+            epoch, elapsed, loss_tr, **metric_dict)
         print(out_str)
-        if accuracy_te < previous_accuracy:
-            print("Current accuracy {:.4f} is lower than previous {:.4f}. Stop Training.".format(accuracy_te, previous_accuracy))
-            break
+        metric = metric_dict[metric_name]
+        if metric < previous_metric:
+            print("Current accuracy {:.4f} is lower than previous {:.4f}.".format(metric, previous_metric))
+            if n_fails < acceptable_fails:
+                n_fails += 1
+            else:
+                print("Reached maximum failure threshold: {} times. Stop Training".format(acceptable_fails))
+                break
         else:
-            previous_accuracy = accuracy_te
+            previous_metric = metric
