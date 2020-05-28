@@ -70,7 +70,6 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     config_tr = config['parameters']
-    log_every_seconds       = config_tr['time_lapse']
     global_batch_size = n_graphs   = config_tr['batch_size']   # need optimization
     num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
 
@@ -78,30 +77,24 @@ if __name__ == "__main__":
     optimizer = snt.optimizers.Adam(learning_rate)
     model = getattr(model, config['model_name'])()
  
-    # prepare graphs
-    with_batch_dim = False
-    with_pad = False
+    # prepare inputs
+    tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
+    n_train = len(tr_filenames)
+    val_filenames = tf.io.gfile.glob(config['tfrec_dir_val'])
+    n_val = len(val_filenames)
 
-    file_names = tf.io.gfile.glob(os.path.join(config['tfrec_dir_local'], config['tfrec_name']))
-    n_files = len(file_names)
-    n_train = int(0.9*n_files)
-    if n_train < 1: n_train = 1
-
-    print("Input file names: ", file_names)
-    print("{} input files".format(n_files))
+    print("Input file names: ", tr_filenames)
     print("{} training files".format(n_train))
+    print("{} evaluation files".format(n_val))
     print("[{}] save models at {}".format(prog_name, output_dir))
 
-    raw_train_dataset = tf.data.TFRecordDataset(file_names[:n_train])
+    raw_train_dataset = tf.data.TFRecordDataset(tr_filenames)
     training_dataset = raw_train_dataset.map(graph.parse_tfrec_function)
     AUTO = tf.data.experimental.AUTOTUNE
     training_dataset = training_dataset.prefetch(AUTO)
 
-    if n_train == n_files:
-        testing_dataset = training_dataset
-    else:
-        raw_test_dataset = tf.data.TFRecordDataset(file_names[n_train:])
-        testing_dataset = raw_test_dataset.map(graph.parse_tfrec_function)
+    raw_val_dataset = tf.data.TFRecordDataset(val_filenames)
+    testing_dataset = raw_val_dataset.map(graph.parse_tfrec_function)
     testing_dataset = testing_dataset.prefetch(AUTO)
 
     # inputs, targets = doublet_graphs.create_graph(batch_size)
@@ -170,6 +163,8 @@ if __name__ == "__main__":
     # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     # training_dataset = training_dataset.with_options(options)
     # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+    previous_accuracy = 0.0
+    threshold = 0.5
     for epoch in range(n_epochs):
         training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
         testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
@@ -190,34 +185,52 @@ if __name__ == "__main__":
                 in_list = []
                 target_list = []
                 num_batches += 1
-            else:
-                continue
 
-            the_time = time.time()
-            elapsed_since_last_log = the_time - last_log_time
-            if elapsed_since_last_log > log_every_seconds:
-                # save a checkpoint
-                ckpt_manager.save()
-                last_log_time = time.time()
+        ckpt_manager.save()
+        last_log_time = time.time()
 
         loss_tr = total_loss/num_batches
-        print("{} batches".format(num_batches))
+        # print("{} batches".format(num_batches))
 
         elapsed = time.time() - start_time
         inputs_te_list = []
         target_te_list = []
-        for inputs in testing_dataset.take(global_batch_size).as_numpy_iterator():
+        predictions = []
+        truth_info = []
+        num_batches_te = 0
+        total_loss_te = 0
+        for inputs in testing_dataset:
             inputs_te, targets_te = inputs
             inputs_te_list.append(inputs_te)
             target_te_list.append(targets_te)
+            if len(inputs_te_list) == global_batch_size:
+                inputs_te = utils_tf.concat(inputs_te_list, axis=0)
+                targets_te = utils_tf.concat(target_te_list, axis=0)
+                outputs_te = model(inputs_te, num_processing_steps_tr)
+                total_loss_te += (tf.math.reduce_sum(
+                    create_loss_ops(targets_te, outputs_te))/tf.constant(
+                        num_processing_steps_tr, dtype=tf.float32)).numpy()
+                predictions.append(outputs_te[-1].globals)
+                truth_info.append(targets_te.globals)
+                inputs_te_list = []
+                target_te_list = []
+                num_batches_te += 1
 
-        inputs_te = utils_tf.concat(inputs_te_list, axis=0)
-        targets_te = utils_tf.concat(target_te_list, axis=0)
-        outputs_te, loss_te = update_step(inputs_te, targets_te)
-        print(outputs_te[-1].globals.shape)
-        print(targets_te.globals.shape)
-        correct_tr, solved_tr = compute_matrics(targets_te, outputs_te[-1])
-        out_str = "# {:05d}, T {:.1f}, Ltr {:.4f}, Lge {:.4f}, Precision {:.4f}, Recall {:.4f}".format(
-            epoch, elapsed, loss_tr, loss_te,
-            correct_tr, solved_tr)
+        loss_te = total_loss_te / num_batches_te
+        predictions = np.concatenate(predictions, axis=0)
+        truth_info = np.concatenate(truth_info, axis=0)
+        y_true, y_pred = (truth_info > threshold), (predictions > threshold)
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+        auc_te, accuracy_te, precision_te, recall_te = sklearn.metrics.auc(fpr, tpr),\
+            sklearn.metrics.accuracy_score(y_true, y_pred),\
+            sklearn.metrics.precision_score(y_true, y_pred),\
+            sklearn.metrics.recall_score(y_true, y_pred)
+        out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {:.4f}, AUC {:.4f}, A {:.4f}, P {:.4f}, R {:.4f}".format(
+            epoch, elapsed, loss_tr, loss_te, auc_te,
+            accuracy_te, precision_te, recall_te)
         print(out_str)
+        if accuracy_te < previous_accuracy:
+            print("Current accuracy {:.4f} is lower than previous {:.4f}. Stop Training.".format(accuracy_te, previous_accuracy))
+            break
+        else:
+            previous_accuracy = accuracy_te

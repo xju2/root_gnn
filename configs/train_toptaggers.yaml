@@ -1,10 +1,9 @@
-tfrec_name: '*_*.tfrec'
-tfrec_dir_local: /global/homes/x/xju/work/TopTagger/tfrec
+tfrec_dir_train: /global/homes/x/xju/work/TopTagger/tfrec/*_0.tfrec
+tfrec_dir_val: /global/homes/x/xju/work/TopTagger/tfrec_val/*_0.tfrec
 output_dir: /global/homes/x/xju/work/TopTagger/trained
-prod_name: test_noedge_fullevts
+prod_name: noedge_fullevts
 model_name: GlobalClassifierNoEdgeInfo
 parameters:
-    time_lapse:  300 # how often save checkpoint in seconds
     batch_size: 50
     n_iters: 10
     learning_rate: 0.0005

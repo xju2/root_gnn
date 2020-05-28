@@ -42,5 +42,6 @@ setup(
         'scripts/view_training_log',
         'scripts/create_tfrecord',
         'scripts/evaluate_global_classifier',
+        'scripts/calculate_metrics',
     ],
 )

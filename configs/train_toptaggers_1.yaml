@@ -1,4 +1,4 @@
-tfrec_name: '*_*0.tfrec'
+tfrec_name: '*_0.tfrec'
 tfrec_dir_local: /global/homes/x/xju/work/TopTagger/tfrec
 output_dir: /global/homes/x/xju/work/TopTagger/trained
 prod_name: test_noedge_1
