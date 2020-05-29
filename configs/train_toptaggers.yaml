@@ -9,6 +9,6 @@ parameters:
     learning_rate: 0.0005
     real_weight: 1.
     fake_weight: 1.
-    epochs: 20
+    epochs: 2
     earlystop_metric: "auc_te" # acc_te, pre_te, rec_te
-    acceptable_failure: 2
+    acceptable_failure: 1

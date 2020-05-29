@@ -163,9 +163,18 @@ if __name__ == "__main__":
     last_log_time = start_time
     ## loop over iterations, each iteration generating a batch of data for training
     iruns = 0
-    print("# (iteration number), TD (get graph), TR (TF run)")
+    # print("# (iteration number), TD (get graph), TR (TF run)")
     last_iteration = 0
     n_epochs = config_tr['epochs']
+
+    # log information
+    out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
+    out_str += '\n'
+    out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
+        "AUC, Accuracy, Precision, Recall\n"
+    log_name = os.path.join(output_dir, "log_training.txt")
+    with open(log_name, 'a') as f:
+        f.write(out_str)
 
     # options = tf.data.Options()
     # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
@@ -174,6 +183,7 @@ if __name__ == "__main__":
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
+
     for epoch in range(n_epochs):
         training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
         testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
@@ -196,8 +206,9 @@ if __name__ == "__main__":
                 num_batches += 1
 
         ckpt_manager.save()
-        last_log_time = time.time()
 
+        eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(ckpt_manager.checkpoint.save_counter()))
+        last_log_time = time.time()
         loss_tr = total_loss/num_batches
         # print("{} batches".format(num_batches))
 
@@ -238,6 +249,9 @@ if __name__ == "__main__":
         out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {loss_te:.4f}, AUC {auc_te:.4f}, A {acc_te:.4f}, P {pre_te:.4f}, R {rec_te:.4f}".format(
             epoch, elapsed, loss_tr, **metric_dict)
         print(out_str)
+        with open(log_name, 'a') as f:
+            f.write(out_str+"\n")
+        np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
         metric = metric_dict[metric_name]
         if metric < previous_metric:
             print("Current accuracy {:.4f} is lower than previous {:.4f}.".format(metric, previous_metric))

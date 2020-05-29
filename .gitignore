@@ -1,4 +1,6 @@
 *__pycache__
 *.pyc
 *.ipynb_checkpoints
+*.egg*
 notebooks/_*ipynb
+trained_results
