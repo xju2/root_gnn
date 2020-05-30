@@ -135,6 +135,18 @@ if __name__ == "__main__":
         ]
         return tf.stack(loss_ops)
 
+    def create_loss_global_edge(target_op, output_ops):
+        weights = target_op.globals * real_weight + (1 - target_op.globals) * fake_weight
+        loss_ops = [
+            tf.compat.v1.losses.log_loss(target_op.globals, output_op.globals, weights=weights)
+                for output_op in output_ops
+        ]
+        loss_ops += [
+            tf.compat.v1.losses.log_loss(target_op.edges, output_op.edges, weights=weights)
+                for output_op in output_ops 
+        ]
+        return tf.stack(loss_ops)
+
     @functools.partial(tf.function, input_signature=input_signature)
     def update_step(inputs_tr, targets_tr):
         print("Tracing update_step")
