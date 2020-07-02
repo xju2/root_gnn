@@ -1,0 +1,13 @@
+tfrec_dir_train: /global/cscratch1/sd/xju/WbosonTagger/tfrec/*_*.tfrec
+tfrec_dir_val: /global/cscratch1/sd/xju/WbosonTagger/tfrec_val/*_*.tfrec
+output_dir:  /global/cscratch1/sd/xju/WbosonTagger/trained
+prod_name: noedge_fullevts
+model_name: NodeEdgeClassifier
+loss_name: NodeEdgeLoss, 10, 1, 5, 1
+parameters:
+    batch_size: 1
+    n_iters: 10
+    learning_rate: 0.0005
+    epochs: 20
+    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
+    acceptable_failure: 5

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from root_gnn.prepare import TopTaggerDataset
+from root_gnn import prepare # the main program to produce the graph
 import pandas as pd
 
 if __name__ == "__main__":
@@ -10,6 +10,9 @@ if __name__ == "__main__":
     add_arg("input_file", help='input file')
     add_arg("outname", help='output name')
     add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
+    add_arg('--type', default=None, help='which data to process', choices=['TopTaggerDataset', 'WTaggerDataset'])
+    add_arg("--debug", action='store_true', help='in a debug mode')
+
 
     args = parser.parse_args()
     n_evts_per_record = args.evts_per_record
@@ -18,10 +21,10 @@ if __name__ == "__main__":
     print("Input Name {}".format(args.input_file))
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
+    print("Data type:", args.type)
 
-
-    with pd.HDFStore(args.input_file, mode='r') as store:
-        df = store['table']
-
-    data = TopTaggerDataset(args.input_file)
-    data.process(save=True, outname=outname, n_evts_per_record=n_evts_per_record)
+    if args.type is None:
+        exit(1)
+        
+    data = getattr(prepare, args.type)(args.input_file)
+    data.process(save=True, outname=outname, n_evts_per_record=n_evts_per_record, debug=False)

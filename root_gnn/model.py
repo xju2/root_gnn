@@ -26,7 +26,7 @@ def make_mlp_model():
     A Sonnet module which contains the MLP and LayerNorm.
   """
   return snt.Sequential([
-      snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
+      snt.nets.MLP([128, 64] * NUM_LAYERS,
                    activation=tf.nn.relu,
                    activate_final=True, 
                 #    dropout_rate=DROPOUT_RATE
@@ -170,7 +170,7 @@ class GlobalClassifierNoEdgeInfo(snt.Module):
 
 class EdgeGlobalClassifier(snt.Module):
     def __init__(self, name="EdgeGlobalClassifier"):
-        super(GeneralClassifier, self).__init__(name=name)
+        super(EdgeGlobalClassifier, self).__init__(name=name)
 
         self._encoder = MLPGraphIndependent()
         self._core    = MLPGraphNetwork()
@@ -230,4 +230,64 @@ class MultiClassifier(snt.Module):
 
         decoded_op = self._decoder(latent)
         output_ops.append(self._output_transform(decoded_op))
+        return output_ops
+
+
+class NodeEdgeClassifier(snt.Module):
+    def __init__(self, name="NodeEdgeClassifier"):
+        super(NodeEdgeClassifier, self).__init__(name=name)
+
+
+        self._edge_block = blocks.EdgeBlock(
+            edge_model_fn=make_mlp_model,
+            use_edges=False,
+            use_receiver_nodes=True,
+            use_sender_nodes=True,
+            use_globals=False,
+            name='edge_encoder_block'
+        )
+        self._node_encoder_block = blocks.NodeBlock(
+            node_model_fn=make_mlp_model,
+            use_received_edges=False,
+            use_sent_edges=False,
+            use_nodes=True,
+            use_globals=False,
+            name='node_encoder_block'
+        )
+
+        self._core = InteractionNetwork(
+            edge_model_fn=make_mlp_model,
+            node_model_fn=make_mlp_model,
+            reducer=tf.math.unsorted_segment_sum
+        )
+
+        # Transforms the outputs into appropriate shapes.
+        edge_output_size = 1
+        node_output_size = 1
+        edge_fn =lambda: snt.Sequential([
+            snt.nets.MLP([edge_output_size],
+                        activation=tf.nn.relu, # default is relu
+                        name='edge_output'),
+            tf.sigmoid])
+
+        node_fn =lambda: snt.Sequential([
+            snt.nets.MLP([node_output_size],
+                        activation=tf.nn.relu, # default is relu
+                        name='node_output'),
+            tf.sigmoid])
+
+        self._output_transform = modules.GraphIndependent(edge_fn, node_fn, None)
+
+
+    def __call__(self, input_op, num_processing_steps):
+        latent = self._edge_block(self._node_encoder_block(input_op))
+        latent0 = latent
+
+        output_ops = []
+        for _ in range(num_processing_steps):
+            core_input = utils_tf.concat([latent0, latent], axis=1)
+            latent = self._core(core_input)
+
+            output_ops.append(self._output_transform(latent))
+
         return output_ops
