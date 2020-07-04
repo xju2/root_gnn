@@ -3,6 +3,7 @@ tfrec_dir_val: /global/homes/x/xju/work/TopTagger/tfrec_val/*_*.tfrec
 output_dir: /global/homes/x/xju/work/TopTagger/trained
 prod_name: noedge_fullevts
 model_name: GlobalClassifierNoEdgeInfo
+loss_name: GlobalLoss
 parameters:
     batch_size: 50
     n_iters: 10
