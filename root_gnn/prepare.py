@@ -368,5 +368,5 @@ class WTaggerDataset(DataSet):
 
         self.tot_data = len(self.graphs)
         read_time = time.time() - now
-        print("TopTaggerDataset added {} events, in {:.1f} mins".format(
+        print("WTaggerDataset added {} events, in {:.1f} mins".format(
             ievt, read_time/60.))

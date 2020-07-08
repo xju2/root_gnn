@@ -10,7 +10,8 @@ if __name__ == "__main__":
     add_arg("input_file", help='input file')
     add_arg("outname", help='output name')
     add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
-    add_arg('--type', default=None, help='which data to process', choices=['TopTaggerDataset', 'WTaggerDataset'])
+    add_arg('--type', default=None, help='which data to process', 
+            choices=['TopTaggerDataset', 'WTaggerDataset', 'ToppairDataSet'])
     add_arg("--debug", action='store_true', help='in a debug mode')
 
 

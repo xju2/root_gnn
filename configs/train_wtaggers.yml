@@ -7,7 +7,7 @@ loss_name: NodeEdgeLoss, 2, 1, 2, 1
 parameters:
     batch_size: 1
     n_iters: 5
-    learning_rate: 0.0005
+    learning_rate: 0.0001
     epochs: 2
     earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
     acceptable_failure: 5
