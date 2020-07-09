@@ -43,5 +43,6 @@ setup(
         'scripts/create_tfrecord',
         'scripts/evaluate_global_classifier',
         'scripts/calculate_metrics',
+        'scripts/calculate_w_metrics',
     ],
 )
