@@ -1,0 +1,31 @@
+#!/usr/bin/env python
+
+from root_gnn import prepare # the main program to produce the graph
+import pandas as pd
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Create TFRecord of graphs for training')
+    add_arg = parser.add_argument
+    add_arg("input_file", help='input file')
+    add_arg("outname", help='output name')
+    add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
+    add_arg('--type', default=None, help='which data to process', 
+            choices=['TopTaggerDataset', 'WTaggerDataset', 'ToppairDataSet'])
+    add_arg("--debug", action='store_true', help='in a debug mode')
+
+
+    args = parser.parse_args()
+    n_evts_per_record = args.evts_per_record
+    outname = args.outname
+
+    print("Input Name {}".format(args.input_file))
+    print("Output Name {}".format(outname))
+    print("{} events per record".format(n_evts_per_record))
+    print("Data type:", args.type)
+
+    if args.type is None:
+        exit(1)
+        
+    data = getattr(prepare, args.type)(args.input_file)
+    data.process(save=True, outname=outname, n_evts_per_record=n_evts_per_record, debug=False)

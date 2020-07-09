@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+import numpy as np
+
+from heptrkx import utils_plot
+import sklearn.metrics
+from bisect import bisect
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Calculate and plot the merits for comparison/evluation purpose.")
+    add_arg = parser.add_argument
+    add_arg("filename", help='numpy npz file containing predictions and truth-info')
+    add_arg("outname", help='output name prefix')
+    args = parser.parse_args()
+
+    array = np.load(args.filename)
+    predictions = array['predictions']
+    truth_info = array['truth_info']
+
+    # utils_plot.plot_metrics(predictions, truth_info)
+    n_signal = np.sum(truth_info)
+    n_bkg = truth_info.shape[0] - n_signal
+    print("Total {} events, {:.0f} signal events, {:.0f} background events".format(predictions.shape[0], n_signal, n_bkg))
+
+    fpr, tpr, pr_th = sklearn.metrics.roc_curve(truth_info, predictions)
+    purity, efficiency, thresholds = sklearn.metrics.precision_recall_curve(truth_info, predictions)
+
+    auc = sklearn.metrics.auc(fpr, tpr)
+    accuracy = sklearn.metrics.accuracy_score(truth_info, (predictions > 0.5))
+    print("AUC: {:.4f}, Accuracy: {:.4f}".format(auc, accuracy))
+    eff_cut = 0.3
+    ti = bisect(list(reversed(efficiency.tolist())), eff_cut)
+    ti = len(efficiency) - ti
+    threshold = thresholds[ti]
+    print("Threshold {:.4f} yields signal efficiency of {:.2f}%".format(threshold, eff_cut*100))
+
+    selected_evts = (predictions > threshold)
+    selected_truth = truth_info[selected_evts]
+    selected_pred = predictions[selected_evts]
+    n_signal_sel = np.sum(selected_truth)
+    n_bkg_sel = selected_truth.shape[0] - n_signal_sel
+
+    print("Selected: {} signal events, {} background events".format(n_signal_sel, n_bkg_sel))
+    print("Signal efficiency {:.4f}, background rejection {:.2f}".format(n_signal_sel/n_signal, n_bkg/n_bkg_sel))

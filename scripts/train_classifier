@@ -1,178 +1,254 @@
 #!/usr/bin/env python
+"""
+Training GNN
+"""
+
+import tensorflow as tf
+
+import os
+import sys
+import argparse
+
+import re
+import time
+import random
+import functools
+
+import numpy as np
+import sklearn.metrics
+
+
+from graph_nets import utils_tf
+from graph_nets import utils_np
+import sonnet as snt
+
+from root_gnn import model
+from root_gnn import losses
+from heptrkx.dataset import graph
+from heptrkx.utils import load_yaml
+
+ckpt_name = 'checkpoint'
+
+prog_name = os.path.basename(sys.argv[0])
+
+def eval_output(target, output):
+    """
+    target, output are graph-tuple from TF-GNN,
+    each of them contains N=batch-size graphs
+    """
+    tdds = utils_np.graphs_tuple_to_data_dicts(target)
+    odds = utils_np.graphs_tuple_to_data_dicts(output)
+
+    test_target = []
+    test_pred = []
+    for td, od in zip(tdds, odds):
+        test_target.append(td['globals'])
+        test_pred.append(od['globals'])
+        # test_target.append(np.squeeze(td['globals']))
+        # test_pred.append(np.squeeze(od['globals']))
+
+    test_target = np.concatenate(test_target, axis=0)
+    test_pred   = np.concatenate(test_pred,   axis=0)
+    return test_pred, test_target
+
+
+def compute_matrics(target, output, thresh=0.5):
+    test_pred, test_target = eval_output(target, output)
+    y_pred, y_true = (test_pred > thresh), (test_target > thresh)
+    return sklearn.metrics.precision_score(y_true, y_pred), sklearn.metrics.recall_score(y_true, y_pred)
 
 if __name__ == "__main__":
-    import os
-    import glob, re
-    import networkx as nx
-    import numpy as np
-    import pandas as pd
-    from sklearn.utils import shuffle
-
-    from graph_nets import utils_tf
-    from graph_nets import utils_np
-
-    from root_gnn import dataset
-    from root_gnn import utils_train
-    from root_gnn import prepare
-    from root_gnn.model import GeneralClassifier
-    import tensorflow as tf
-
-    import argparse
-
-    parser = argparse.ArgumentParser(description='training a classifier')
+    parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
     add_arg = parser.add_argument
-    add_arg('signal_file', type=str, help='signal file')
-    add_arg('bkg_file', type=str, help='background file')
-    add_arg('--tree_name', type=str, help='tree name', default='tree_incl_all')
-    add_arg('--batch_size', type=int, help='batch size', default=100)
-    add_arg('--outdir', type=str, help='output directory', default="trained_results/test")
-
+    add_arg('config', help='configuration file')
     args = parser.parse_args()
 
-    #input_dir = '/global/homes/x/xju/project/xju/gnn_examples/H4l_ggF_vs_VBF/input'
-    sig_file = args.signal_file
-    bkg_file = args.bkg_file
-    tree_name = args.tree_name
-    output_dir = args.outdir
+    config = load_yaml(args.config)
 
-    f_signal = dataset.dataset(sig_file, tree_name)
-    f_bkg = dataset.dataset(bkg_file, tree_name)
+    # add ops to save and restore all the variables
+    prod_name = config['prod_name']
+    output_dir = os.path.join(config['output_dir'], prod_name)
+    os.makedirs(output_dir, exist_ok=True)
 
-    n_graphs = args.batch_size
+    config_tr = config['parameters']
+    global_batch_size = n_graphs   = config_tr['batch_size']   # need optimization
+    num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
+    metric_name = config_tr['earlystop_metric']
+    metric_dict = {
+        "auc_te": 0.0, "acc_te": 0.0, "prec_te": 0.0, "rec_te": 0.0, "loss_te": 0.0
+    }
+    if metric_name not in metric_dict.keys():
+        msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
+        raise ValueError(msg)
+    acceptable_fails = config_tr['acceptable_failure']
 
-    def prepare_graphs(n_graphs, is_training=True):
-        all_graphs = []
-        def get_graphs(input_data, index):
-            for iph in range(n_graphs):
-                nx_graph = input_data.generate_nxgraph(is_training=is_training)
-                nx_graph.graph['solution'] = np.array([index])
-                input_g, target_g = prepare.graph_to_input_target(nx_graph)
-                all_graphs.append((input_g, target_g))
+    learning_rate = config_tr['learning_rate']
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(model, config['model_name'])()
+ 
+    # prepare inputs
+    tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
+    n_train = len(tr_filenames)
+    val_filenames = tf.io.gfile.glob(config['tfrec_dir_val'])
+    n_val = len(val_filenames)
 
-        get_graphs(f_signal, 1)
-        get_graphs(f_bkg, 0)
-        all_graphs = shuffle(all_graphs)
+    print("Input file names: ", tr_filenames)
+    print("{} training files".format(n_train))
+    print("{} evaluation files".format(n_val))
+    print("[{}] save models at {}".format(prog_name, output_dir))
 
-        input_graphs = [x[0] for x in all_graphs]
-        target_graphs = [x[1] for x in all_graphs]
-        return input_graphs, target_graphs
+    raw_train_dataset = tf.data.TFRecordDataset(tr_filenames)
+    training_dataset = raw_train_dataset.map(graph.parse_tfrec_function)
+    AUTO = tf.data.experimental.AUTOTUNE
+    training_dataset = training_dataset.prefetch(AUTO)
 
-    tf.reset_default_graph()
-    input_graphs, target_graphs = prepare_graphs(n_graphs)
-    input_ph  = utils_tf.placeholders_from_networkxs(input_graphs, force_dynamic_num_graphs=True)
-    target_ph = utils_tf.placeholders_from_networkxs(target_graphs, force_dynamic_num_graphs=True)
+    raw_val_dataset = tf.data.TFRecordDataset(val_filenames)
+    testing_dataset = raw_val_dataset.map(graph.parse_tfrec_function)
+    testing_dataset = testing_dataset.prefetch(AUTO)
 
-    model = GeneralClassifier()
-    num_processing_steps_tr = 4
-    output_ops_tr = model(input_ph, num_processing_steps_tr)
+    # inputs, targets = doublet_graphs.create_graph(batch_size)
+    with_batch_dim = False
+    input_list = []
+    target_list = []
+    for dd in training_dataset.take(global_batch_size).as_numpy_iterator():
+        input_list.append(dd[0])
+        target_list.append(dd[1])
 
-    loss_ops_tr = utils_train.create_loss_ops(target_ph, output_ops_tr)
-    loss_op_tr = sum(loss_ops_tr) / num_processing_steps_tr
+    inputs = utils_tf.concat(input_list, axis=0)
+    targets = utils_tf.concat(target_list, axis=0)
+    input_signature = (
+        graph.specs_from_graphs_tuple(inputs, with_batch_dim),
+        graph.specs_from_graphs_tuple(targets, with_batch_dim)
+    )
 
-    global_step = tf.Variable(0, trainable=False)
-    start_learning_rate = 0.001
-    learning_rate = tf.train.exponential_decay(
-        start_learning_rate, global_step,
-        decay_steps=400,
-        decay_rate=0.96, staircase=True)
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-    step_op = optimizer.minimize(loss_op_tr)
+    loss_config = config['loss_name'].split(',')
+    loss_fcn = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
-    input_ph, target_ph = utils_train.make_all_runnable_in_session(input_ph, target_ph)
+    @functools.partial(tf.function, input_signature=input_signature)
+    def update_step(inputs_tr, targets_tr):
+        print("Tracing update_step")
+        with tf.GradientTape() as tape:
+            outputs_tr = model(inputs_tr, num_processing_steps_tr)
+            loss_ops_tr = loss_fcn(targets_tr, outputs_tr)
+            loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(num_processing_steps_tr, dtype=tf.float32)
 
-    if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        gradients = tape.gradient(loss_op_tr, model.trainable_variables)
+        optimizer.apply(gradients, model.trainable_variables)
+        return outputs_tr, loss_op_tr
 
-    ckpt_name = 'checkpoint_{:05d}.ckpt'
-    files = glob.glob(output_dir+"/*.ckpt.meta")
-    last_iteration = 0 if len(files) < 1 else max([
-            int(re.search('checkpoint_([0-9]*).ckpt.meta', os.path.basename(x)).group(1))
-            for x in files])
-    print("last iteration:", last_iteration)
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5)
+    if os.path.exists(os.path.join(output_dir, ckpt_name)):
+        print("Loading latest checkpoint")
+        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
 
-    sess = tf.Session()
-    saver = tf.compat.v1.train.Saver()
+    logged_iterations = []
+    losses_tr = []
+    corrects_tr = []
+    solveds_tr = []
 
-    if last_iteration > 0:
-        print("loading checkpoint:", os.path.join(output_dir, ckpt_name.format(last_iteration)))
-        saver.restore(sess, os.path.join(output_dir, ckpt_name.format(last_iteration)))
-    else:
-        init_ops = tf.global_variables_initializer()
-        # saver must be created before init_ops is run!
-        sess.run(init_ops)
-
-    import time
-    log_name = 'big.log'
-    log_every_seconds = 60
-    iterations = 8000000
-    iter_per_job = 10000
-
-    out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
-    out_str += '\n'
-    out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lte (testing loss), Precision, Recall\n"
-    log_name = os.path.join(output_dir, log_name)
-    with open(log_name, 'a') as f:
-        f.write(out_str)
 
     start_time = time.time()
     last_log_time = start_time
+    ## loop over iterations, each iteration generating a batch of data for training
+    iruns = 0
+    # print("# (iteration number), TD (get graph), TR (TF run)")
+    last_iteration = 0
+    n_epochs = config_tr['epochs']
 
-    irun = 0
-    for itr in range(last_iteration, iterations):
-        if irun > iter_per_job:
-            break
+    # log information
+    out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
+    out_str += '\n'
+    out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
+        "AUC, Accuracy, Precision, Recall\n"
+    log_name = os.path.join(output_dir, "log_training.txt")
+    with open(log_name, 'a') as f:
+        f.write(out_str)
+
+    # options = tf.data.Options()
+    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    # training_dataset = training_dataset.with_options(options)
+    # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+    previous_metric = 0.0
+    threshold = 0.5
+    n_fails = 0
+
+    for epoch in range(n_epochs):
+        training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
+        testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
+
+        total_loss = 0.
+        num_batches = 0
+
+        in_list = []
+        target_list = []
+        for inputs in training_dataset:
+            inputs_tr, targets_tr = inputs
+            in_list.append(inputs_tr)
+            target_list.append(targets_tr)
+            if len(in_list) == global_batch_size:
+                inputs_tr = utils_tf.concat(in_list, axis=0)
+                targets_tr = utils_tf.concat(target_list, axis=0)
+                total_loss += update_step(inputs_tr, targets_tr)[1].numpy()
+                in_list = []
+                target_list = []
+                num_batches += 1
+
+        ckpt_manager.save()
+
+        eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
+            ckpt_manager.checkpoint.save_counter.numpy()))
+        last_log_time = time.time()
+        loss_tr = total_loss/num_batches
+        # print("{} batches".format(num_batches))
+
+        elapsed = time.time() - start_time
+        inputs_te_list = []
+        target_te_list = []
+        predictions = []
+        truth_info = []
+        num_batches_te = 0
+        total_loss_te = 0
+        for inputs in testing_dataset.take(100):
+            inputs_te, targets_te = inputs
+            inputs_te_list.append(inputs_te)
+            target_te_list.append(targets_te)
+            if len(inputs_te_list) == global_batch_size:
+                inputs_te = utils_tf.concat(inputs_te_list, axis=0)
+                targets_te = utils_tf.concat(target_te_list, axis=0)
+                outputs_te = model(inputs_te, num_processing_steps_tr)
+                total_loss_te += (tf.math.reduce_sum(
+                    loss_fcn(targets_te, outputs_te))/tf.constant(
+                        num_processing_steps_tr, dtype=tf.float32)).numpy()
+                predictions.append(outputs_te[-1].edges)
+                truth_info.append(targets_te.edges)
+                inputs_te_list = []
+                target_te_list = []
+                num_batches_te += 1
+
+        loss_te = total_loss_te / num_batches_te
+        predictions = np.concatenate(predictions, axis=0)
+        truth_info = np.concatenate(truth_info, axis=0)
+        y_true, y_pred = (truth_info > threshold), (predictions > threshold)
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+        metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)
+        metric_dict['acc_te'] = sklearn.metrics.accuracy_score(y_true, y_pred)
+        metric_dict['pre_te'] = sklearn.metrics.precision_score(y_true, y_pred)
+        metric_dict['rec_te'] = sklearn.metrics.recall_score(y_true, y_pred)
+        metric_dict['loss_te'] = loss_te
+        out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {loss_te:.4f}, AUC {auc_te:.4f}, A {acc_te:.4f}, P {pre_te:.4f}, R {rec_te:.4f}".format(
+            epoch, elapsed, loss_tr, **metric_dict)
+        print(out_str)
+        with open(log_name, 'a') as f:
+            f.write(out_str+"\n")
+        np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
+        metric = metric_dict[metric_name]
+        if metric < previous_metric:
+            print("Current accuracy {:.4f} is lower than previous {:.4f}.".format(metric, previous_metric))
+            if n_fails < acceptable_fails:
+                n_fails += 1
+            else:
+                print("Reached maximum failure threshold: {} times. Stop Training".format(acceptable_fails))
+                break
         else:
-            irun += 1
-        input_graphs, target_graphs = prepare_graphs(n_graphs, is_training=True)
-
-        input_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(input_graphs)
-        target_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(target_graphs)
-
-        feed_dict = {
-            input_ph: input_graphs_ntuple,
-            target_ph: target_graphs_ntuple
-        }
-
-        train_values = sess.run({
-            "step": step_op,
-            "target": target_ph,
-            "loss": loss_op_tr,
-            "outputs": output_ops_tr
-        }, feed_dict=feed_dict)
-
-        the_time = time.time()
-        elapsed_since_last_log = the_time - last_log_time
-
-        if elapsed_since_last_log > log_every_seconds:
-            # save a checkpoint
-            last_log_time = the_time
-            input_graphs, target_graphs = prepare_graphs(n_graphs, is_training=False)
-            input_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(input_graphs)
-            target_graphs_ntuple = utils_np.networkxs_to_graphs_tuple(target_graphs)
-            feed_dict = {
-                input_ph: input_graphs_ntuple,
-                target_ph: target_graphs_ntuple
-            }
-
-            test_values = sess.run({
-                "target": target_ph,
-                "loss": loss_op_tr,
-                "outputs": output_ops_tr
-            }, feed_dict=feed_dict)
-
-            elapsed = the_time - start_time
-
-            correct_tr, solved_tr = utils_train.compute_matrics(
-                test_values["target"], test_values["outputs"][-1])
-
-            out_str = "# {:05d}, T {:.1f}, Ltr {:.4f}, Lge {:.4f}, Precision {:.4f}, Recall {:.4f}\n".format(
-                itr, elapsed, train_values["loss"], test_values["loss"],
-                correct_tr, solved_tr)
-            with open(log_name, 'a') as f:
-                f.write(out_str)
-
-
-            save_path = saver.save(
-                sess, os.path.join(output_dir, ckpt_name.format(itr)))
-    sess.close()
-
+            previous_metric = metric

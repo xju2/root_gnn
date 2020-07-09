@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+import ROOT
+import os
+
+import tensorflow as tf
+import numpy as np
+import sklearn.metrics
+
+from graph_nets import utils_tf
+import sonnet as snt
+
+from root_gnn.datasets import wprime
+from heptrkx import load_yaml
+
+ckpt_name = 'checkpoint'
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Calculate and plot the metrics for jet reco.')
+    add_arg = parser.add_argument
+    add_arg("filename", help="input event files")
+    add_arg("config", help="configuration file used for training")
+    add_arg("outname", help='output name prefix')
+    add_arg("--nevts", default=1, help='number of events', type=int)
+    add_arg("--skip-nevts", default=0, help='skip number of events', type=int)
+    add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
+    add_arg("--edge-threshold", help='threshold on edge scores', type=float, default=0.5)
+    args = parser.parse_args()
+
+
+    if not os.path.exists(args.filename):
+        print("{} does not exists", args.filename)
+
+
+    # config ML model
+    config = load_yaml(args.config)
+
+    prod_name = config['prod_name']
+    modeldir = os.path.join(config['output_dir'], prod_name)
+    if args.modeldir is not None:
+        modeldir = args.modeldir
+    
+    config_tr = config['parameters']
+    global_batch_size = config_tr['batch_size']
+    num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
+    learning_rate = config_tr['learning_rate']
+
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(model, config['model_name'])()
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
+    if os.path.exists(os.path.join(modeldir, ckpt_name)):
+        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
+        print("Loaded latest checkpoint from {}".format(modeldir))
+    else:
+        raise ValueError("Cannot find model at:", modeldir)
+
+
+    # outfile = ROOT.TFile.Open("{}.root".format(args.outname), 'recreate')
+    # h_ljet_e = ROOT.TH1F("ljet_E", "leading jet E", 2000, 0, 10000)
+    # h_ljet_mass = ROOT.TH1F("ljet_mass", "leading jet Mass", 1000, 0, 1000)
+    # h_wboson_e = ROOT.TH1F("wboson_E", "W boson E", 2000, 0, 10000)
+    # h_wboson_mass = ROOT.TH1F("wboson_mass", "W boson Mass", 1000, 0, 1000)
+    # h_ljet_efrac = ROOT.TH1F("ljet_eFrac", "Energy fraction", 110, -1, 10)
+    # h_ljet_mass_res = ROOT.TH1F("ljet_massRes", "Mass fraction", 200, -10, 10)
+
+    iskip = 0
+    ievt = 0
+    evt_info = []
+    node_predicts = []
+    edge_predicts = []
+    node_truths = []
+    edge_truths = []
+    edge_threshold = args.edge_threshold
+    for event in wprime.read(args.filename, args.nevts, args.skip_nevts):
+        
+        inputs_tr, targets_tr = wprime.make_graph(event)[0]
+        outputs_tr = model(inputs_tr, num_processing_steps_tr)
+        output_graph = outputs_tr[-1]
+        node_predicts.append(output_graph.nodes)
+        node_truths.append(targets_tr.nodes)
+        edge_predicts.append(output_graph.edges)
+        edge_truths.append(targets_tr.edges)
+        
+        # calculate similar variables for GNN-based reconstruction
+        # method-one, place a threshold on edge score
+        edge_predict = np.squeeze(output_graph.edges.numpy())
+        edge_passed = edge_predict > edge_threshold
+        nodes_sel = np.unique(np.concatenate([output_graph.receiver.numpy()[edge_passed],\
+            output_graph.sender.numpy()[edge_passed]], axis=0))
+        gnn_tlv = wprime.invariant_mass(event, nodes_sel.tolist())
+
+        ljet, wboson = wprime.evaluate_evt(event)
+        evt_info.append([ljet.E(), ljet.Eta(), ljet.Phi(), ljet.M(),
+                wboson.E(), wboson.Eta(), wboson.Phi(), wboson.M(),
+                gnn_tlv.E(), gnn_tlv.Eta(), gnn_tlv.Phi(), gnn_tlv.M()])
+
+
+    node_predicts = np.concatenate(node_predicts, axis=0)
+    node_truths = np.concatenate(node_truths, axis=0)
+    edge_predicts = np.concatenate(edge_predicts, axis=0)
+    edge_truths = np.concatenate(edge_truths, axis=0)
+    evt_info = np.array(evt_info, dtype=np.float32)
+
+    np.savez(args.outname+".npz",\
+        node_predicts=node_predicts,
+        node_truths=node_truths,
+        edge_predicts=node_predicts,
+        edge_truths=edge_truths
+    )
+        # h_ljet_e.Fill(ljet.E())
+        # h_ljet_mass.Fill(ljet.M())
+        # h_wboson_e.Fill(wboson.E())
+        # h_wboson_mass.Fill(wboson.M())
+        # if wboson.E() > 0:
+        #     h_ljet_efrac.Fill(ljet.E()/wboson.E())
+        #     h_ljet_mass_res.Fill(ljet.M()/wboson.M())
+        # else:
+        #     h_ljet_efrac.Fill(-1)
+        #     h_ljet_mass_res.Fill(-10)
+
+    # h_ljet_e.Write()
+    # h_ljet_mass.Write()
+    # h_wboson_e.Write()
+    # h_wboson_mass.Write()
+    # h_ljet_efrac.Write()
+    # h_ljet_mass_res.Write()
+    # outfile.Close()
