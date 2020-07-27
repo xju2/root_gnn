@@ -174,10 +174,11 @@ if __name__ == "__main__":
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
-
+    n_training_graphs = sum([1 for _ in training_dataset])
+    n_testing_graphs = sum([1 for _ in testing_dataset])
     for epoch in range(n_epochs):
-        training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
-        testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
+        training_dataset = training_dataset.shuffle(n_training_graphs, seed=12345, reshuffle_each_iteration=True)
+        testing_dataset = testing_dataset.shuffle(n_testing_graphs, seed=12345, reshuffle_each_iteration=True)
 
         total_loss = 0.
         num_batches = 0
