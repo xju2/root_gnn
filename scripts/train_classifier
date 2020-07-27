@@ -22,7 +22,7 @@ from graph_nets import utils_tf
 from graph_nets import utils_np
 import sonnet as snt
 
-from root_gnn import model
+from root_gnn import model as all_models
 from root_gnn import losses
 from heptrkx.dataset import graph
 from heptrkx.utils import load_yaml
@@ -83,8 +83,9 @@ if __name__ == "__main__":
     acceptable_fails = config_tr['acceptable_failure']
 
     learning_rate = config_tr['learning_rate']
+    # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
     optimizer = snt.optimizers.Adam(learning_rate)
-    model = getattr(model, config['model_name'])()
+    model = getattr(all_models, config['model_name'])()
  
     # prepare inputs
     tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
@@ -122,6 +123,7 @@ if __name__ == "__main__":
     )
 
     loss_config = config['loss_name'].split(',')
+    loss_name = loss_config[0]
     loss_fcn = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
     @functools.partial(tf.function, input_signature=input_signature)
@@ -209,7 +211,7 @@ if __name__ == "__main__":
         truth_info = []
         num_batches_te = 0
         total_loss_te = 0
-        for inputs in testing_dataset.take(100):
+        for inputs in testing_dataset:
             inputs_te, targets_te = inputs
             inputs_te_list.append(inputs_te)
             target_te_list.append(targets_te)
@@ -220,8 +222,12 @@ if __name__ == "__main__":
                 total_loss_te += (tf.math.reduce_sum(
                     loss_fcn(targets_te, outputs_te))/tf.constant(
                         num_processing_steps_tr, dtype=tf.float32)).numpy()
-                predictions.append(outputs_te[-1].edges)
-                truth_info.append(targets_te.edges)
+                if loss_name == "GlobalLoss":
+                    predictions.append(outputs_te[-1].globals)
+                    truth_info.append(targets_te.globals)
+                else:
+                    predictions.append(outputs_te[-1].edges)
+                    truth_info.append(targets_te.edges)
                 inputs_te_list = []
                 target_te_list = []
                 num_batches_te += 1
@@ -229,6 +235,8 @@ if __name__ == "__main__":
         loss_te = total_loss_te / num_batches_te
         predictions = np.concatenate(predictions, axis=0)
         truth_info = np.concatenate(truth_info, axis=0)
+        # print(tf.math.reduce_sum(predictions).numpy(), tf.math.reduce_sum(truth_info).numpy())
+
         y_true, y_pred = (truth_info > threshold), (predictions > threshold)
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
         metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)
@@ -244,7 +252,7 @@ if __name__ == "__main__":
         np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
         metric = metric_dict[metric_name]
         if metric < previous_metric:
-            print("Current accuracy {:.4f} is lower than previous {:.4f}.".format(metric, previous_metric))
+            print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
             if n_fails < acceptable_fails:
                 n_fails += 1
             else:

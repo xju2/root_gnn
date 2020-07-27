@@ -8,4 +8,5 @@
 which python
 cd /global/homes/x/xju/code/root_gnn
 #train_classifier configs/train_toptaggers.yaml
-train_classifier configs/train_wtaggers.yml
+#train_classifier configs/train_wtaggers.yml
+train_classifier configs/train_wtaggers_edges.yaml

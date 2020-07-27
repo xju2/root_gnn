@@ -19,6 +19,7 @@ from graph_nets import graphs
 from root_gnn import tools_tf
 
 from root_gnn.datasets import wprime
+from root_gnn.datasets import fourtop
 
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
@@ -297,6 +298,41 @@ class WTaggerDataset(DataSet):
                     self.write_tfrecord(outname, n_evts_per_record)
                     self.graphs = []
                     self.n_evts = 0
+
+        self.tot_data = len(self.graphs)
+        read_time = time.time() - now
+        print("WTaggerDataset added {} events, in {:.1f} mins".format(
+            ievt, read_time/60.))
+
+
+class FourTopDataset(DataSet):
+    def __init__(self, filename, tree_name="nominal_Loose", with_padding=False):
+        super().__init__(with_padding=with_padding)
+        self.filename = filename
+        self.tree_name = tree_name
+
+    def process(self, save=False, outname=None, n_evts_per_record=10, debug=False):
+        self.graphs = []
+
+        now = time.time()
+        ievt = 0
+        self.n_evts = 0
+
+        tree_name = self.tree_name
+        chain = ROOT.TChain(tree_name, tree_name)
+        chain.Add(self.filename)
+        n_entries = chain.GetEntries()        
+        print("Total {:,} Events".format(n_entries))
+        for ientry in range(n_entries):
+            chain.GetEntry(ientry)
+            self.graphs += fourtop.make_graph(chain, debug)
+            self.n_evts += 1
+            ievt += 1
+            if save and ievt % n_evts_per_record == 0:
+                self.tot_data = len(self.graphs)
+                self.write_tfrecord(outname, n_evts_per_record)
+                self.graphs = []
+                self.n_evts = 0
 
         self.tot_data = len(self.graphs)
         read_time = time.time() - now

@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+import os
+
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+import sklearn.metrics
+
+from bisect import bisect
+from heptrkx import utils_plot
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot the metrics for jet reco.")
+    add_arg = parser.add_argument
+    add_arg("filename", help='numpy npz file containing the event info and predictions')
+    add_arg("outname", help='output name prefix')
+    add_arg("--eval-node", help='evalute node output', action="store_true")
+
+    args = parser.parse_args()
+
+    outname = args.outname
+    array =  np.load(args.filename)
+    node_predicts = array['node_predicts']
+    node_truths = array['node_truths']
+    edge_predicts = array['edge_predicts']
+    edge_truths = array['edge_truths']
+
+    if not os.path.exists("{}_edge_scores.pdf".format(outname)):
+        utils_plot.plot_metrics(edge_predicts, edge_truths, outname="{}_edge_scores.pdf".format(outname))
+    if args.eval_node and not os.path.exists("{}_node_scores.pdf".format(outname)):
+        utils_plot.plot_metrics(node_predicts, node_truths, outname="{}_node_scores.pdf".format(outname))
+
+    features = ['E', "Eta", "Phi", "M"]
+    parts = ['ljet', 'wboson', 'gnn', 'gnnNodes']
+    columns = []
+    for p in parts:
+        for f in features:
+            columns.append(p+f)
+
+    df = pd.DataFrame(array['evt_info'], columns=columns)
+
+    alpha = 1.0
+    figstyle = {
+        "alpha": alpha,
+        'histtype': 'step',
+    }
+    def make_comparison(gnn_name, tag_name='GNN'):
+        legend = ['leading jet', "W boson", tag_name]
+
+        fig, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
+        axs = axs.flatten()
+        ax0, ax1, ax2, ax3 = axs
+        bars = df[['ljetE', 'wbosonE', '{}E'.format(gnn_name)]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
+        ax0.set_xlabel("E [GeV]")
+        ax0.set_ylabel("Events")
+        ax0.legend(legend)
+        df[['ljetEta', 'wbosonEta', '{}Eta'.format(gnn_name)]].plot.hist(ax=ax1, **figstyle)
+        ax1.set_xlabel(r"$\eta$")
+        ax1.set_ylabel("Events")
+        ax1.legend(legend)
+        df[['ljetPhi', 'wbosonPhi', '{}Phi'.format(gnn_name)]].plot.hist(ax=ax2, **figstyle)
+        ax2.set_xlabel(r"$\phi$")
+        ax2.set_ylabel("Events")
+        ax2.legend(legend)
+        df[['ljetM', 'wbosonM', '{}M'.format(gnn_name)]].plot.hist(ax=ax3, **figstyle)
+        ax3.set_xlabel("M [GeV]")
+        ax3.set_ylabel("Events")
+        ax3.legend(legend)
+        plt.savefig("{}_{}_kinematic_compare.pdf".format(outname, tag_name))
+        plt.clf()
+
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        ljet_efrac = (df.ljetE - df.wbosonE) / df.wbosonE
+        gnn_efrac = (df.gnnE - df.wbosonE) / df.wbosonE
+        ax.hist(ljet_efrac, label='leading jet', bins=20, range=(-1, 1),  **figstyle)
+        ax.hist(gnn_efrac, label=tag_name, bins=20, range=(-1, 1), **figstyle)
+        ax.legend()
+        ax.set_xlabel("(E - $E_w$) / $E_w$")
+        plt.savefig("{}_{}_Efrac.pdf".format(outname, tag_name))
+        plt.clf()
+
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        ljet_mreso = (df.ljetM - df.wbosonM) / df.wbosonM
+        gnn_mreso = (df.gnnM - df.wbosonM) / df.wbosonM
+        ax.hist(ljet_mreso, label='leading jet', bins=20, range=(-1, 1), **figstyle)
+        ax.hist(gnn_mreso, label=tag_name, bins=20, range=(-1, 1), **figstyle)
+        ax.legend()
+        ax.set_xlabel("(M - $M_w$) / $M_w$")
+        plt.savefig("{}_{}_MassResolution.pdf".format(outname, tag_name))
+        plt.clf()
+
+    make_comparison("gnn", "GNN")
+    make_comparison("gnnNodes", "GNN-Nodes")
