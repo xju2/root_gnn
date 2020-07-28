@@ -311,7 +311,7 @@ class FourTopDataset(DataSet):
         self.filename = filename
         self.tree_name = tree_name
 
-    def process(self, save=False, outname=None, n_evts_per_record=10, debug=False):
+    def process(self, save=False, outname=None, n_evts_per_record=10, debug=False, max_evts=-1):
         self.graphs = []
 
         now = time.time()
@@ -325,9 +325,12 @@ class FourTopDataset(DataSet):
         print("Total {:,} Events".format(n_entries))
         for ientry in range(n_entries):
             chain.GetEntry(ientry)
+            ievt += 1
+            if max_evts > 0 and ievt > max_evts:
+                break
+            
             self.graphs += fourtop.make_graph(chain, debug)
             self.n_evts += 1
-            ievt += 1
             if save and ievt % n_evts_per_record == 0:
                 self.tot_data = len(self.graphs)
                 self.write_tfrecord(outname, n_evts_per_record)

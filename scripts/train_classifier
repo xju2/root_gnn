@@ -81,6 +81,7 @@ if __name__ == "__main__":
         msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
         raise ValueError(msg)
     acceptable_fails = config_tr['acceptable_failure']
+    n_epochs = config_tr['epochs']  
 
     learning_rate = config_tr['learning_rate']
     # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
@@ -98,13 +99,22 @@ if __name__ == "__main__":
     print("{} evaluation files".format(n_val))
     print("[{}] save models at {}".format(prog_name, output_dir))
 
-    raw_train_dataset = tf.data.TFRecordDataset(tr_filenames)
-    training_dataset = raw_train_dataset.map(graph.parse_tfrec_function)
     AUTO = tf.data.experimental.AUTOTUNE
+    # options = tf.data.Options()
+    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    # training_dataset = training_dataset.with_options(options)
+    # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+
+    training_dataset = tf.data.TFRecordDataset(tr_filenames)
+    training_dataset = training_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_train_graphs = sum([1 for _ in training_dataset])
+    training_dataset = training_dataset.shuffle(n_train_graphs, seed=12345, reshuffle_each_iteration=False)
     training_dataset = training_dataset.prefetch(AUTO)
 
-    raw_val_dataset = tf.data.TFRecordDataset(val_filenames)
-    testing_dataset = raw_val_dataset.map(graph.parse_tfrec_function)
+    testing_dataset = tf.data.TFRecordDataset(val_filenames)
+    testing_dataset = testing_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_test_graphs = sum([1 for _ in testing_dataset])
+    testing_dataset = testing_dataset.shuffle(n_test_graphs, seed=12345, reshuffle_each_iteration=False)
     testing_dataset = testing_dataset.prefetch(AUTO)
 
     # inputs, targets = doublet_graphs.create_graph(batch_size)
@@ -156,7 +166,6 @@ if __name__ == "__main__":
     iruns = 0
     # print("# (iteration number), TD (get graph), TR (TF run)")
     last_iteration = 0
-    n_epochs = config_tr['epochs']
 
     # log information
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
@@ -167,19 +176,12 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
-    # options = tf.data.Options()
-    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-    # training_dataset = training_dataset.with_options(options)
-    # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
-    n_training_graphs = sum([1 for _ in training_dataset])
-    n_testing_graphs = sum([1 for _ in testing_dataset])
-    for epoch in range(n_epochs):
-        training_dataset = training_dataset.shuffle(n_training_graphs, seed=12345, reshuffle_each_iteration=True)
-        testing_dataset = testing_dataset.shuffle(n_testing_graphs, seed=12345, reshuffle_each_iteration=True)
 
+    for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
 

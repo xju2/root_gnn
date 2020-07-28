@@ -79,10 +79,10 @@ if __name__ == "__main__":
         inputs_tr, targets_tr = wprime.make_graph(event)[0]
         outputs_tr = model(inputs_tr, num_processing_steps_tr)
         output_graph = outputs_tr[-1]
-        node_predicts.append(output_graph.nodes)
-        node_truths.append(targets_tr.nodes)
-        edge_predicts.append(output_graph.edges)
-        edge_truths.append(targets_tr.edges)
+        node_predicts.append(output_graph.nodes.numpy())
+        node_truths.append(targets_tr.nodes.numpy())
+        edge_predicts.append(output_graph.edges.numpy())
+        edge_truths.append(targets_tr.edges.numpy())
 
         # calculate similar variables for GNN-based reconstruction
         # method-one, place a threshold on edge score
@@ -123,21 +123,3 @@ if __name__ == "__main__":
         edge_truths=edge_truths,
         evt_info=evt_info,
     )
-        # h_ljet_e.Fill(ljet.E())
-        # h_ljet_mass.Fill(ljet.M())
-        # h_wboson_e.Fill(wboson.E())
-        # h_wboson_mass.Fill(wboson.M())
-        # if wboson.E() > 0:
-        #     h_ljet_efrac.Fill(ljet.E()/wboson.E())
-        #     h_ljet_mass_res.Fill(ljet.M()/wboson.M())
-        # else:
-        #     h_ljet_efrac.Fill(-1)
-        #     h_ljet_mass_res.Fill(-10)
-
-    # h_ljet_e.Write()
-    # h_ljet_mass.Write()
-    # h_wboson_e.Write()
-    # h_wboson_mass.Write()
-    # h_ljet_efrac.Write()
-    # h_ljet_mass_res.Write()
-    # outfile.Close()
