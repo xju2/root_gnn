@@ -1,0 +1,13 @@
+tfrec_dir_train: /global/cscratch1/sd/xju/FourTop/WithPreselections/tfrec/*.tfrec
+tfrec_dir_val: /global/cscratch1/sd/xju/FourTop/WithPreselections/tfrec_val/*.tfrec
+output_dir:  /global/cscratch1/sd/xju/FourTop/WithPreselections/trained
+prod_name: TestShuffleSmall4
+model_name: GlobalClassifierNoEdgeInfo
+loss_name: GlobalLoss, 1, 1
+parameters:
+    batch_size: 100
+    n_iters: 8
+    learning_rate: 0.1
+    epochs: 50
+    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
+    acceptable_failure: 20

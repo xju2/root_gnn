@@ -22,8 +22,9 @@ from graph_nets import utils_tf
 from graph_nets import utils_np
 import sonnet as snt
 
-from root_gnn import model
+from root_gnn import model as all_models
 from root_gnn import losses
+# from root_gnn import optimizers
 from heptrkx.dataset import graph
 from heptrkx.utils import load_yaml
 
@@ -57,6 +58,7 @@ def compute_matrics(target, output, thresh=0.5):
     y_pred, y_true = (test_pred > thresh), (test_target > thresh)
     return sklearn.metrics.precision_score(y_true, y_pred), sklearn.metrics.recall_score(y_true, y_pred)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
     add_arg = parser.add_argument
@@ -81,10 +83,8 @@ if __name__ == "__main__":
         msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
         raise ValueError(msg)
     acceptable_fails = config_tr['acceptable_failure']
+    n_epochs = config_tr['epochs']  
 
-    learning_rate = config_tr['learning_rate']
-    optimizer = snt.optimizers.Adam(learning_rate)
-    model = getattr(model, config['model_name'])()
  
     # prepare inputs
     tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
@@ -97,14 +97,31 @@ if __name__ == "__main__":
     print("{} evaluation files".format(n_val))
     print("[{}] save models at {}".format(prog_name, output_dir))
 
-    raw_train_dataset = tf.data.TFRecordDataset(tr_filenames)
-    training_dataset = raw_train_dataset.map(graph.parse_tfrec_function)
+    shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
     AUTO = tf.data.experimental.AUTOTUNE
+    # options = tf.data.Options()
+    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    # training_dataset = training_dataset.with_options(options)
+    # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+
+    training_dataset = tf.data.TFRecordDataset(tr_filenames)
+    training_dataset = training_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_train_graphs = sum([1 for _ in training_dataset])
+    shuffle_train_size = n_train_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    training_dataset = training_dataset.shuffle(shuffle_train_size, seed=12345, reshuffle_each_iteration=False)
     training_dataset = training_dataset.prefetch(AUTO)
 
-    raw_val_dataset = tf.data.TFRecordDataset(val_filenames)
-    testing_dataset = raw_val_dataset.map(graph.parse_tfrec_function)
+    testing_dataset = tf.data.TFRecordDataset(val_filenames)
+    testing_dataset = testing_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_test_graphs = sum([1 for _ in testing_dataset])
+    shuffle_eval_size = n_test_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    testing_dataset = testing_dataset.shuffle(shuffle_eval_size, seed=12345, reshuffle_each_iteration=False)
     testing_dataset = testing_dataset.prefetch(AUTO)
+
+    learning_rate = config_tr['learning_rate']
+    # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(all_models, config['model_name'])()
 
     # inputs, targets = doublet_graphs.create_graph(batch_size)
     with_batch_dim = False
@@ -122,6 +139,7 @@ if __name__ == "__main__":
     )
 
     loss_config = config['loss_name'].split(',')
+    loss_name = loss_config[0]
     loss_fcn = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
     @functools.partial(tf.function, input_signature=input_signature)
@@ -147,14 +165,12 @@ if __name__ == "__main__":
     corrects_tr = []
     solveds_tr = []
 
-
     start_time = time.time()
     last_log_time = start_time
     ## loop over iterations, each iteration generating a batch of data for training
     iruns = 0
     # print("# (iteration number), TD (get graph), TR (TF run)")
     last_iteration = 0
-    n_epochs = config_tr['epochs']
 
     # log information
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
@@ -165,18 +181,12 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
-    # options = tf.data.Options()
-    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-    # training_dataset = training_dataset.with_options(options)
-    # training_dataset = training_dataset.batch(global_batch_size).prefetch(AUTO)
+
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
 
     for epoch in range(n_epochs):
-        training_dataset = training_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
-        testing_dataset = testing_dataset.shuffle(global_batch_size*4, reshuffle_each_iteration=True)
-
         total_loss = 0.
         num_batches = 0
 
@@ -209,7 +219,7 @@ if __name__ == "__main__":
         truth_info = []
         num_batches_te = 0
         total_loss_te = 0
-        for inputs in testing_dataset.take(100):
+        for inputs in testing_dataset:
             inputs_te, targets_te = inputs
             inputs_te_list.append(inputs_te)
             target_te_list.append(targets_te)
@@ -220,8 +230,12 @@ if __name__ == "__main__":
                 total_loss_te += (tf.math.reduce_sum(
                     loss_fcn(targets_te, outputs_te))/tf.constant(
                         num_processing_steps_tr, dtype=tf.float32)).numpy()
-                predictions.append(outputs_te[-1].edges)
-                truth_info.append(targets_te.edges)
+                if loss_name == "GlobalLoss":
+                    predictions.append(outputs_te[-1].globals)
+                    truth_info.append(targets_te.globals)
+                else:
+                    predictions.append(outputs_te[-1].edges)
+                    truth_info.append(targets_te.edges)
                 inputs_te_list = []
                 target_te_list = []
                 num_batches_te += 1
@@ -229,6 +243,8 @@ if __name__ == "__main__":
         loss_te = total_loss_te / num_batches_te
         predictions = np.concatenate(predictions, axis=0)
         truth_info = np.concatenate(truth_info, axis=0)
+        # print(tf.math.reduce_sum(predictions).numpy(), tf.math.reduce_sum(truth_info).numpy())
+
         y_true, y_pred = (truth_info > threshold), (predictions > threshold)
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
         metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)
@@ -244,7 +260,7 @@ if __name__ == "__main__":
         np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
         metric = metric_dict[metric_name]
         if metric < previous_metric:
-            print("Current accuracy {:.4f} is lower than previous {:.4f}.".format(metric, previous_metric))
+            print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
             if n_fails < acceptable_fails:
                 n_fails += 1
             else:

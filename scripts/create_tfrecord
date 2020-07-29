@@ -2,6 +2,7 @@
 
 from root_gnn import prepare # the main program to produce the graph
 import pandas as pd
+from root_gnn.datasets import fourtop
 
 if __name__ == "__main__":
     import argparse
@@ -11,8 +12,10 @@ if __name__ == "__main__":
     add_arg("outname", help='output name')
     add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
-            choices=['TopTaggerDataset', 'WTaggerDataset', 'ToppairDataSet'])
+            choices=['TopTaggerDataset', 'WTaggerDataset', 'ToppairDataSet', 'FourTopDataset'])
     add_arg("--debug", action='store_true', help='in a debug mode')
+    add_arg("--signal", action='store_true', help='the event is signal')
+    add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
 
 
     args = parser.parse_args()
@@ -23,9 +26,14 @@ if __name__ == "__main__":
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
     print("Data type:", args.type)
+    if args.signal:
+        fourtop.is_signal = True
 
     if args.type is None:
         exit(1)
         
     data = getattr(prepare, args.type)(args.input_file)
-    data.process(save=True, outname=outname, n_evts_per_record=n_evts_per_record, debug=False)
+    data.process(save=True, outname=outname,\
+        n_evts_per_record=n_evts_per_record, debug=args.debug,
+        max_evts=args.max_evts
+        )

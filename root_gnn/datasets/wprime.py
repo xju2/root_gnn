@@ -6,6 +6,7 @@ import itertools
 from graph_nets import utils_tf
 
 n_node_features = 7
+ZERO = ROOT.TLorentzVector()
 
 def make_graph(event, debug=False):
     scale = 0.001
@@ -105,19 +106,19 @@ def evaluate_evt(event):
         for leading_jet_idx in leading_jet_idxs[1:]:
             tlv_leading_jet += particles[leading_jet_idx]
     else:
-        tlv_leading_jet = ROOT.TLorentzVector()
+        tlv_leading_jet = ZERO
 
     if len(w_jet_idxs) > 0:
         tlv_wboson = particles[w_jet_idxs[0]]
         for wjet_idx in w_jet_idxs[1:]:
             tlv_wboson += particles[wjet_idx]
     else:
-        tlv_wboson = ROOT.TLorentzVector()
+        tlv_wboson = ZERO
     
     return tlv_leading_jet, tlv_wboson
 
 def invariant_mass(event, p_list):
-    tlv = ROOT.TLorentzVector()
+    tlv = ZERO
     if len(p_list) < 1:
         return tlv
     
@@ -145,5 +146,5 @@ def read(filename, nevts=1, skip_nevts=0):
             ievt += 1
             if ievt > nevts:
                 break
-            event = line.split()
+            event = [float(x) for x in line.split()]
             yield event
