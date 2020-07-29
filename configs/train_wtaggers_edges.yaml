@@ -1,12 +1,12 @@
 tfrec_dir_train: /global/cscratch1/sd/xju/WbosonTagger/tfrec_bigger/*_*.tfrec
 tfrec_dir_val: /global/cscratch1/sd/xju/WbosonTagger/tfrec_val_bigger/*_*.tfrec
 output_dir:  /global/cscratch1/sd/xju/WbosonTagger/trained
-prod_name: EdgeOnly_SmallerGNN
+prod_name: edgeOnly_fullevts_bigger
 model_name: EdgeClassifier
-loss_name: EdgeLoss, 4, 1
+loss_name: EdgeLoss, 2, 1
 parameters:
     batch_size: 1
-    n_iters: 8
+    n_iters: 5
     learning_rate: 0.0001
     epochs: 2
     earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te

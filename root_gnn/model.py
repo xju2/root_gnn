@@ -28,11 +28,12 @@ def make_mlp_model():
   # the activation function choices:
   # swish, relu, relu6, leaky_relu
   return snt.Sequential([
-      snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
-                   activation=tf.nn.relu6,
-                   activate_final=True, 
+      snt.nets.MLP(
+        [128, 64]*NUM_LAYERS,
+        activation=tf.nn.relu6,
+        activate_final=True, 
                 #    dropout_rate=DROPOUT_RATE
-                  ),
+        ),
       snt.LayerNorm(axis=-1, create_scale=True, create_offset=False)
   ])
 

@@ -30,7 +30,7 @@ from heptrkx.utils import load_yaml
 
 ckpt_name = 'checkpoint'
 
-# prog_name = os.path.basename(sys.argv[0])
+prog_name = os.path.basename(sys.argv[0])
 
 def eval_output(target, output):
     """
@@ -59,33 +59,45 @@ def compute_matrics(target, output, thresh=0.5):
     return sklearn.metrics.precision_score(y_true, y_pred), sklearn.metrics.recall_score(y_true, y_pred)
 
 
-def train_and_evaluate(args):
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
+    add_arg = parser.add_argument
+    add_arg('config', help='configuration file')
+    args = parser.parse_args()
 
-    output_dir = args.job_dir
+    config = load_yaml(args.config)
+
+    # add ops to save and restore all the variables
+    prod_name = config['prod_name']
+    output_dir = os.path.join(config['output_dir'], prod_name)
     os.makedirs(output_dir, exist_ok=True)
 
-    global_batch_size = args.train_batch_size
-    num_processing_steps_tr = args.num_iters
-    metric_name = args.early_stop_metric
+    config_tr = config['parameters']
+    global_batch_size = n_graphs   = config_tr['batch_size']   # need optimization
+    num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
+    metric_name = config_tr['earlystop_metric']
     metric_dict = {
         "auc_te": 0.0, "acc_te": 0.0, "prec_te": 0.0, "rec_te": 0.0, "loss_te": 0.0
     }
     if metric_name not in metric_dict.keys():
-        msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) \
-            + "\n".join(list(metric_dict.keys()))
+        msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
         raise ValueError(msg)
+    acceptable_fails = config_tr['acceptable_failure']
+    n_epochs = config_tr['epochs']  
 
+ 
     # prepare inputs
-    tr_filenames = tf.io.gfile.glob(args.train_files)
+    tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
     n_train = len(tr_filenames)
-    val_filenames = tf.io.gfile.glob(args.eval_files)
+    val_filenames = tf.io.gfile.glob(config['tfrec_dir_val'])
     n_val = len(val_filenames)
 
     print("Input file names: ", tr_filenames)
     print("{} training files".format(n_train))
     print("{} evaluation files".format(n_val))
-    print("save models at {}".format(output_dir))
+    print("[{}] save models at {}".format(prog_name, output_dir))
 
+    shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
     AUTO = tf.data.experimental.AUTOTUNE
     # options = tf.data.Options()
     # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
@@ -94,35 +106,22 @@ def train_and_evaluate(args):
 
     training_dataset = tf.data.TFRecordDataset(tr_filenames)
     training_dataset = training_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-
-    if args.shuffle_buffer_size < 0:
-        train_buffer_size = sum([1 for _ in training_dataset])
-        eval_buffer_size  = sum([1 for _ in testing_dataset])
-    else:
-        train_buffer_size = eval_buffer_size = args.shuffle_buffer_size
-
-    training_dataset = training_dataset.shuffle(train_buffer_size, seed=12345, reshuffle_each_iteration=False)
+    n_train_graphs = sum([1 for _ in training_dataset])
+    shuffle_train_size = n_train_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    training_dataset = training_dataset.shuffle(shuffle_train_size, seed=12345, reshuffle_each_iteration=False)
     training_dataset = training_dataset.prefetch(AUTO)
 
     testing_dataset = tf.data.TFRecordDataset(val_filenames)
     testing_dataset = testing_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    testing_dataset = testing_dataset.shuffle(eval_buffer_size, seed=12345, reshuffle_each_iteration=False)
+    n_test_graphs = sum([1 for _ in testing_dataset])
+    shuffle_eval_size = n_test_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    testing_dataset = testing_dataset.shuffle(shuffle_eval_size, seed=12345, reshuffle_each_iteration=False)
     testing_dataset = testing_dataset.prefetch(AUTO)
 
-    learning_rate = args.learning_rate
-    if args.optimizer_name == "Adam":
-        optimizer = snt.optimizers.Adam(learning_rate)
-    elif args.optimizer_name == "SGD":
-        optimizer = snt.optimizers.SGD(learning_rate)
-    elif args.optimizer_name == "CCA":
-        # iterations = sum([1 for _ in training_dataset])
-        pass
-        # optimizer = optimizers.CCA(iterations, learning_rate)
-    else:
-        raise ValueError("SGD is not supported yet")
-
-    # optimzer = tf.keras.optimizers.schedules.LearningRateSchedule()
-    model = getattr(all_models, args.model_name)()
+    learning_rate = config_tr['learning_rate']
+    # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(all_models, config['model_name'])()
 
     # inputs, targets = doublet_graphs.create_graph(batch_size)
     with_batch_dim = False
@@ -139,9 +138,9 @@ def train_and_evaluate(args):
         graph.specs_from_graphs_tuple(targets, with_batch_dim)
     )
 
-    loss_name = args.loss_name
-    loss_config = args.loss_args.split(',')
-    loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config])
+    loss_config = config['loss_name'].split(',')
+    loss_name = loss_config[0]
+    loss_fcn = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
     @functools.partial(tf.function, input_signature=input_signature)
     def update_step(inputs_tr, targets_tr):
@@ -166,7 +165,6 @@ def train_and_evaluate(args):
     corrects_tr = []
     solveds_tr = []
 
-
     start_time = time.time()
     last_log_time = start_time
     ## loop over iterations, each iteration generating a batch of data for training
@@ -188,7 +186,7 @@ def train_and_evaluate(args):
     threshold = 0.5
     n_fails = 0
 
-    for epoch in range(args.num_epochs):
+    for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
 
@@ -263,52 +261,10 @@ def train_and_evaluate(args):
         metric = metric_dict[metric_name]
         if metric < previous_metric:
             print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
-            if n_fails < args.acceptable_fails:
+            if n_fails < acceptable_fails:
                 n_fails += 1
             else:
-                print("Reached maximum failure threshold: {} times. Stop Training".format(args.acceptable_fails))
+                print("Reached maximum failure threshold: {} times. Stop Training".format(acceptable_fails))
                 break
         else:
             previous_metric = metric
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
-    add_arg = parser.add_argument
-    add_arg("--train-files", help="path to training data", required=True)
-    add_arg("--eval-files", help='path to evaluation data', required=True)
-    add_arg("--job-dir", help='location to write checkpoints and explort models', required=True)
-
-    add_arg('--train-batch-size', help='batch size for training', default=1, type=int)
-    add_arg("--eval-batch-size", help='batch size for evaluation', default=1, type=int)
-    add_arg('--num-iters', help='number of message passing steps', default=8, type=int)
-    add_arg("--num-epochs", help='number of epochs', default=1, type=int)
-    add_arg('--optimizer-name', help='optimizer', default='Adam', choices=['Adam', 'SGD'])
-    add_arg("--learning-rate", help='learning rate', default=0.0005, type=float)
-    add_arg('--exp-decay-rate', help='exponential decay rate for learning rate, only appliable for SGD',\
-        default=0.9, type=float)
-    add_arg("--exp-decay-steps", help='exponential decay steps for learning rate, only applicable for SGD',\
-        default=1000, type=int)
-    add_arg('--cca', help='cyclic consine annealing for learning rate, only applicable for SGD,'\
-        'the value indicates the number of epochs for each cycle',\
-        default=-1, type=int)
-    add_arg("--shuffle-buffer-size", help="shuffle buffer size", default=-1, type=int)
-
-    add_arg("--model-name", help='model name',\
-        default='GlobalClassifierNoEdgeInfo',
-        choices=['GlobalClassifierNoEdgeInfo', 'GeneralClassifier', 'EdgeGlobalClassifier',
-        'MultiClassifier', 'NodeEdgeClassifier', 'EdgeClassifier'])
-    add_arg('--loss-name', help="Loss functions",\
-        default='GlobalLoss', 
-        choices=['NodeEdgeLoss', 'GlobalLoss', 'EdgeGlobalLoss', 'EdgeLoss'])
-    add_arg("--loss-args",\
-        help='arguments passed to the loss function; they are the weights for signal and background', 
-        default='1, 1')
-
-    add_arg("--early-stop-metric", help='metric used for early stop', default='auc_te',
-        choices=['auc_te', 'acc_te', 'pre_te', 'rec_te'])
-    add_arg("--acceptable-fails", help='number of failures allowed', default=0, type=int)
-
-    args = parser.parse_args()
-
-    train_and_evaluate(args)
