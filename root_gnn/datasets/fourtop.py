@@ -1,6 +1,7 @@
 import numpy as np
 import itertools
 
+import math
 from graph_nets import utils_tf
 
 is_signal = False
@@ -10,31 +11,31 @@ def make_graph(event, debug=False):
     n_muon = len(event.mu_pt) if hasattr(event, 'mu_pt') else 0
     n_nodes = n_jets + n_ele + n_muon
     
-    scale = np.array([0.001, 1., 1., 0.001], dtype=np.float32)
+    # scale = np.array([0.001, 3., math.pi, 0.001], dtype=np.float32)
     nodes = [[
-        event.jet_pt[idx],
-        event.jet_eta[idx],
-        event.jet_phi[idx],
-        event.jet_e[idx]
+        event.jet_pt[idx]*0.001,
+        event.jet_eta[idx]/3.,
+        event.jet_phi[idx]/math.pi,
+        event.jet_e[idx]*0.001
     ] for idx in range(n_jets)]
 
     if n_ele > 0:
         nodes += [[
-            event.ele_pt[idx],
-            event.ele_eta[idx],
-            event.ele_phi[idx],
-            event.ele_e[idx]
+            event.ele_pt[idx]*0.001,
+            event.ele_eta[idx]/3.,
+            event.ele_phi[idx]/math.pi,
+            event.ele_e[idx]*0.001
         ] for idx in range(n_ele)]
     
     if n_muon > 0:
         nodes += [[
-            event.mu_pt[idx],
-            event.mu_eta[idx],
-            event.mu_phi[idx],
-            event.mu_e[idx]
+            event.mu_pt[idx]*0.001,
+            event.mu_eta[idx]/3.,
+            event.mu_phi[idx]/math.pi,
+            event.mu_e[idx]*0.001
         ] for idx in range(n_muon)]
     
-    nodes = np.array(nodes, dtype=np.float32) / scale
+    nodes = np.array(nodes, dtype=np.float32) 
     node_target =  np.expand_dims(np.array([0.0]*n_nodes, dtype=np.float32), axis=1)
 
     if debug:
