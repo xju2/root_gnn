@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import sklearn.metrics
 
 from bisect import bisect
-from heptrkx import utils_plot
+from root_gnn import utils_plot
 
 if __name__ == "__main__":
     import argparse

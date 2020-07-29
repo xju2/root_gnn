@@ -25,8 +25,8 @@ import sonnet as snt
 from root_gnn import model as all_models
 from root_gnn import losses
 # from root_gnn import optimizers
-from heptrkx.dataset import graph
-from heptrkx.utils import load_yaml
+from root_gnn.dataset import graph
+from root_gnn.utils import load_yaml
 
 ckpt_name = 'checkpoint'
 
