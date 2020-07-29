@@ -5,7 +5,7 @@ function get_code(){
 	echo $NUMBER
 }
 
-nJobs=10
+nJobs=5
 
 EXE="run.sh"
 

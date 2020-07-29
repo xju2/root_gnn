@@ -25,9 +25,11 @@ def make_mlp_model():
   Returns:
     A Sonnet module which contains the MLP and LayerNorm.
   """
+  # the activation function choices:
+  # swish, relu, relu6, leaky_relu
   return snt.Sequential([
       snt.nets.MLP([LATENT_SIZE] * NUM_LAYERS,
-                   activation=tf.nn.swish,
+                   activation=tf.nn.relu6,
                    activate_final=True, 
                 #    dropout_rate=DROPOUT_RATE
                   ),

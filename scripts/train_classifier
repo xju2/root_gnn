@@ -24,6 +24,7 @@ import sonnet as snt
 
 from root_gnn import model as all_models
 from root_gnn import losses
+# from root_gnn import optimizers
 from heptrkx.dataset import graph
 from heptrkx.utils import load_yaml
 
@@ -60,7 +61,7 @@ def compute_matrics(target, output, thresh=0.5):
 
 def train_and_evaluate(args):
 
-    output_dir = args.get("job_dir", "TrainOutput")
+    output_dir = args.job_dir
     os.makedirs(output_dir, exist_ok=True)
 
     global_batch_size = args.train_batch_size
@@ -74,15 +75,6 @@ def train_and_evaluate(args):
             + "\n".join(list(metric_dict.keys()))
         raise ValueError(msg)
 
-    learning_rate = args.learning_rate
-    if args.optimizer_name == "Adam":
-        optimizer = snt.optimizers.Adam(learning_rate)
-    elif args.optimizer_name == "SGD":
-        raise ValueError("SGD is not supported yet")
-
-    # optimzer = tf.keras.optimizers.schedules.LearningRateSchedule()
-    model = getattr(all_models, args.model_name)()
- 
     # prepare inputs
     tr_filenames = tf.io.gfile.glob(args.train_files)
     n_train = len(tr_filenames)
@@ -102,15 +94,35 @@ def train_and_evaluate(args):
 
     training_dataset = tf.data.TFRecordDataset(tr_filenames)
     training_dataset = training_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    n_train_graphs = sum([1 for _ in training_dataset])
-    training_dataset = training_dataset.shuffle(n_train_graphs, seed=12345, reshuffle_each_iteration=False)
+
+    if args.shuffle_buffer_size < 0:
+        train_buffer_size = sum([1 for _ in training_dataset])
+        eval_buffer_size  = sum([1 for _ in testing_dataset])
+    else:
+        train_buffer_size = eval_buffer_size = args.shuffle_buffer_size
+
+    training_dataset = training_dataset.shuffle(train_buffer_size, seed=12345, reshuffle_each_iteration=False)
     training_dataset = training_dataset.prefetch(AUTO)
 
     testing_dataset = tf.data.TFRecordDataset(val_filenames)
     testing_dataset = testing_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    n_test_graphs = sum([1 for _ in testing_dataset])
-    testing_dataset = testing_dataset.shuffle(n_test_graphs, seed=12345, reshuffle_each_iteration=False)
+    testing_dataset = testing_dataset.shuffle(eval_buffer_size, seed=12345, reshuffle_each_iteration=False)
     testing_dataset = testing_dataset.prefetch(AUTO)
+
+    learning_rate = args.learning_rate
+    if args.optimizer_name == "Adam":
+        optimizer = snt.optimizers.Adam(learning_rate)
+    elif args.optimizer_name == "SGD":
+        optimizer = snt.optimizers.SGD(learning_rate)
+    elif args.optimizer_name == "CCA":
+        # iterations = sum([1 for _ in training_dataset])
+        pass
+        # optimizer = optimizers.CCA(iterations, learning_rate)
+    else:
+        raise ValueError("SGD is not supported yet")
+
+    # optimzer = tf.keras.optimizers.schedules.LearningRateSchedule()
+    model = getattr(all_models, args.model_name)()
 
     # inputs, targets = doublet_graphs.create_graph(batch_size)
     with_batch_dim = False
@@ -280,6 +292,7 @@ if __name__ == "__main__":
     add_arg('--cca', help='cyclic consine annealing for learning rate, only applicable for SGD,'\
         'the value indicates the number of epochs for each cycle',\
         default=-1, type=int)
+    add_arg("--shuffle-buffer-size", help="shuffle buffer size", default=-1, type=int)
 
     add_arg("--model-name", help='model name',\
         default='GlobalClassifierNoEdgeInfo',
