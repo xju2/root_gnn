@@ -35,8 +35,7 @@ if __name__ == "__main__":
     parts = ['ljet', 'wboson', 'gnn', 'gnnNodes']
     columns = []
     for p in parts:
-        for f in features:
-            columns.append(p+f)
+        columns += [p+f for f in features]
 
     df = pd.DataFrame(array['evt_info'], columns=columns)
 
@@ -48,10 +47,10 @@ if __name__ == "__main__":
     def make_comparison(gnn_name, tag_name='GNN'):
         legend = ['leading jet', "W boson", tag_name]
 
-        fig, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
+        _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
         axs = axs.flatten()
         ax0, ax1, ax2, ax3 = axs
-        bars = df[['ljetE', 'wbosonE', '{}E'.format(gnn_name)]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
+        _ = df[['ljetE', 'wbosonE', '{}E'.format(gnn_name)]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
         ax0.set_xlabel("E [GeV]")
         ax0.set_ylabel("Events")
         ax0.legend(legend)
@@ -63,7 +62,7 @@ if __name__ == "__main__":
         ax2.set_xlabel(r"$\phi$")
         ax2.set_ylabel("Events")
         ax2.legend(legend)
-        df[['ljetM', 'wbosonM', '{}M'.format(gnn_name)]].plot.hist(ax=ax3, **figstyle)
+        df[['ljetM', 'wbosonM', '{}M'.format(gnn_name)]].plot.hist(ax=ax3, bins=100, range=(0, 350), **figstyle)
         ax3.set_xlabel("M [GeV]")
         ax3.set_ylabel("Events")
         ax3.legend(legend)
@@ -73,8 +72,8 @@ if __name__ == "__main__":
         fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
         ljet_efrac = (df.ljetE - df.wbosonE) / df.wbosonE
         gnn_efrac = (df.gnnE - df.wbosonE) / df.wbosonE
-        ax.hist(ljet_efrac, label='leading jet', bins=20, range=(-1, 1),  **figstyle)
-        ax.hist(gnn_efrac, label=tag_name, bins=20, range=(-1, 1), **figstyle)
+        ax.hist(ljet_efrac, label='leading jet', bins=100, range=(-1, 1),  **figstyle)
+        ax.hist(gnn_efrac, label=tag_name, bins=100, range=(-1, 1), **figstyle)
         ax.legend()
         ax.set_xlabel("(E - $E_w$) / $E_w$")
         plt.savefig("{}_{}_Efrac.pdf".format(outname, tag_name))
@@ -83,12 +82,13 @@ if __name__ == "__main__":
         fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
         ljet_mreso = (df.ljetM - df.wbosonM) / df.wbosonM
         gnn_mreso = (df.gnnM - df.wbosonM) / df.wbosonM
-        ax.hist(ljet_mreso, label='leading jet', bins=20, range=(-1, 1), **figstyle)
-        ax.hist(gnn_mreso, label=tag_name, bins=20, range=(-1, 1), **figstyle)
+        ax.hist(ljet_mreso, label='leading jet', bins=100, range=(-1, 1), **figstyle)
+        ax.hist(gnn_mreso, label=tag_name, bins=100, range=(-1, 1), **figstyle)
         ax.legend()
         ax.set_xlabel("(M - $M_w$) / $M_w$")
         plt.savefig("{}_{}_MassResolution.pdf".format(outname, tag_name))
         plt.clf()
 
     make_comparison("gnn", "GNN")
-    make_comparison("gnnNodes", "GNN-Nodes")
+    if args.eval_node:
+        make_comparison("gnnNodes", "GNN-Nodes")

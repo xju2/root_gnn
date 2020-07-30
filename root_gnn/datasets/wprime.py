@@ -102,36 +102,55 @@ def evaluate_evt(event):
     ]
 
     if len(leading_jet_idxs) > 0:
-        tlv_leading_jet = particles[leading_jet_idxs[0]]
+        tlv_leading_jet = ROOT.TLorentzVector(particles[leading_jet_idxs[0]])
         for leading_jet_idx in leading_jet_idxs[1:]:
             tlv_leading_jet += particles[leading_jet_idx]
     else:
         tlv_leading_jet = ZERO
 
     if len(w_jet_idxs) > 0:
-        tlv_wboson = particles[w_jet_idxs[0]]
+        tlv_wboson = ROOT.TLorentzVector(particles[w_jet_idxs[0]])
         for wjet_idx in w_jet_idxs[1:]:
             tlv_wboson += particles[wjet_idx]
     else:
         tlv_wboson = ZERO
-    
+
     return tlv_leading_jet, tlv_wboson
 
 def invariant_mass(event, p_list):
-    tlv = ZERO
     if len(p_list) < 1:
-        return tlv
+        return ZERO
     
+    n_particles = len(event) // n_node_features
     particles = [
         ROOT.TLorentzVector(ROOT.TVector3(
             event[inode*n_node_features+0],
             event[inode*n_node_features+1],
             event[inode*n_node_features+2]),
             event[inode*n_node_features+3])
-        for inode in p_list
+        for inode in range(n_particles) if inode in p_list
     ]
-    for pp in particles:
+
+    # w_jet_idxs = [
+    #     inode
+    #     for inode in range(n_particles) if event[inode*n_node_features+5] == 1        
+    # ]
+    # wset = set(w_jet_idxs)
+    # pset = set(p_list)
+    # print("Total {} objects in W".format(len(wset)))
+    # print("Total {} objects in GNN".format(len(pset)))
+    # print("Total {} objects in common".format(len(pset.intersection(wset))))
+    # print("Total {} objects only in GNN".format(len(pset.difference(wset))))
+    # print("Total {} objects only in W".format(len(wset.difference(pset))))
+    # print("Total {} particles".format(len(particles)))
+    # print(w_jet_idxs)
+    # print(p_list)
+
+
+    tlv = ROOT.TLorentzVector(particles[0])
+    for pp in particles[1:]:
         tlv += pp
+
     return tlv
 
 
@@ -146,5 +165,5 @@ def read(filename, nevts=1, skip_nevts=0):
             ievt += 1
             if ievt > nevts:
                 break
-            event = [float(x) for x in line.split()]
-            yield event
+            # print('return {} event'.format(ievt))
+            yield [float(x) for x in line.split()]
