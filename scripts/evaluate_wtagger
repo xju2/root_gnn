@@ -52,18 +52,11 @@ if __name__ == "__main__":
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
     ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
     if os.path.exists(os.path.join(modeldir, ckpt_name)):
-        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
+        status = checkpoint.restore(ckpt_manager.latest_checkpoint).expect_partial()
         print("Loaded latest checkpoint from {}".format(modeldir))
     else:
         raise ValueError("Cannot find model at:", modeldir)
 
-    # outfile = ROOT.TFile.Open("{}.root".format(args.outname), 'recreate')
-    # h_ljet_e = ROOT.TH1F("ljet_E", "leading jet E", 2000, 0, 10000)
-    # h_ljet_mass = ROOT.TH1F("ljet_mass", "leading jet Mass", 1000, 0, 1000)
-    # h_wboson_e = ROOT.TH1F("wboson_E", "W boson E", 2000, 0, 10000)
-    # h_wboson_mass = ROOT.TH1F("wboson_mass", "W boson Mass", 1000, 0, 1000)
-    # h_ljet_efrac = ROOT.TH1F("ljet_eFrac", "Energy fraction", 110, -1, 10)
-    # h_ljet_mass_res = ROOT.TH1F("ljet_massRes", "Mass fraction", 200, -10, 10)
 
     iskip = 0
     ievt = 0
@@ -91,6 +84,7 @@ if __name__ == "__main__":
         nodes_sel = np.unique(np.concatenate([output_graph.receivers.numpy()[edge_passed],\
             output_graph.senders.numpy()[edge_passed]], axis=0))
         gnn_tlv = wprime.invariant_mass(event, nodes_sel.tolist())
+        # print("selected particles: ", nodes_sel)
 
         # obtain GNN-based reconstruction using node score only
         node_predict = np.squeeze(output_graph.nodes.numpy())
@@ -103,6 +97,7 @@ if __name__ == "__main__":
             gnn_tlv_node_only = wprime.ZERO
 
         ljet, wboson = wprime.evaluate_evt(event)
+        # print(wboson.E(), gnn_tlv.E())
         evt_info.append([ljet.E(), ljet.Eta(), ljet.Phi(), ljet.M(),
                 wboson.E(), wboson.Eta(), wboson.Phi(), wboson.M(),
                 gnn_tlv.E(), gnn_tlv.Eta(), gnn_tlv.Phi(), gnn_tlv.M(),

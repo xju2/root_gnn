@@ -97,7 +97,7 @@ class GeneralClassifier(snt.Module):
 
 class InteractionNetwork(snt.Module):
   """Implementation of an Interaction Network, similarly to
-  https://arxiv.org/abs/1612.00222, except that it does not require inputput 
+  https://arxiv.org/abs/1612.00222, except that it does not require input 
   edge features.
   """
 
