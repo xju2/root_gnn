@@ -2,6 +2,8 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import yaml
+import os
 
 def read_log(file_name):
     time_format = '%d %b %Y %H:%M:%S'
@@ -86,3 +88,9 @@ class IndexMgr:
             if self.te_idx > self.total:
                 self.te_idx = self.max_tr
             return self.te_idx
+
+
+def load_yaml(file_name):
+    assert(os.path.exists(file_name))
+    with open(file_name) as f:
+        return yaml.load(f, Loader=yaml.FullLoader)

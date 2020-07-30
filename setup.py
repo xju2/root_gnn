@@ -38,7 +38,6 @@ setup(
     ],
     scripts=[
         'scripts/train_classifier',
-        'scripts/train_multiclassifier',
         'scripts/view_training_log',
         'scripts/create_tfrecord',
         'scripts/evaluate_global_classifier',

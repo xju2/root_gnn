@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from heptrkx import utils_plot
+from root_gnn import utils_plot
 import sklearn.metrics
 from bisect import bisect
 
