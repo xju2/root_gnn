@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 
-from root_gnn import prepare
-
 if __name__ == "__main__":
+    from root_gnn import prepare
     # filename = "/global/cfs/cdirs/atlas/allx123/root_gnn/samples/mc16a.PowhegPy8_ttH125_fixweight.MxAODDetailed.e7488_s3126_r9364_p4097_h025.root"
     # filename = "/global/cfs/cdirs/atlas/allx123/root_gnn/samples/mc16d.PowhegPy8_ttH125_fixweight.MxAODDetailed.e7488_s3126_r10201_p4097_h025.root"
     filename = "/global/cfs/cdirs/atlas/allx123/root_gnn/samples/mc16e.PowhegPy8_ttH125_fixweight.MxAODDetailed.e7488_s3126_r10724_p4097_h025.root"
-
+    import ROOT
     def check_tth_file(filename):
         tree_name = "output"
-        chain = ROOT.TChain(tree_name, tree_name)
+        chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
         chain.Add(filename)
         n_entries = chain.GetEntries()
         print("Total {:,} Events".format(n_entries))

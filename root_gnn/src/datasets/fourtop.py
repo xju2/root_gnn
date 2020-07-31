@@ -83,7 +83,7 @@ def make_graph(event, debug=False):
 
 def read(filename, nevts=-1):
     tree_name = "nominal_Loose"
-    chain = ROOT.TChain(tree_name, tree_name)
+    chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
     n_entries = chain.GetEntries()        
     print("Total {:,} Events".format(n_entries))

@@ -9,7 +9,7 @@ from root_gnn.src.datasets.toptagger import TopTaggerDataset
 from root_gnn.src.datasets.wprime import WTaggerDataset
 from root_gnn.src.datasets.fourtop import FourTopDataset
 from root_gnn.src.datasets import fourtop
-from root_gnn.src.datasets.toptagger import ToppairDataSet
+from root_gnn.src.datasets.toppair import ToppairDataSet
 
 def is_signal(val=True):
     fourtop.is_signal = val

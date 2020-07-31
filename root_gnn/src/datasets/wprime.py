@@ -9,7 +9,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_node_features = 7
-ZERO = ROOT.TLorentzVector()
+ZERO = ROOT.TLorentzVector() # pylint: disable=maybe-no-member
 
 def make_graph(event, debug=False, data_dict=False):
     scale = 0.001
@@ -86,7 +86,7 @@ def make_graph(event, debug=False, data_dict=False):
         return [(input_graph, target_graph)]
 
 def evaluate_evt(event):
-
+    # pylint: disable=maybe-no-member
     n_features = n_node_features
     n_particles = len(event) // n_features
 
@@ -124,6 +124,7 @@ def evaluate_evt(event):
     return tlv_leading_jet, tlv_wboson
 
 def invariant_mass(event, p_list):
+    # pylint: disable=maybe-no-member
     if len(p_list) < 1:
         return ZERO
     
@@ -175,6 +176,7 @@ def read(filename, nevts=-1, skip_nevts=0):
             yield [float(x) for x in line.split()]
 
 def evt_img(event):
+    # pylint: disable=maybe-no-member
     n_particles = len(event) // n_node_features
     particles = [
         ROOT.TLorentzVector(ROOT.TVector3(

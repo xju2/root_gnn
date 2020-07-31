@@ -6,7 +6,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 def make_graph(event):
-    n_max_nodes = 60
+    # n_max_nodes = 60
     n_nodes = len(event.m_jet_pt)
     print(np.array(event.m_jet_pt).shape)
     nodes = np.hstack((event.m_jet_pt, event.m_jet_eta, event.m_jet_phi, event.m_jet_E))
@@ -55,7 +55,7 @@ def make_graph(event):
 
 def read(filename, nevts):
     tree_name = "output"
-    chain = ROOT.TChain(tree_name, tree_name)
+    chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
     n_entries = chain.GetEntries()
     print("Total {:,} Events".format(n_entries))
