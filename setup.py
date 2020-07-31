@@ -42,6 +42,7 @@ setup(
         'scripts/create_tfrecord',
         'scripts/evaluate_global_classifier',
         'scripts/calculate_metrics',
+
         'scripts/evaluate_wtagger',
         'scripts/calculate_wtagger_metrics',
     ],

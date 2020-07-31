@@ -89,7 +89,7 @@ def read(filename, nevts=-1):
     print("Total {:,} Events".format(n_entries))
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        if nevts > 0 and ientry > nevts:
+        if nevts > 0 and ientry >= nevts:
             break
         yield chain
 
@@ -99,3 +99,7 @@ class FourTopDataset(DataSet):
         super().__init__(*args, **kwargs)
         self.read = read
         self.make_graph = make_graph
+
+    def signal(self, ss=True):
+        global is_signal
+        is_signal = ss

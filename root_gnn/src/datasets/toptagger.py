@@ -67,7 +67,7 @@ def read(filename, nevts: Optional[int] = -1):
     
     print("{:,} Events".format(df.shape[0]))
     for ievt in range(df.shape[0]):
-        if nevts > 0 and ievt > nevts:
+        if nevts > 0 and ievt >= nevts:
             break
         yield df.iloc[ievt]
 

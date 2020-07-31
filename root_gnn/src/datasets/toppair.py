@@ -62,7 +62,7 @@ def read(filename, nevts):
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        if nevts > 0 and ientry > nevts:
+        if nevts > 0 and ientry >= nevts:
             break
         yield chain
 
