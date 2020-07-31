@@ -5,8 +5,8 @@ from graph_nets import utils_tf
 from graph_nets import modules
 from graph_nets import blocks
 
-from root_gnn.src.models.base import MLPGraphIndependent
 from root_gnn.src.models.base import MLPGraphNetwork
+from root_gnn.src.models.base import make_mlp_model
 
 LATENT_SIZE = 128
 

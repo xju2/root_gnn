@@ -26,7 +26,7 @@ class WTaggerFilteredDataset(DataSet):
         AUTO = tf.data.experimental.AUTOTUNE
         dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
         total_evts = sum([1 for _ in dataset])
-        print("Total {:,} events".format(total_evts))
+        print("Total {:,} events and {:,} requested".format(total_evts, nevts))
 
         for batch, data in enumerate(dataset):
             if nevts > 0 and batch >= nevts:
@@ -50,16 +50,23 @@ class WTaggerFilteredDataset(DataSet):
 
         n_nodes = nodes_sel.shape[0]
         n_edges = sum(edge_passed)
-        nodes = output_graph.nodes.numpy()[nodes_sel]
-        edges = output_graph.edges.numpy()[edge_passed]
-        senders = output_graph.senders.numpy()[edge_passed]
-        receivers = output_graph.receivers.numpy()[edge_passed]
+        nodes = inputs_tr.nodes.numpy()[nodes_sel]
+        edges = inputs_tr.edges.numpy()[edge_passed]
+
+        node_dicts = {}
+        for idx, val in enumerate(nodes_sel):
+            node_dicts[val] = idx
+
+        senders = np.array([node_dicts[x] for x in inputs_tr.senders.numpy()[edge_passed]])
+        receivers = np.array([node_dicts[x] for x in inputs_tr.receivers.numpy()[edge_passed]])
         # print("n-nodes:", n_nodes)
         # print("n-edges:", n_edges)
         # print("nodes:", nodes.shape)
         # print("edges:", edges.shape)
         # print("senders:", senders.shape)
         # print("receivers:", receivers.shape)
+        # print(senders)
+        # print(receivers)
 
         input_datadict = {
             "n_node": n_nodes,
