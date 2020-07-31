@@ -75,9 +75,5 @@ def read(filename, nevts: Optional[int] = -1):
 class TopTaggerDataset(DataSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    def read(self, filename, nevts: Optional[int] = -1):
-        return read(filename, nevts)
-
-    def make_graph(self, event, debug):
-        return make_graph(event, debug)
+        self.read = read
+        self.make_graph = make_graph

@@ -89,8 +89,7 @@ def read(filename, nevts=-1):
     print("Total {:,} Events".format(n_entries))
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        ievt += 1
-        if nevts > 0 and ievt > nevts:
+        if nevts > 0 and ientry > nevts:
             break
         yield chain
 
@@ -98,9 +97,5 @@ def read(filename, nevts=-1):
 class FourTopDataset(DataSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    def read(self, *args, **kwargs):
-        return read(*args, **kwargs)
-
-    def make_graph(self, *args, **kwargs):
-        return make_graph(*args, **kwargs)
+        self.read = read
+        self.make_graph = make_graph
