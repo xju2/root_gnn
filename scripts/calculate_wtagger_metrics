@@ -16,6 +16,7 @@ if __name__ == "__main__":
     add_arg("filename", help='numpy npz file containing the event info and predictions')
     add_arg("outname", help='output name prefix')
     add_arg("--eval-node", help='evalute node output', action="store_true")
+    add_arg("--no-w", help='not plot W boson', action='store_true')
 
     args = parser.parse_args()
 
@@ -45,31 +46,36 @@ if __name__ == "__main__":
         'histtype': 'step',
     }
     def make_comparison(gnn_name, tag_name='GNN'):
-        legend = ['leading jet', "W boson", tag_name]
+
+        legend = ['leading jet', tag_name]
+        cols = ['ljet', gnn_name]
+        if not args.no_w:
+            legend.append('W boson')
+            cols.append('wboson')
 
         _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
         axs = axs.flatten()
         ax0, ax1, ax2, ax3 = axs
-        _ = df[['ljetE', 'wbosonE', '{}E'.format(gnn_name)]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
+        _ = df[['{}E'.format(x) for x in cols]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
         ax0.set_xlabel("E [GeV]")
         ax0.set_ylabel("Events")
         ax0.legend(legend)
-        df[['ljetEta', 'wbosonEta', '{}Eta'.format(gnn_name)]].plot.hist(ax=ax1, **figstyle)
+        df[['{}Eta'.format(x) for x in cols]].plot.hist(ax=ax1, **figstyle)
         ax1.set_xlabel(r"$\eta$")
         ax1.set_ylabel("Events")
         ax1.legend(legend)
-        df[['ljetPhi', 'wbosonPhi', '{}Phi'.format(gnn_name)]].plot.hist(ax=ax2, **figstyle)
+        df[['{}Phi'.format(x) for x in cols]].plot.hist(ax=ax2, **figstyle)
         ax2.set_xlabel(r"$\phi$")
         ax2.set_ylabel("Events")
         ax2.legend(legend)
-        df[['ljetM', 'wbosonM', '{}M'.format(gnn_name)]].plot.hist(ax=ax3, bins=100, range=(0, 350), **figstyle)
+        df[['{}M'.format(x) for x in cols]].plot.hist(ax=ax3, bins=100, range=(0, 350), **figstyle)
         ax3.set_xlabel("M [GeV]")
         ax3.set_ylabel("Events")
         ax3.legend(legend)
         plt.savefig("{}_{}_kinematic_compare.pdf".format(outname, tag_name))
         plt.clf()
 
-        fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        _, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
         ljet_efrac = (df.ljetE - df.wbosonE) / df.wbosonE
         gnn_efrac = (df.gnnE - df.wbosonE) / df.wbosonE
         ax.hist(ljet_efrac, label='leading jet', bins=100, range=(-1, 1),  **figstyle)
@@ -79,7 +85,7 @@ if __name__ == "__main__":
         plt.savefig("{}_{}_Efrac.pdf".format(outname, tag_name))
         plt.clf()
 
-        fig, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        _, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
         ljet_mreso = (df.ljetM - df.wbosonM) / df.wbosonM
         gnn_mreso = (df.gnnM - df.wbosonM) / df.wbosonM
         ax.hist(ljet_mreso, label='leading jet', bins=100, range=(-1, 1), **figstyle)

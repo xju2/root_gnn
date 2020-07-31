@@ -56,7 +56,7 @@ class EdgeGlobalLoss:
             for output_op in output_ops
         ]
         loss_ops += [
-            tf.compact.v1.losses.log_loss(target_op.edges, output_op.edges, weights=edge_weights)
+            tf.compat.v1.losses.log_loss(target_op.edges, output_op.edges, weights=edge_weights)
             for output_op in output_ops
         ]
         return tf.stack(loss_ops)
@@ -75,5 +75,5 @@ class EdgeLoss:
         return tf.stack(loss_ops)    
 
 if __name__ == "__main__":
-    node_edge_loss = NodeEdgeLoss(2, 1)
+    node_edge_loss = NodeEdgeLoss(2, 1, 2, 1)
     node_edge_loss(1, 1)

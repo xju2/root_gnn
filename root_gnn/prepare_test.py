@@ -10,13 +10,13 @@ if __name__ == "__main__":
     def check_tth_file(filename):
         tree_name = "output"
         chain = ROOT.TChain(tree_name, tree_name)
-        chain.Add(self.filename)
+        chain.Add(filename)
         n_entries = chain.GetEntries()
         print("Total {:,} Events".format(n_entries))
         n_3jets = 0
         n_one_top = 0
         n_two_top = 0
-        evtid = 0
+        # evtid = 0
         max_jets = 0
         for ientry in range(n_entries):
             chain.GetEntry(ientry)
@@ -34,5 +34,5 @@ if __name__ == "__main__":
         print("At least two tops: {:10,}, {:.1f}%".format(n_two_top, 100*n_two_top/n_entries))
         print("Maximum jets in an event:", max_jets)
     
-    dataset = prepare.ToppairDataSet(filename)
-    dataset.process()
+    # dataset = prepare.ToppairDataSet(filename)
+    # dataset.process()

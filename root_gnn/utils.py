@@ -44,7 +44,7 @@ def plot_log(info, name, axs=None):
 
     # make plots
     if axs is None:
-        fig, axs = plt.subplots(2, 2, figsize=(12, 10), constrained_layout=True)
+        _, axs = plt.subplots(2, 2, figsize=(12, 10), constrained_layout=True)
         axs = axs.flatten()
 
     y_labels = ['Time [s]', 'Training Loss', 'Precision', 'Recall']
@@ -94,3 +94,13 @@ def load_yaml(file_name):
     assert(os.path.exists(file_name))
     with open(file_name) as f:
         return yaml.load(f, Loader=yaml.FullLoader)
+
+
+def calc_dphi(phi1, phi2):
+    """Computes phi2-phi1 given in range [-pi,pi]"""
+    dphi = phi2 - phi1
+    if dphi > np.pi:
+        dphi -= 2*np.pi
+    if dphi < -np.pi:
+        dphi += 2*np.pi
+    return dphi

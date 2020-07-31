@@ -1,14 +1,17 @@
 import ROOT # use TLorentzVector
 
 import numpy as np
+import pandas as pd
 import itertools
+from typing import Optional
 
 from graph_nets import utils_tf
+from root_gnn.src.datasets.base import DataSet
 
 n_node_features = 7
 ZERO = ROOT.TLorentzVector()
 
-def make_graph(event, debug=False):
+def make_graph(event, debug=False, data_dict=False):
     scale = 0.001
     # information of each particle: px, py, pz, E, pdgID, isFromW, isInLeadingJet
     n_nodes = len(event) // n_node_features
@@ -75,9 +78,12 @@ def make_graph(event, debug=False):
         "receivers": receivers,
         "globals": np.array([0.0], dtype=np.float32)
     }
-    input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
-    target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
-    return [(input_graph, target_graph)]
+    if data_dict:
+        return [(input_datadict, target_datadict)]
+    else:
+        input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
+        target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
+        return [(input_graph, target_graph)]
 
 def evaluate_evt(event):
 
@@ -154,7 +160,7 @@ def invariant_mass(event, p_list):
     return tlv
 
 
-def read(filename, nevts=1, skip_nevts=0):
+def read(filename, nevts=-1, skip_nevts=0):
     iskip = 0
     ievt = 0
     with open(filename, 'r') as f:
@@ -163,7 +169,40 @@ def read(filename, nevts=1, skip_nevts=0):
                 iskip += 1
                 continue
             ievt += 1
-            if ievt > nevts:
+            if nevts > 0 and ievt > nevts:
                 break
             # print('return {} event'.format(ievt))
             yield [float(x) for x in line.split()]
+
+def evt_img(event):
+    n_particles = len(event) // n_node_features
+    particles = [
+        ROOT.TLorentzVector(ROOT.TVector3(
+            event[inode*n_node_features+0],
+            event[inode*n_node_features+1],
+            event[inode*n_node_features+2]),
+            event[inode*n_node_features+3])
+        for inode in range(n_particles)
+    ]
+    data = [
+        [x.Eta(), x.Phi(), x.Pt()] for x in particles
+    ]
+    df = pd.DataFrame(data, columns=['eta','phi','pt'])
+    try:
+        import plotly.express as px
+    except ImportError:
+        print("please install plotly")
+        return
+
+    fig = px.scatter(df, x='eta', y='phi', size='pt', size_max=60)
+    fig.show()
+
+def view_graph(graphs_tuple):
+    print(type(graphs_tuple))
+
+
+class WTaggerDataset(DataSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.read = read
+        self.make_graph = make_graph
