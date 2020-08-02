@@ -21,6 +21,7 @@ def make_graph(event, debug=False, data_dict=False):
         event[inode*n_node_features+2], # pz
         event[inode*n_node_features+3]  # E
     ] for inode in range(n_nodes) ]
+
     node_target = [
         event[inode*n_node_features+5] # isFromW
         for inode in range(n_nodes)
@@ -161,18 +162,9 @@ def invariant_mass(event, p_list):
     return tlv
 
 
-def read(filename, nevts=-1, skip_nevts=0):
-    iskip = 0
-    ievt = 0
+def read(filename):
     with open(filename, 'r') as f:
         for line in f:
-            if iskip < skip_nevts:
-                iskip += 1
-                continue
-            ievt += 1
-            if nevts > 0 and ievt > nevts:
-                break
-            # print('return {} event'.format(ievt))
             yield [float(x) for x in line.split()]
 
 def evt_img(event):

@@ -28,9 +28,7 @@ class WTaggerFilteredDataset(DataSet):
         total_evts = sum([1 for _ in dataset])
         print("Total {:,} events and {:,} requested".format(total_evts, nevts))
 
-        for batch, data in enumerate(dataset):
-            if nevts > 0 and batch >= nevts:
-                break
+        for data in dataset:
             yield data
 
     

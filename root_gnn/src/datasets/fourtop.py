@@ -81,7 +81,7 @@ def make_graph(event, debug=False):
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     return [(input_graph, target_graph)]
 
-def read(filename, nevts=-1):
+def read(filename):
     tree_name = "nominal_Loose"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
@@ -89,8 +89,6 @@ def read(filename, nevts=-1):
     print("Total {:,} Events".format(n_entries))
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        if nevts > 0 and ientry >= nevts:
-            break
         yield chain
 
 

@@ -8,7 +8,9 @@ if __name__ == "__main__":
     add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
             choices=['TopTaggerDataset', 'WTaggerDataset',
-                     'FourTopDataset', 'WTaggerFilteredDataset']) ## 'ToppairDataSet',
+                     'FourTopDataset', 'WTaggerFilteredDataset',
+                     'WTaggerLeadingJetDataset'
+                     ]) ## 'ToppairDataSet',
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
@@ -32,15 +34,13 @@ if __name__ == "__main__":
     from root_gnn import prepare # the main program to produce the graph
     data = getattr(prepare, args.type)()
     if args.type == "WTaggerFilteredDataset":
-        if args.signal:
-            data.signal()
         if args.model_config is None:
             print("WTaggerFilteredDataset requires model config, --model-config")
             exit(1)
         else:
             data.set_gnn_config(args.model_config)
 
-    if args.type == "FourTopDataset":
+    if args.type in ["FourTopDataset", "WTaggerLeadingJetDataset", "WTaggerFilteredDataset"]:
         if args.signal:
             data.signal()
 

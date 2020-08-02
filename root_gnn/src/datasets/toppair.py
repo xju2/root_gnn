@@ -53,7 +53,7 @@ def make_graph(event):
     return [(input_graph, target_graph)]
 
 
-def read(filename, nevts):
+def read(filename):
     tree_name = "output"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
@@ -62,8 +62,6 @@ def read(filename, nevts):
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        if nevts > 0 and ientry >= nevts:
-            break
         yield chain
 
 

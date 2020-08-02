@@ -1,6 +1,6 @@
-tfrec_dir_train: /global/homes/x/xju/work/WbosonTagger/tfrec_filtered/*.tfrec
-tfrec_dir_val: /global/homes/x/xju/work/WbosonTagger/tfrec_filtered_val/*.tfrec
-output_dir:  /global/homes/x/xju/work/WbosonTagger/trained/w_qcd
+tfrec_dir_train: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet/wboson*.tfrec
+tfrec_dir_val: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet_val/wboson*.tfrec
+output_dir:  /global/homes/x/xju/work/WbosonTagger/trained/w_qcd_ljet
 prod_name: Test
 model_name: GlobalClassifierNoEdgeInfo
 loss_name: GlobalLoss, 1, 1

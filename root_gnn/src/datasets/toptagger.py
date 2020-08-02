@@ -61,14 +61,12 @@ def make_graph(event, debug: Optional[bool] = False):
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     return [(input_graph, target_graph)]
 
-def read(filename, nevts: Optional[int] = -1):
+def read(filename):
     with pd.HDFStore(filename, mode='r') as store:
         df = store['table']
     
     print("{:,} Events".format(df.shape[0]))
     for ievt in range(df.shape[0]):
-        if nevts > 0 and ievt >= nevts:
-            break
         yield df.iloc[ievt]
 
 
