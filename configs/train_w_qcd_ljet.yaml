@@ -1,5 +1,5 @@
-tfrec_dir_train: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet/wboson*.tfrec
-tfrec_dir_val: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet_val/wboson*.tfrec
+tfrec_dir_train: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet/*.tfrec
+tfrec_dir_val: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet_val/*.tfrec
 output_dir:  /global/homes/x/xju/work/WbosonTagger/trained/w_qcd_ljet
 prod_name: Test
 model_name: GlobalClassifierNoEdgeInfo

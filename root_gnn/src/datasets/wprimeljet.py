@@ -17,19 +17,19 @@ def make_graph(event, debug=False, data_dict=False):
     """
     scale = 0.001
     # information of each particle: px, py, pz, E, pdgID, isFromW, isInLeadingJet
-    n_nodes = len(event) // n_node_features
+    n_particles = len(event) // n_node_features
     nodes = [[
         event[inode*n_node_features+0], # px
         event[inode*n_node_features+1], # py
         event[inode*n_node_features+2], # pz
         event[inode*n_node_features+3]  # E
-    ] for inode in range(n_nodes) if event[inode*n_node_features+6] == 1]
-    
+    ] for inode in range(n_particles) if event[inode*n_node_features+6] == 1]
+
     if len(nodes) < 1:
         return [(None, None)]
 
     nodes = np.array(nodes, dtype=np.float32) / scale
-
+    n_nodes = nodes.shape[0]
     if debug:
         print(n_nodes, "nodes")
         print("node features:", nodes.shape)

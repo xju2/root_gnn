@@ -93,7 +93,18 @@ class DataSet(object):
         self.n_evts = 0
 
         ifailed = 0
+        nskips = 0
         for event in self.read(filename):
+            output_name = "{}_{}.tfrec".format(outname, self.n_files_saved)
+            if os.path.exists(output_name):
+                self.n_files_saved += 1
+                nskips += n_evts_per_record
+                print("{} is there; {:,} Events to skip".format(output_name, nskips))
+            if nskips > 0:
+                nskips -= 1
+                ievt += 1
+                continue
+
             ievt += 1
             if max_evts > 0 and ievt > max_evts:
                 break

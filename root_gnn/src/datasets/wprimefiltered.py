@@ -20,13 +20,13 @@ class WTaggerFilteredDataset(DataSet):
     def signal(self, ss=True):
         self.is_signal = ss
 
-    def read(self, filename, nevts):
+    def read(self, filename):
         filenames = tf.io.gfile.glob(filename)
         dataset = tf.data.TFRecordDataset(filenames)
         AUTO = tf.data.experimental.AUTOTUNE
         dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
         total_evts = sum([1 for _ in dataset])
-        print("Total {:,} events and {:,} requested".format(total_evts, nevts))
+        print("Total {:,} events".format(total_evts))
 
         for data in dataset:
             yield data
@@ -88,4 +88,3 @@ class WTaggerFilteredDataset(DataSet):
         input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
         target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
         return [(input_graph, target_graph)]
-    
