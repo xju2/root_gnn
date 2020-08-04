@@ -1,0 +1,62 @@
+#!/usr/bin/env python 
+
+import tensorflow as tf
+import numpy as np
+
+from root_gnn.utils import load_yaml
+from root_gnn.src.datasets import graph
+from root_gnn.src.models import model_utils
+
+ckpt_name = 'checkpoint'
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Calculate the metrics for jet reco.')
+    add_arg = parser.add_argument
+    add_arg("filenames", help="input event file in TFRec format")
+    add_arg("config", help="configuration file used for training")
+    add_arg("outname", help='output name prefix')
+    add_arg("--nevts", default=-1, help='number of events', type=int)
+    add_arg("--skip-nevts", default=0, help='skip number of events', type=int)
+    add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
+    args = parser.parse_args()
+
+
+    # load data
+    filenames = tf.io.gfile.glob(args.filenames)
+    AUTO = tf.data.experimental.AUTOTUNE
+    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    nevts = sum([1 for _ in dataset])
+    print("{} files and {:,} events".format(len(filenames), nevts))
+
+    # create the GNN model
+    config = load_yaml(args.config)
+    model, num_processing_steps, _ = model_utils.create_load_model(config)
+
+    iskip = 0 
+    ievt = 0
+
+    global_predicts = []
+    global_truths = []
+    for event in dataset:
+        if iskip < args.skip_nevts:
+            iskip += 1
+            continue
+        if args.nevts > 0 and ievt >= args.nevts:
+            break
+
+        inputs_tr, targets_tr = event
+        outputs = model(inputs_tr, num_processing_steps)
+        output = outputs[-1]
+
+        global_predicts.append(output.globals)
+        global_truths.append(targets_tr.globals)
+
+    
+    global_predicts = np.concatenate(global_predicts, axis=0)
+    global_truths = np.concatenate(global_truths, axis=0)
+
+    np.savez(args.outname+".npz",
+        global_predicts=global_predicts,
+        global_truths=global_truths
+    )

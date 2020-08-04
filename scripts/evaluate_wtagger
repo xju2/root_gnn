@@ -21,7 +21,7 @@ if __name__ == "__main__":
     add_arg("filename", help="input event files")
     add_arg("config", help="configuration file used for training")
     add_arg("outname", help='output name prefix')
-    add_arg("--nevts", default=1, help='number of events', type=int)
+    add_arg("--nevts", default=-1, help='number of events', type=int)
     add_arg("--skip-nevts", default=0, help='skip number of events', type=int)
     add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
     add_arg("--edge-threshold", help='threshold on edge scores', type=float, default=0.5)
@@ -67,7 +67,13 @@ if __name__ == "__main__":
     edge_truths = []
     edge_threshold = args.edge_threshold
     node_threshold = args.node_threshold
-    for event in wprime.read(args.filename, args.nevts, args.skip_nevts):
+
+    for event in wprime.read(args.filename):
+        if iskip < args.skip_nevts:
+            iskip += 1
+            continue
+        if args.nevts > 0 and ievt >= args.nevts:
+            break
         
         inputs_tr, targets_tr = wprime.make_graph(event)[0]
         outputs_tr = model(inputs_tr, num_processing_steps_tr)
