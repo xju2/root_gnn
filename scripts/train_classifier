@@ -28,37 +28,6 @@ from root_gnn import losses
 from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
 
-ckpt_name = 'checkpoint'
-
-prog_name = os.path.basename(sys.argv[0])
-
-def eval_output(target, output):
-    """
-    target, output are graph-tuple from TF-GNN,
-    each of them contains N=batch-size graphs
-    """
-    tdds = utils_np.graphs_tuple_to_data_dicts(target)
-    odds = utils_np.graphs_tuple_to_data_dicts(output)
-
-    test_target = []
-    test_pred = []
-    for td, od in zip(tdds, odds):
-        test_target.append(td['globals'])
-        test_pred.append(od['globals'])
-        # test_target.append(np.squeeze(td['globals']))
-        # test_pred.append(np.squeeze(od['globals']))
-
-    test_target = np.concatenate(test_target, axis=0)
-    test_pred   = np.concatenate(test_pred,   axis=0)
-    return test_pred, test_target
-
-
-def compute_matrics(target, output, thresh=0.5):
-    test_pred, test_target = eval_output(target, output)
-    y_pred, y_true = (test_pred > thresh), (test_target > thresh)
-    return sklearn.metrics.precision_score(y_true, y_pred), sklearn.metrics.recall_score(y_true, y_pred)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
     add_arg = parser.add_argument
@@ -95,7 +64,7 @@ if __name__ == "__main__":
     print("Input file names: ", tr_filenames)
     print("{} training files".format(n_train))
     print("{} evaluation files".format(n_val))
-    print("[{}] save models at {}".format(prog_name, output_dir))
+    print("Model saved at {}".format(output_dir))
 
     shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
     AUTO = tf.data.experimental.AUTOTUNE
@@ -183,17 +152,19 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
-
+    writer = tf.summary.create_file_writer(os.path.join(output_dir, "logdir"))
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
 
+    epoch_count = tf.Variable(0, trainable=False, name='epoch_count')
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
 
         in_list = []
         target_list = []
+
         for inputs in training_dataset:
             inputs_tr, targets_tr = inputs
             in_list.append(inputs_tr)
@@ -206,13 +177,13 @@ if __name__ == "__main__":
                 target_list = []
                 num_batches += 1
 
+
         ckpt_manager.save()
 
         eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
             ckpt_manager.checkpoint.save_counter.numpy()))
         last_log_time = time.time()
         loss_tr = total_loss/num_batches
-        # print("{} batches".format(num_batches))
 
         elapsed = time.time() - start_time
         inputs_te_list = []
@@ -260,6 +231,14 @@ if __name__ == "__main__":
         with open(log_name, 'a') as f:
             f.write(out_str+"\n")
         np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
+
+        # save metrics to the summary file
+        metric_dict['loss_tr'] = loss_tr
+        with writer.as_default():
+            for key,val in metric_dict.items():
+                tf.summary.scalar(key, val, step=epoch_count)
+            writer.flush()
+
         metric = metric_dict[metric_name]
         if metric < previous_metric:
             print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
