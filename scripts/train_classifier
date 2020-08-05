@@ -152,7 +152,18 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
-    writer = tf.summary.create_file_writer(os.path.join(output_dir, "logdir"))
+    # obtain the training step profiler
+    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+    func_log_dir = "logs/{}/funcs".format(time_stamp)
+    func_writer = tf.summary.create_file_writer(os.path.join(output_dir, func_log_dir))
+    for inputs in training_dataset.take(1).as_numpy_iterator():
+        inputs_tr, targets_tr = inputs
+        tf.summary.trace_on(graph=True, profiler=True)
+        total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        with func_writer.as_default():
+            tf.summary.trace_export(name='GNN', step=0, profiler_outdir=func_log_dir)
+
+    writer = tf.summary.create_file_writer(os.path.join(output_dir, "logs/{}/metrics".format(time_stamp)))
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
