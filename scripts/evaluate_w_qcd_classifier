@@ -3,7 +3,6 @@
 import tensorflow as tf
 import numpy as np
 
-from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
 from root_gnn.src.models import model_utils
 
@@ -30,8 +29,7 @@ if __name__ == "__main__":
     print("{} files and {:,} events".format(len(filenames), nevts))
 
     # create the GNN model
-    config = load_yaml(args.config)
-    model, num_processing_steps, _ = model_utils.create_load_model(config)
+    model, num_processing_steps, _ = model_utils.create_load_model(args.config)
 
     iskip = 0 
     ievt = 0

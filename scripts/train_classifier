@@ -155,10 +155,12 @@ if __name__ == "__main__":
         return outputs_tr, loss_op_tr
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5)
-    if os.path.exists(os.path.join(output_dir, ckpt_name)):
-        print("Loading latest checkpoint")
-        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5, keep_checkpoint_every_n_hours=1)
+    checkpoint.restore(ckpt_manager.latest_checkpoint)
+    if ckpt_manager.latest_checkpoint:
+        print("Restore from {}".format(ckpt_manager.latest_checkpoint))
+    else:
+        print("Initializing from scratch.")
 
     logged_iterations = []
     losses_tr = []
