@@ -154,21 +154,59 @@ if __name__ == "__main__":
 
     # obtain the training step profiler
     time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
-    func_log_dir = "logs/{}/funcs".format(time_stamp)
-    func_writer = tf.summary.create_file_writer(os.path.join(output_dir, func_log_dir))
-    for inputs in training_dataset.take(1).as_numpy_iterator():
-        inputs_tr, targets_tr = inputs
+
+    ##====profiling====
+    do_profiling = config_tr.get("do_profiling", False)
+    if do_profiling:
+        
+        data_iterator = training_dataset.as_numpy_iterator()
+        # computational graphs
+        func_log_dir = "logs/{}/funcs".format(time_stamp)
+        func_writer = tf.summary.create_file_writer(os.path.join(output_dir, func_log_dir))
+        profiling_steps = config_tr.get("profiling_steps", 10)
+        profile_logdir = os.path.join(output_dir, "logs/{}/profiling".format(time_stamp))
+
         tf.summary.trace_on(graph=True, profiler=True)
-        total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        for step in range(1):
+            inputs_tr, targets_tr = next(data_iterator)
+            total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
         with func_writer.as_default():
             tf.summary.trace_export(name='GNN', step=0, profiler_outdir=func_log_dir)
+
+        tf.profiler.experimental.start(profile_logdir)
+        for step in range(profiling_steps):
+            with tf.profiler.experimental.Trace("train", step_num=step, _r=1):
+                inputs_tr, targets_tr = next(data_iterator)
+                total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        tf.profiler.experimental.stop()
+
+        do_profiling_only = config_tr.get("do_profiling_only", False)
+        if do_profiling_only:
+            exit(0)
+
+        # # memory, cpu usages
+        # profile_log_dir = "logs/{}/profiling".format(time_stamp)
+        # with tf.profiler.experimental.Profile(profile_log_dir):
+        #     tf.profiler.experimental.start()
+        #     profiling_steps = config_tr.get("profiling_steps", 10)
+        #     data_iterator = training_dataset.as_numpy_iterator()
+        #     tf.summary.trace_on(graph=True, profiler=True)
+        #     for step in range(profiling_steps):
+        #         inputs_tr, targets_tr = next(data_iterator)
+                
+        #         total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        #         with func_writer.as_default():
+        #             tf.summary.trace_export(name='GNN', step=0, profiler_outdir=func_log_dir)
+
+        #     tf.profiler.experimental.stop()
+
 
     writer = tf.summary.create_file_writer(os.path.join(output_dir, "logs/{}/metrics".format(time_stamp)))
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
 
-    epoch_count = tf.Variable(0, trainable=False, name='epoch_count')
+    epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
@@ -249,6 +287,7 @@ if __name__ == "__main__":
             for key,val in metric_dict.items():
                 tf.summary.scalar(key, val, step=epoch_count)
             writer.flush()
+        epoch_count.assign_add(1)
 
         metric = metric_dict[metric_name]
         if metric < previous_metric:
