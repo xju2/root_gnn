@@ -11,6 +11,17 @@ from root_gnn.src.datasets.base import DataSet
 n_node_features = 7
 ZERO = ROOT.TLorentzVector() # pylint: disable=maybe-no-member
 
+def num_particles(event):
+    return len(event) // n_node_features
+
+def ljet_particles(event):
+    n_particles = num_particles(event)
+    return [
+        inode
+        for inode in range(n_particles) if event[inode*n_node_features+6] == 1
+    ]
+
+
 def make_graph(event, debug=False, data_dict=False):
     scale = 0.001
     # information of each particle: px, py, pz, E, pdgID, isFromW, isInLeadingJet

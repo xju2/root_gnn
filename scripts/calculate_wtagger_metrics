@@ -9,6 +9,22 @@ import sklearn.metrics
 from bisect import bisect
 from root_gnn import utils_plot
 
+def norm_weights(array):
+    return np.ones(len(array))/len(array)
+
+def add_mean_std(array, x, y, ax, color=1, dy=0.3, digits=2, fontsize=12, with_std=True):
+    this_mean, this_std = np.mean(array), np.std(array)
+    ax.text(x, y, "Mean: {0:.{1}f}".format(this_mean, digits), color=color, fontsize=12)
+    if with_std:
+        ax.text(x, y-dy, "Standard Deviation: {0:.{1}f}".format(this_std, digits), color=color, fontsize=12)
+
+def set_xaxis(ax):
+    ax.minorticks_on()
+    axsecond = ax.secondary_xaxis('top')
+    axsecond.minorticks_on()
+    axsecond.tick_params(axis='x', which='both', direction='in', labeltop=False)
+    return ax
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Plot the metrics for jet reco.")
@@ -28,7 +44,14 @@ if __name__ == "__main__":
     edge_truths = array['edge_truths']
 
     if not os.path.exists("{}_edge_scores.pdf".format(outname)):
-        utils_plot.plot_metrics(edge_predicts, edge_truths, outname="{}_edge_scores.pdf".format(outname))
+        utils_plot.plot_metrics(edge_predicts, edge_truths,
+                                outname="{}_edge_scores.pdf".format(outname),
+                                true_label="W boson",
+                                fake_label="Non-W boson",
+                                y_label="Edges",
+                                x_label='Edge score',
+                                eff_purity_label="Threshold on edge score",
+                                )
     if args.eval_node and not os.path.exists("{}_node_scores.pdf".format(outname)):
         utils_plot.plot_metrics(node_predicts, node_truths, outname="{}_node_scores.pdf".format(outname))
 
@@ -44,57 +67,150 @@ if __name__ == "__main__":
     figstyle = {
         "alpha": alpha,
         'histtype': 'step',
+        # 'lw': 2,
     }
     def make_comparison(gnn_name, tag_name='GNN'):
 
-        legend = ['leading jet', tag_name]
+        legend = ['Leading jet', tag_name]
         cols = ['ljet', gnn_name]
         if not args.no_w:
             legend.append('W boson')
             cols.append('wboson')
 
+        # kinematic distributions
         _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
         axs = axs.flatten()
+        for ax in axs:
+            set_xaxis(ax)
         ax0, ax1, ax2, ax3 = axs
         _ = df[['{}E'.format(x) for x in cols]].plot.hist(ax=ax0, bins=100, range=(0, 2000), **figstyle)
         ax0.set_xlabel("E [GeV]")
-        ax0.set_ylabel("Events")
+        ax0.set_ylabel("Events / 20 GeV")
         ax0.legend(legend)
-        df[['{}Eta'.format(x) for x in cols]].plot.hist(ax=ax1, **figstyle)
+
+        cuts = df['ljetE'] > 1
+        eta_ljet = df[cuts]['ljetEta']
+        eta_gnn = df['{}Eta'.format(gnn_name)]
+        eta_wboson = df["wbosonEta"]
+        eta_bins = 10
+        eta_range = (-5, 5)
+        ax1.hist(eta_ljet, label='Leading jet', bins=eta_bins, range=eta_range, **figstyle)
+        ax1.hist(eta_gnn, label=tag_name, bins=eta_bins, range=eta_range, **figstyle)
+        ax1.hist(eta_wboson, label='W boson', bins=eta_bins, range=eta_range, **figstyle)
+        # df[['{}Eta'.format(x) for x in cols]].plot.hist(ax=ax1, **figstyle)
         ax1.set_xlabel(r"$\eta$")
         ax1.set_ylabel("Events")
-        ax1.legend(legend)
-        df[['{}Phi'.format(x) for x in cols]].plot.hist(ax=ax2, **figstyle)
+        ax1.legend(legend, loc='upper left')
+
+        phi_ljet = df[cuts]['ljetPhi']
+        phi_gnn = df['{}Phi'.format(gnn_name)]
+        phi_wboson = df["wbosonPhi"]
+        phi_bins = 10
+        phi_range = (-3.2, 3.2)
+        ax2.hist(phi_ljet, label='Leading jet', bins=phi_bins, range=phi_range, **figstyle)
+        ax2.hist(phi_gnn, label=tag_name, bins=phi_bins, range=phi_range, **figstyle)
+        ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)
         ax2.set_xlabel(r"$\phi$")
         ax2.set_ylabel("Events")
-        ax2.legend(legend)
-        df[['{}M'.format(x) for x in cols]].plot.hist(ax=ax3, bins=100, range=(0, 350), **figstyle)
+        ax2.legend(legend, loc='center')
+
+        mass_ljet = df[cuts]['ljetM']
+        mass_gnn = df['{}M'.format(gnn_name)]
+        mass_wboson = df["wbosonM"]
+        mass_bins = 40
+        mass_range = (0, 200)
+        ax3.hist(mass_ljet, label='Leading jet', bins=mass_bins, range=mass_range, **figstyle)
+        ax3.hist(mass_gnn, label=tag_name, bins=mass_bins, range=mass_range, **figstyle)
+        ax3.hist(mass_wboson, label='W boson', bins=mass_bins, range=mass_range, **figstyle)
         ax3.set_xlabel("M [GeV]")
-        ax3.set_ylabel("Events")
+        ax3.set_ylabel("Events / 5 GeV")
         ax3.legend(legend)
         plt.savefig("{}_{}_kinematic_compare.pdf".format(outname, tag_name))
         plt.clf()
 
+        #==== energy fraction ====
         _, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        set_xaxis(ax)
         ljet_efrac = (df.ljetE - df.wbosonE) / df.wbosonE
         gnn_efrac = (df.gnnE - df.wbosonE) / df.wbosonE
-        ax.hist(ljet_efrac, label='leading jet', bins=100, range=(-1, 1),  **figstyle)
-        ax.hist(gnn_efrac, label=tag_name, bins=100, range=(-1, 1), **figstyle)
-        ax.legend()
-        ax.set_xlabel("(E - $E_w$) / $E_w$")
+        _, _, ljet_patches = ax.hist(ljet_efrac, label='Leading jet', bins=100, range=(-1, 1),
+                                    weights=norm_weights(ljet_efrac), **figstyle)
+        _, _, gnn_patches = ax.hist(gnn_efrac, label=tag_name, bins=100, range=(-1, 1),
+                                    weights=norm_weights(gnn_efrac), **figstyle)
+        ax.legend(loc='upper left')
+        ax.set_xlabel("($E$ - $E_w$) / $E_w$")
+        ax.set_ylabel("Fraction of Events")
+        # add mean and std.
+        ljet_efrac = ljet_efrac[(ljet_efrac > -0.25) & (ljet_efrac < 0.25)]
+        gnn_efrac = gnn_efrac[(gnn_efrac > -0.25) & (gnn_efrac < 0.25)]
+        start_y = 0.4
+        spacing_y = 0.03
+        add_mean_std(ljet_efrac, -1.0, start_y, ax, dy=spacing_y, color=ljet_patches[0].get_ec())
+        add_mean_std(gnn_efrac, -1.0, start_y-spacing_y*2, ax, dy=spacing_y, color=gnn_patches[0].get_ec())
         plt.savefig("{}_{}_Efrac.pdf".format(outname, tag_name))
         plt.clf()
 
+        #==== mass resolution ====
         _, ax = plt.subplots(1, 1, figsize=(6, 5),constrained_layout=True)
+        set_xaxis(ax)
         ljet_mreso = (df.ljetM - df.wbosonM) / df.wbosonM
         gnn_mreso = (df.gnnM - df.wbosonM) / df.wbosonM
-        ax.hist(ljet_mreso, label='leading jet', bins=100, range=(-1, 1), **figstyle)
-        ax.hist(gnn_mreso, label=tag_name, bins=100, range=(-1, 1), **figstyle)
-        ax.legend()
-        ax.set_xlabel("(M - $M_w$) / $M_w$")
+        _, _, ljet_patches = ax.hist(ljet_mreso, label='Leading jet', bins=100, range=(-1, 1),
+                                    weights=norm_weights(ljet_mreso), **figstyle)
+        _, _, gnn_patches = ax.hist(gnn_mreso, label=tag_name, bins=100, range=(-1, 1),
+                                    weights=norm_weights(gnn_mreso), **figstyle)
+        ax.legend(loc='upper left')
+        ax.set_xlabel("($M$ - $M_w$) / $M_w$")
+        ax.set_ylabel("Fraction of Events")
+        # add mean and std.
+        ljet_mreso = ljet_mreso[(ljet_mreso > -0.25) & (ljet_mreso < 0.25)]
+        gnn_mreso = gnn_efrac[(gnn_mreso > -0.25) & (gnn_mreso < 0.25)]
+        start_y = 0.3
+        add_mean_std(ljet_mreso, -1.0, start_y, ax, dy=spacing_y, color=ljet_patches[0].get_ec())
+        add_mean_std(gnn_mreso, -1.0, start_y-spacing_y*2, ax, dy=spacing_y, color=gnn_patches[0].get_ec())
+
         plt.savefig("{}_{}_MassResolution.pdf".format(outname, tag_name))
         plt.clf()
 
     make_comparison("gnn", "GNN")
     if args.eval_node:
         make_comparison("gnnNodes", "GNN-Nodes")
+
+    # explore the particles selected by GNN and anti-kT
+    if "n_gnn_particles" in array:
+        _, axs = plt.subplots(1, 2, figsize=(12, 5),constrained_layout=True)
+        axs = axs.flatten()
+        for ax in axs:
+            set_xaxis(ax)
+        ax0, ax1 = axs
+
+        # set_xaxis(ax0)
+        # set_xaxis(ax1)
+        # ax0.minorticks_on()
+        # axsecond = ax0.secondary_xaxis('top')
+        # axsecond.minorticks_on()
+        # axsecond.tick_params(axis='x', which='both', direction='in', labeltop=False)
+        n_lp = array['n_ljet_particles']
+        n_gp = array['n_gnn_particles']
+        _, _, ljet_patch = ax0.hist(n_lp, label='Leading jet', bins=125, range=(0, 125), **figstyle)
+        _, _, gnn_patch = ax0.hist(n_gp, label='GNN', bins=125, range=(0, 125), **figstyle)
+        start_x = 80
+        start_y = 150
+        dy = 8
+        add_mean_std(n_lp[n_lp > 1], start_x, start_y, ax=ax0, 
+                    color=ljet_patch[0].get_ec(), dy=dy, with_std=False, digits=0)
+        add_mean_std(n_gp, start_x, start_y-dy, ax=ax0, 
+                    color=gnn_patch[0].get_ec(), dy=dy, with_std=False, digits=0)
+        ax0.legend(loc='upper right')
+        ax0.set_xlabel("Number of selected constituents")
+        ax0.set_ylabel("Events")
+
+        ax1.hist(array['n_ljet_only_particles'], label='Leading jet only', bins=100, range=(0, 100), **figstyle)
+        ax1.hist(array['n_gnn_only_particles'], label='GNN only', bins=100, range=(0, 100), **figstyle)
+        ax1.hist(array['n_gnn_ljet_particles'], label='Common', bins=100, range=(0, 100), **figstyle)
+        ax1.legend(loc='upper right')
+        ax1.set_xlabel("Number of selected constituents")
+        ax1.set_ylabel("Events")
+        plt.savefig("{}_cmp_particles_selected.pdf".format(outname))
+    else:
+        print("old file was used, no number of particles info")

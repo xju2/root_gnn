@@ -68,6 +68,13 @@ if __name__ == "__main__":
     edge_threshold = args.edge_threshold
     node_threshold = args.node_threshold
 
+
+    n_gnn_particles = []
+    n_ljet_particles = []
+    n_gnn_ljet_particles = []
+    n_gnn_only_particles = []
+    n_ljet_only_particles = []
+
     for event in wprime.read(args.filename):
         if iskip < args.skip_nevts:
             iskip += 1
@@ -75,6 +82,7 @@ if __name__ == "__main__":
         if args.nevts > 0 and ievt >= args.nevts:
             break
         
+        ievt += 1
         inputs_tr, targets_tr = wprime.make_graph(event)[0]
         outputs_tr = model(inputs_tr, num_processing_steps_tr)
         output_graph = outputs_tr[-1]
@@ -109,6 +117,14 @@ if __name__ == "__main__":
                 gnn_tlv.E(), gnn_tlv.Eta(), gnn_tlv.Phi(), gnn_tlv.M(),
                 gnn_tlv_node_only.E(), gnn_tlv_node_only.Eta(), gnn_tlv_node_only.Phi(), gnn_tlv_node_only.M()
                 ])
+        # check further the particles selected by GNN and those by leading jet
+        gnnset = set(nodes_sel.tolist())
+        ljetset = set(wprime.ljet_particles(event))
+        n_gnn_particles.append(len(gnnset))
+        n_ljet_particles.append(len(ljetset))
+        n_gnn_ljet_particles.append(len(gnnset.intersection(ljetset)))
+        n_gnn_only_particles.append(len(gnnset.difference(ljetset)))
+        n_ljet_only_particles.append(len(ljetset.difference(gnnset)))
 
 
     node_predicts = np.concatenate(node_predicts, axis=0)
@@ -116,6 +132,11 @@ if __name__ == "__main__":
     edge_predicts = np.concatenate(edge_predicts, axis=0)
     edge_truths = np.concatenate(edge_truths, axis=0)
     evt_info = np.array(evt_info, dtype=np.float32)
+    n_gnn_particles = np.array(n_gnn_particles)
+    n_ljet_particles = np.array(n_ljet_particles)
+    n_gnn_ljet_particles = np.array(n_gnn_ljet_particles)
+    n_gnn_only_particles = np.array(n_gnn_only_particles)
+    n_ljet_only_particles = np.array(n_ljet_only_particles)
 
     np.savez(args.outname+".npz",\
         node_predicts=node_predicts,
@@ -123,4 +144,9 @@ if __name__ == "__main__":
         edge_predicts=edge_predicts,
         edge_truths=edge_truths,
         evt_info=evt_info,
+        n_gnn_particles=n_gnn_particles,
+        n_ljet_particles=n_ljet_particles,
+        n_gnn_ljet_particles=n_gnn_ljet_particles,
+        n_gnn_only_particles=n_gnn_only_particles,
+        n_ljet_only_particles=n_ljet_only_particles
     )
