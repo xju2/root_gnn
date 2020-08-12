@@ -19,7 +19,7 @@ setup(
     url="https://github.com/xju2/root_gnn",
     packages=find_packages(),
     install_requires=[
-        'tensorflow >= 2.1',
+        'tensorflow > 2.1',
         "graph_nets >= 1.1",
         "future",
         "networkx",
@@ -42,6 +42,7 @@ setup(
         'scripts/create_tfrecord',
         'scripts/evaluate_global_classifier',
         'scripts/calculate_metrics',
+        'scripts/evaluate_w_qcd_classifier',
         'scripts/evaluate_wtagger',
         'scripts/calculate_wtagger_metrics',
     ],

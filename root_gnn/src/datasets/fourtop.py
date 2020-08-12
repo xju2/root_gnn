@@ -1,8 +1,11 @@
 import numpy as np
 import itertools
-
 import math
+from typing import Optional
 from graph_nets import utils_tf
+import ROOT
+
+from root_gnn.src.datasets.base import DataSet
 
 is_signal = False
 def make_graph(event, debug=False):
@@ -77,3 +80,24 @@ def make_graph(event, debug=False):
     input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     return [(input_graph, target_graph)]
+
+def read(filename):
+    tree_name = "nominal_Loose"
+    chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
+    chain.Add(filename)
+    n_entries = chain.GetEntries()        
+    print("Total {:,} Events".format(n_entries))
+    for ientry in range(n_entries):
+        chain.GetEntry(ientry)
+        yield chain
+
+
+class FourTopDataset(DataSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.read = read
+        self.make_graph = make_graph
+
+    def signal(self, ss=True):
+        global is_signal
+        is_signal = ss

@@ -1,0 +1,14 @@
+tfrec_dir_train: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet/*.tfrec
+tfrec_dir_val: /global/homes/x/xju/work/WbosonTagger/tfrec_ljet_val/*.tfrec
+output_dir:  /global/homes/x/xju/work/WbosonTagger/trained/w_qcd_ljet
+prod_name: Test
+model_name: GlobalClassifierNoEdgeInfo
+loss_name: GlobalLoss, 1, 1
+parameters:
+    batch_size: 1
+    n_iters: 8
+    learning_rate: 0.0005
+    epochs: 10
+    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
+    acceptable_failure: 10
+    shuffle_buffer_size: -1

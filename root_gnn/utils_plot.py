@@ -126,7 +126,14 @@ def plot_hits(hits, numb=5, fig=None):
     return fig, axs
 
 
-def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5, outname='roc_graph_nets.eps', off_interactive=False, alternative=True):
+def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5,
+                outname='roc_graph_nets.eps', 
+                off_interactive=False, alternative=True,
+                true_label="true",
+                fake_label="fake", 
+                y_label="Events", x_label="Model output",
+                eff_purity_label='Cut on model score'
+                ):
     if off_interactive:
         plt.ioff()
 
@@ -165,16 +172,17 @@ def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5, outname='roc_graph_nets.eps',
     # Plot the model outputs
     # binning=dict(bins=50, range=(0,1), histtype='step', log=True)
     binning=dict(bins=50, histtype='step', log=True)
-    ax0.hist(odd[y_true==False], lw=2, label='fake', **binning)
-    ax0.hist(odd[y_true], lw=2, label='true', **binning)
-    ax0.set_xlabel('Model output', fontsize=fontsize)
+    ax0.hist(odd[y_true==False], lw=2, label=fake_label, **binning)
+    ax0.hist(odd[y_true], lw=2, label=true_label, **binning)
+    ax0.set_xlabel(x_label, fontsize=fontsize)
+    ax0.set_ylabel(y_label, fontsize=fontsize)
     ax0.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
     ax0.legend(loc=0, fontsize=fontsize)
 
     # Plot the ROC curve
     auc = sklearn.metrics.auc(fpr, tpr)
     ax1.plot(fpr, tpr, lw=2)
-    ax1.plot([0, 1], [0, 1], '--', lw=2)
+    # ax1.plot([0, 1], [0, 1], '--', lw=2)
     ax1.set_xlabel('False positive rate', fontsize=fontsize)
     ax1.set_ylabel('True positive rate', fontsize=fontsize)
     ax1.set_title('ROC curve, AUC = %.4f' % auc, fontsize=fontsize)
@@ -184,9 +192,11 @@ def plot_metrics(odd, tdd, odd_th=0.5, tdd_th=0.5, outname='roc_graph_nets.eps',
     p, r, t = sklearn.metrics.precision_recall_curve(y_true, odd)
     ax2.plot(t, p[:-1], label='purity', lw=2)
     ax2.plot(t, r[:-1], label='efficiency', lw=2)
-    ax2.set_xlabel('Cut on model score', fontsize=fontsize)
+    ax2.set_xlabel(eff_purity_label, fontsize=fontsize)
+    ax2.set_ylabel("Efficiency or Purity")
     ax2.tick_params(width=2, grid_alpha=0.5, labelsize=minor_size)
-    ax2.legend(fontsize=fontsize, loc='upper right')
+    ax2.set_ylim(0, 1.1)
+    ax2.legend(fontsize=fontsize, loc='center')
 
     ax3.plot(p, r, lw=2)
     ax3.set_xlabel('Purity', fontsize=fontsize)

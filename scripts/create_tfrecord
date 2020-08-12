@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-
-from root_gnn import prepare # the main program to produce the graph
-import pandas as pd
-from root_gnn.datasets import fourtop
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Create TFRecord of graphs for training')
@@ -12,10 +7,14 @@ if __name__ == "__main__":
     add_arg("outname", help='output name')
     add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
-            choices=['TopTaggerDataset', 'WTaggerDataset', 'ToppairDataSet', 'FourTopDataset'])
+            choices=['TopTaggerDataset', 'WTaggerDataset',
+                     'FourTopDataset', 'WTaggerFilteredDataset',
+                     'WTaggerLeadingJetDataset'
+                     ]) ## 'ToppairDataSet',
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
+    add_arg("--model-config", help='configuration file for training', default=None)
 
 
     args = parser.parse_args()
@@ -26,14 +25,25 @@ if __name__ == "__main__":
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
     print("Data type:", args.type)
-    if args.signal:
-        fourtop.is_signal = True
 
     if args.type is None:
+        print("Specify a data type via --type")
+        parser.print_help()
         exit(1)
         
-    data = getattr(prepare, args.type)(args.input_file)
-    data.process(save=True, outname=outname,\
+    from root_gnn import prepare # the main program to produce the graph
+    data = getattr(prepare, args.type)()
+    if args.type == "WTaggerFilteredDataset":
+        if args.model_config is None:
+            print("WTaggerFilteredDataset requires model config, --model-config")
+            exit(1)
+        else:
+            data.set_gnn_config(args.model_config)
+
+    if args.type in ["FourTopDataset", "WTaggerLeadingJetDataset", "WTaggerFilteredDataset"]:
+        if args.signal:
+            data.signal()
+
+    data.process(filename=args.input_file, save=True, outname=outname,\
         n_evts_per_record=n_evts_per_record, debug=args.debug,
-        max_evts=args.max_evts
-        )
+        max_evts=args.max_evts)

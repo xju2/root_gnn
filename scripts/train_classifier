@@ -25,39 +25,8 @@ import sonnet as snt
 from root_gnn import model as all_models
 from root_gnn import losses
 # from root_gnn import optimizers
-from root_gnn.dataset import graph
+from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
-
-ckpt_name = 'checkpoint'
-
-prog_name = os.path.basename(sys.argv[0])
-
-def eval_output(target, output):
-    """
-    target, output are graph-tuple from TF-GNN,
-    each of them contains N=batch-size graphs
-    """
-    tdds = utils_np.graphs_tuple_to_data_dicts(target)
-    odds = utils_np.graphs_tuple_to_data_dicts(output)
-
-    test_target = []
-    test_pred = []
-    for td, od in zip(tdds, odds):
-        test_target.append(td['globals'])
-        test_pred.append(od['globals'])
-        # test_target.append(np.squeeze(td['globals']))
-        # test_pred.append(np.squeeze(od['globals']))
-
-    test_target = np.concatenate(test_target, axis=0)
-    test_pred   = np.concatenate(test_pred,   axis=0)
-    return test_pred, test_target
-
-
-def compute_matrics(target, output, thresh=0.5):
-    test_pred, test_target = eval_output(target, output)
-    y_pred, y_true = (test_pred > thresh), (test_target > thresh)
-    return sklearn.metrics.precision_score(y_true, y_pred), sklearn.metrics.recall_score(y_true, y_pred)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
@@ -95,7 +64,7 @@ if __name__ == "__main__":
     print("Input file names: ", tr_filenames)
     print("{} training files".format(n_train))
     print("{} evaluation files".format(n_val))
-    print("[{}] save models at {}".format(prog_name, output_dir))
+    print("Model saved at {}".format(output_dir))
 
     shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
     AUTO = tf.data.experimental.AUTOTUNE
@@ -155,10 +124,12 @@ if __name__ == "__main__":
         return outputs_tr, loss_op_tr
 
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5)
-    if os.path.exists(os.path.join(output_dir, ckpt_name)):
-        print("Loading latest checkpoint")
-        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5, keep_checkpoint_every_n_hours=1)
+    checkpoint.restore(ckpt_manager.latest_checkpoint)
+    if ckpt_manager.latest_checkpoint:
+        print("Restore from {}".format(ckpt_manager.latest_checkpoint))
+    else:
+        print("Initializing from scratch.")
 
     logged_iterations = []
     losses_tr = []
@@ -181,17 +152,68 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
+    # obtain the training step profiler
+    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
 
+    ##====profiling====
+    do_profiling = config_tr.get("do_profiling", False)
+    if do_profiling:
+        
+        data_iterator = training_dataset.as_numpy_iterator()
+        # computational graphs
+        func_log_dir = "logs/{}/funcs".format(time_stamp)
+        func_writer = tf.summary.create_file_writer(os.path.join(output_dir, func_log_dir))
+        profiling_steps = config_tr.get("profiling_steps", 10)
+        profile_logdir = os.path.join(output_dir, "logs/{}/profiling".format(time_stamp))
+
+        tf.summary.trace_on(graph=True, profiler=True)
+        for step in range(1):
+            inputs_tr, targets_tr = next(data_iterator)
+            total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        with func_writer.as_default():
+            tf.summary.trace_export(name='GNN', step=0, profiler_outdir=func_log_dir)
+
+        tf.profiler.experimental.start(profile_logdir)
+        for step in range(profiling_steps):
+            with tf.profiler.experimental.Trace("train", step_num=step, _r=1):
+                inputs_tr, targets_tr = next(data_iterator)
+                total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        tf.profiler.experimental.stop()
+
+        do_profiling_only = config_tr.get("do_profiling_only", False)
+        if do_profiling_only:
+            exit(0)
+
+        # # memory, cpu usages
+        # profile_log_dir = "logs/{}/profiling".format(time_stamp)
+        # with tf.profiler.experimental.Profile(profile_log_dir):
+        #     tf.profiler.experimental.start()
+        #     profiling_steps = config_tr.get("profiling_steps", 10)
+        #     data_iterator = training_dataset.as_numpy_iterator()
+        #     tf.summary.trace_on(graph=True, profiler=True)
+        #     for step in range(profiling_steps):
+        #         inputs_tr, targets_tr = next(data_iterator)
+                
+        #         total_loss = update_step(inputs_tr, targets_tr)[1].numpy()
+        #         with func_writer.as_default():
+        #             tf.summary.trace_export(name='GNN', step=0, profiler_outdir=func_log_dir)
+
+        #     tf.profiler.experimental.stop()
+
+
+    writer = tf.summary.create_file_writer(os.path.join(output_dir, "logs/{}/metrics".format(time_stamp)))
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
 
+    epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
 
         in_list = []
         target_list = []
+
         for inputs in training_dataset:
             inputs_tr, targets_tr = inputs
             in_list.append(inputs_tr)
@@ -204,13 +226,13 @@ if __name__ == "__main__":
                 target_list = []
                 num_batches += 1
 
+
         ckpt_manager.save()
 
         eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
             ckpt_manager.checkpoint.save_counter.numpy()))
         last_log_time = time.time()
         loss_tr = total_loss/num_batches
-        # print("{} batches".format(num_batches))
 
         elapsed = time.time() - start_time
         inputs_te_list = []
@@ -258,6 +280,15 @@ if __name__ == "__main__":
         with open(log_name, 'a') as f:
             f.write(out_str+"\n")
         np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
+
+        # save metrics to the summary file
+        metric_dict['loss_tr'] = loss_tr
+        with writer.as_default():
+            for key,val in metric_dict.items():
+                tf.summary.scalar(key, val, step=epoch_count)
+            writer.flush()
+        epoch_count.assign_add(1)
+
         metric = metric_dict[metric_name]
         if metric < previous_metric:
             print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
