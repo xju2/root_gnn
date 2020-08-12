@@ -19,7 +19,7 @@ setup(
     url="https://github.com/xju2/root_gnn",
     packages=find_packages(),
     install_requires=[
-        'tensorflow >= 2.1',
+        'tensorflow > 2.1',
         "graph_nets >= 1.1",
         "future",
         "networkx",
