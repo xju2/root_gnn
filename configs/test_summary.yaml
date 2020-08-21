@@ -11,6 +11,10 @@ parameters:
     epochs: 2
     earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
     acceptable_failure: 5
-    do_profiling: true
+    # do_profiling: true
+profiling: 
+    update_freq: 'batch'
+    profile_batch: 2
     profiling_steps: 1000
     do_profiling_only: true
+distributed: true

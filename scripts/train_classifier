@@ -13,6 +13,8 @@ import re
 import time
 import random
 import functools
+import six
+import nest
 
 import numpy as np
 import sklearn.metrics
@@ -123,25 +125,18 @@ if __name__ == "__main__":
         optimizer.apply(gradients, model.trainable_variables)
         return outputs_tr, loss_op_tr
 
+    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=5, keep_checkpoint_every_n_hours=1)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir,\
+        max_to_keep=3, keep_checkpoint_every_n_hours=1)
     checkpoint.restore(ckpt_manager.latest_checkpoint)
     if ckpt_manager.latest_checkpoint:
         print("Restore from {}".format(ckpt_manager.latest_checkpoint))
     else:
         print("Initializing from scratch.")
 
-    logged_iterations = []
-    losses_tr = []
-    corrects_tr = []
-    solveds_tr = []
-
     start_time = time.time()
-    last_log_time = start_time
-    ## loop over iterations, each iteration generating a batch of data for training
-    iruns = 0
-    # print("# (iteration number), TD (get graph), TR (TF run)")
-    last_iteration = 0
 
     # log information
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
@@ -152,8 +147,6 @@ if __name__ == "__main__":
     with open(log_name, 'a') as f:
         f.write(out_str)
 
-    # obtain the training step profiler
-    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
 
     ##====profiling====
     do_profiling = config_tr.get("do_profiling", False)
@@ -200,8 +193,19 @@ if __name__ == "__main__":
 
         #     tf.profiler.experimental.stop()
 
+            
+
 
     writer = tf.summary.create_file_writer(os.path.join(output_dir, "logs/{}/metrics".format(time_stamp)))
+    do_profiling = config_tr.get("do_profiling", False)
+    if do_profiling:
+        # computational graphs
+        func_log_dir = "logs/{}/funcs".format(time_stamp)
+        func_writer = tf.summary.create_file_writer(os.path.join(output_dir, func_log_dir))
+        # profiling for computing usages
+        profiling_steps = config_tr.get("profiling_steps", 10)
+        profile_logdir = os.path.join(output_dir, "logs/{}/profiling".format(time_stamp))
+
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
@@ -231,7 +235,7 @@ if __name__ == "__main__":
 
         eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
             ckpt_manager.checkpoint.save_counter.numpy()))
-        last_log_time = time.time()
+
         loss_tr = total_loss/num_batches
 
         elapsed = time.time() - start_time

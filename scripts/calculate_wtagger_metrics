@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 
+import math
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -106,7 +107,7 @@ if __name__ == "__main__":
         phi_gnn = df['{}Phi'.format(gnn_name)]
         phi_wboson = df["wbosonPhi"]
         phi_bins = 10
-        phi_range = (-3.2, 3.2)
+        phi_range = (-math.pi, math.pi)
         ax2.hist(phi_ljet, label='Leading jet', bins=phi_bins, range=phi_range, **figstyle)
         ax2.hist(phi_gnn, label=tag_name, bins=phi_bins, range=phi_range, **figstyle)
         ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)

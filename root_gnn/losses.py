@@ -74,6 +74,13 @@ class EdgeLoss:
         ]
         return tf.stack(loss_ops)    
 
+__all__ = (
+    "NodeEdgeLoss",
+    "GlobalLoss",
+    "EdgeGlobalLoss",
+    "EdgeLoss",
+)
+
 if __name__ == "__main__":
     node_edge_loss = NodeEdgeLoss(2, 1, 2, 1)
     node_edge_loss(1, 1)

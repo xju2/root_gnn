@@ -91,7 +91,21 @@ class IndexMgr:
 
 
 def load_yaml(file_name):
-    assert(os.path.exists(file_name))
+    find_file = False
+    if not os.path.exists(file_name):
+        import pkg_resources
+        try:
+            file_name = pkg_resources.resource_filename('root_gnn', os.path.join('configs', file_name))
+        except:
+            pass
+        finally:
+            find_file = True
+    else:
+        find_file = True
+
+    if not find_file:
+        raise FileNotFoundError(file_name,"missing")
+    
     with open(file_name) as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
