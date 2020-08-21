@@ -12,6 +12,7 @@ except ModuleNotFoundError:
 import os
 import six
 from types import SimpleNamespace
+import pprint
 
 from tensorflow.python.profiler import profiler_v2 as profiler
 
@@ -20,18 +21,18 @@ from root_gnn.src.datasets import graph
 from root_gnn import model as all_models
 from root_gnn import losses
 
+printer = pprint.PrettyPrinter(indent=2)
 class Trainer(object):
     def __init__(self, config, distribute=False):
         self._dist = self._init_workers(distribute)
-        if self.dist.rank == 0:
+        if self._dist.rank == 0:
             self._read_config(config)
-            print(self._args)
+            printer.pprint(self._args.__dict__)
         else:
             self._args = None
 
         if self._distributed:
             self._args = self._dist.comm.bcast(self._args, root=0)
-        self.execute()
 
     def _init_workers(self, distribute):
         if not no_horovod and distribute:
@@ -83,6 +84,7 @@ class Trainer(object):
         self._args.output_dir = output_dir
         self._args.model_name = model_name
         self._args.loss_name = loss_name
+        self._args.loss_args = config.get("loss_args", None)
 
         self._args.__dict__.update(**dict({
             "batch_size": 1,
@@ -90,7 +92,7 @@ class Trainer(object):
             "learing_rate": 0.005,
             "epochs": 1,
             "earlystop_metric": "auc_te",
-            "acceptable_failure": 1
+            "acceptable_fails": 1
         }))
         parameters = config.get('parameters', None)
         if parameters:

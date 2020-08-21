@@ -3,7 +3,8 @@ tfrec_dir_val: /global/cscratch1/sd/xju/WbosonTagger/tfrec_val_bigger/*_95.tfrec
 output_dir:  /global/cscratch1/sd/xju/WbosonTagger/trained
 prod_name: TESTSummary
 model_name: EdgeClassifier
-loss_name: EdgeLoss, 2, 1
+loss_name: EdgeLoss
+loss_args: 2, 1
 parameters:
     batch_size: 1
     n_iters: 5
