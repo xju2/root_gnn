@@ -1,5 +1,6 @@
 import tensorflow as tf
-from tensorflow.compat.v1 import logging 
+from tensorflow.compat.v1 import logging
+logging.set_verbosity("INFO")
 logging.info("TF Version:{}".format(tf.__version__))
 try:
     import horovod.tensorflow as hvd
@@ -21,21 +22,27 @@ from root_gnn.src.datasets import graph
 from root_gnn import model as all_models
 from root_gnn import losses
 
+verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
 printer = pprint.PrettyPrinter(indent=2)
 class Trainer(object):
-    def __init__(self, config, distribute=False):
-        self._dist = self._init_workers(distribute)
+    def __init__(self, config, distributed=False, verbose="INFO"):
+        if verbose.upper() not in verbosities:
+            raise ValueError("Allowed verbosities: {}".format(
+                ", ".join(verbosities)))
+        self._dist = self._init_workers(distributed)
         if self._dist.rank == 0:
             self._read_config(config)
-            printer.pprint(self._args.__dict__)
         else:
             self._args = None
 
         if self._distributed:
             self._args = self._dist.comm.bcast(self._args, root=0)
 
-    def _init_workers(self, distribute):
-        if not no_horovod and distribute:
+    def execute(self):
+        logging.info("I am rank {} of  total {} ranks".format(self._dist.rank, self._dist.size))
+
+    def _init_workers(self, distributed):
+        if not no_horovod and distributed:
             self._distributed = True
             hvd.init()
             assert hvd.mpi_threads_supported()
@@ -107,7 +114,6 @@ class Trainer(object):
         else:
             self._args.do_profiling = False
 
-
     def _init_profile_batch(self, profile_batch):
         """ Taken from Tensorboard """
         profile_error_message = (
@@ -139,9 +145,6 @@ class Trainer(object):
         # Setting `profile_batch=0` disables profiling.
         self._args.should_trace = not (self._args.start_batch == 0 and self._args.stop_batch == 0)
 
-    def execute(self):
-        pass
-    
     def _read_data(self, filenames):
         AUTO = tf.data.experimental.AUTOTUNE
         tr_filenames = tf.io.gfile.glob(filenames)

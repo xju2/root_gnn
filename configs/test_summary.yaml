@@ -18,4 +18,3 @@ profiling:
     profile_batch: 2
     profiling_steps: 1000
     do_profiling_only: true
-distributed: true
