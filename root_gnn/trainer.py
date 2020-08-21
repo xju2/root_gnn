@@ -15,7 +15,13 @@ import six
 from types import SimpleNamespace
 import pprint
 
+import numpy as np
+
 from tensorflow.python.profiler import profiler_v2 as profiler
+
+from graph_nets import utils_tf
+from graph_nets import utils_np
+import sonnet as snt
 
 from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
@@ -40,6 +46,16 @@ class Trainer(object):
 
     def execute(self):
         logging.info("I am rank {} of  total {} ranks".format(self._dist.rank, self._dist.size))
+        train_files, eval_files = self._get_train_eval_data()
+        logging.info("rank {} has {} training files and {} evaluation files".format(
+            self._dist.rank, len(train_files), len(eval_files)))
+        
+        training_dataset = self._read_data(train_files)
+        testing_dataset = self._read_data(eval_files)
+
+        learning_rate = self._args.learning_rate
+        optimizer = snt.
+
 
     def _init_workers(self, distributed):
         if not no_horovod and distributed:
@@ -99,7 +115,8 @@ class Trainer(object):
             "learing_rate": 0.005,
             "epochs": 1,
             "earlystop_metric": "auc_te",
-            "acceptable_fails": 1
+            "acceptable_fails": 1,
+            "shuffle_buffer_size": 4
         }))
         parameters = config.get('parameters', None)
         if parameters:
@@ -149,14 +166,32 @@ class Trainer(object):
         AUTO = tf.data.experimental.AUTOTUNE
         tr_filenames = tf.io.gfile.glob(filenames)
         n_files = len(tr_filenames)
-        print("Read {} files".format(n_files))
+        # print("Read {} files".format(n_files))
 
         dataset = tf.data.TFRecordDataset(tr_filenames)
         dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-        n_graphs = sum([1 for _ in dataset])
-        return (dataset, n_graphs)
+        buffer_size = self._args.shuffle_buffer_size * self._args.batch_size
+        reshuffle = True
+        if buffer_size <= 0:
+            buffer_size =  sum([1 for _ in dataset])
+            reshuffle = False # too much computation, not reshuffle
+        dataset = dataset.shuffle(buffer_size, seed=12345, reshuffle_each_iteration=reshuffle).prefetch(AUTO)
+        return dataset
 
+    def _get_train_eval_data(self):
+        if self._dist.rank == 0:
+            train_files = tf.io.gfile.glob(self._args.train_files)
+            eval_files = tf.io.gfile.glob(self._args.eval_files)
+            train_files = [x.tolist() for x in np.array_split(train_files, self._dist.size)]
+            eval_files = [x.tolist() for x in np.array_split(eval_files, self._dist.size)]
+        else:
+            train_files = None
+            eval_files = None
 
-        
-
-
+        if self._distributed:
+            train_files = self._dist.comm.scatter(train_files, root=0)
+            eval_files = self._dist.comm.scatter(eval_files, root=0)
+        else:
+            train_files = train_files[0]
+            eval_files = eval_files[0]
+        return train_files, eval_files
