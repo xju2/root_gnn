@@ -3,7 +3,6 @@ import ROOT # use TLorentzVector
 import numpy as np
 import pandas as pd
 import itertools
-from typing import Optional
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet

@@ -11,13 +11,15 @@ from root_gnn.src.models.edge_classifier import EdgeClassifier
 from root_gnn.src.models.edge_global_classifier import EdgeGlobalClassifier
 from root_gnn.src.models.global_classifier import GlobalClassifierNoEdgeInfo
 from root_gnn.src.models.node_edge_classifier import NodeEdgeClassifier
+from root_gnn.src.models.decay_simulator import DecaySimulator
 
 __all__ = (
     "GeneralClassifier",
     "EdgeClassifier",
     "EdgeGlobalClassifier",
     "GlobalClassifierNoEdgeInfo",
-    "NodeEdgeClassifier",   
+    "NodeEdgeClassifier",
+    "DecaySimulator",
 )
 
 # class MultiClassifier(snt.Module):

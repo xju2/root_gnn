@@ -1,0 +1,10 @@
+tfrec_dir_train: /mnt/d/Documents/MachineLearning/Hadronization/tfrec_train/*_*.tfrec
+tfrec_dir_val: /mnt/d/Documents/MachineLearning/Hadronization/tfrec_val/*_*.tfrec
+output_dir:  /mnt/d/Documents/MachineLearning/Hadronization/trained
+prod_name: test1
+parameters:
+    batch_size: 1
+    learning_rate: 0.0001
+    epochs: 100
+    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
+    acceptable_failure: 5

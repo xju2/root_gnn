@@ -44,5 +44,6 @@ setup(
         'scripts/evaluate_w_qcd_classifier',
         'scripts/evaluate_wtagger',
         'scripts/calculate_wtagger_metrics',
+        'scripts/train_decay_simulator',
     ],
 )

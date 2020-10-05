@@ -13,6 +13,8 @@ from root_gnn.src.datasets.wprime import WTaggerDataset
 from root_gnn.src.datasets.wprimefiltered import WTaggerFilteredDataset
 from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 
+from root_gnn.src.datasets.herwig_hadrons import HerwigHadrons
+
 __all__ = (
     "TopTaggerDataset",
     "FourTopDataset",
@@ -20,4 +22,5 @@ __all__ = (
     "WTaggerDataset",
     "WTaggerFilteredDataset",
     "WTaggerLeadingJetDataset",
+    "HerwigHadrons",
 )
