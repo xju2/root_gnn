@@ -10,12 +10,20 @@ class HadronParser:
     def process(self, evt):
         pid = evt.pdgID
         if pid == 81 and len(self.evt_info) > 0:
+            if self.n_nodes != 3:
+                print(evt)
             evt_info = []
             for key in sorted(self.evt_info.keys(), reverse=True):
                 evt_info += self.evt_info[key]
             self.evts.append(" ".join(["{:.04f}".format(x) for x in evt_info]))
             self.evt_info = {}
-        self.evt_info[evt.invMass] = [getattr(evt, name) for name in self.feature_names]
+            self.n_nodes = 0
+        self.n_nodes += 1
+        values = [getattr(evt, name) for name in self.feature_names]
+        if evt.invMass in self.evt_info:
+            self.evt_info[evt.invMass-1.1] = values
+        else:
+            self.evt_info[evt.invMass] = values
     
     def save(self, outname):
         with open(outname, 'w') as f:
@@ -25,6 +33,7 @@ class HadronParser:
     def reset(self):
         self.evt_info = {}
         self.evts = []
+        self.n_nodes = 0
 
 if __name__ == "__main__":
     import argparse

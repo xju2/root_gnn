@@ -119,7 +119,7 @@ if __name__ == "__main__":
         with tf.GradientTape() as tape:
             node_pred_tr, global_pred_tr = model(inputs_tr, num_processing_steps_tr)
             loss_ops_tr = loss_fcn(targets_tr, node_pred_tr, global_pred_tr)
-            loss_op_tr = tf.math.reduce_sum(loss_ops_tr)
+            loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(num_processing_steps_tr, dtype=tf.float32)
 
         gradients = tape.gradient(loss_op_tr, model.trainable_variables)
         optimizer.apply(gradients, model.trainable_variables)
@@ -138,36 +138,34 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    # log information
-    # out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
-    # out_str += '\n'
-    # out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
-    #     "AUC, Accuracy, Precision, Recall\n"
-    # log_name = os.path.join(output_dir, "log_training.txt")
-    # with open(log_name, 'a') as f:
-    #     f.write(out_str)
+    log information
+    out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
+    out_str += '\n'
+    out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
+        "AUC, Accuracy, Precision, Recall\n"
+    log_name = os.path.join(output_dir, "log_training.txt")
+    with open(log_name, 'a') as f:
+        f.write(out_str)
 
     previous_metric = 0.0
     threshold = 0.5
     n_fails = 0
 
-    # epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
+    epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
     now = time.time()
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
 
-        in_list = []
         for inputs in training_dataset:
             inputs_tr, targets_tr = inputs
-            # print("INPUT:", inputs_tr.nodes.shape)
             total_loss += update_step(inputs_tr, targets_tr).numpy()
             num_batches += 1
 
         ckpt_manager.save()
         elapsed = time.time() - start_time
-        print("{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(elapsed/60., epoch, total_loss, num_batches))
-        start_time = time.time()
+        print("{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(elapsed/60., epoch, total_loss/num_batches, num_batches))
+        start_time = time.time()        
 
         # eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
         #     ckpt_manager.checkpoint.save_counter.numpy()))
@@ -175,38 +173,35 @@ if __name__ == "__main__":
         # loss_tr = total_loss/num_batches
 
         # elapsed = time.time() - start_time
-        # inputs_te_list = []
-        # target_te_list = []
-        # predictions = []
-        # truth_info = []
+        # node_pred = [] # node prediction
+        # node_prop = [] # node properties
+        # truth_node_pred = []
+        # truth_node_prop = []
         # num_batches_te = 0
         # total_loss_te = 0
         # for inputs in testing_dataset:
         #     inputs_te, targets_te = inputs
-        #     inputs_te_list.append(inputs_te)
-        #     target_te_list.append(targets_te)
-        #     if len(inputs_te_list) == global_batch_size:
-        #         inputs_te = utils_tf.concat(inputs_te_list, axis=0)
-        #         targets_te = utils_tf.concat(target_te_list, axis=0)
-        #         outputs_te = model(inputs_te, num_processing_steps_tr)
-        #         total_loss_te += (tf.math.reduce_sum(
-        #             loss_fcn(targets_te, outputs_te))/tf.constant(
-        #                 num_processing_steps_tr, dtype=tf.float32)).numpy()
-        #         if loss_name == "GlobalLoss":
-        #             predictions.append(outputs_te[-1].globals)
-        #             truth_info.append(targets_te.globals)
-        #         else:
-        #             predictions.append(outputs_te[-1].edges)
-        #             truth_info.append(targets_te.edges)
-        #         inputs_te_list = []
-        #         target_te_list = []
-        #         num_batches_te += 1
+        #     node_pred_te, global_pred_te = model(inputs_te, num_processing_steps_tr)
+
+        #     total_loss_te += (tf.math.reduce_sum(
+        #         loss_fcn(targets_te, node_pred_te, global_pred_te))/tf.constant(
+        #             num_processing_steps_tr, dtype=tf.float32)).numpy()
+
+        #     node_pred.append(node_pred_te.numpy())
+        #     node_prop.append(global_pred_te.numpy())
+        #     truth_node_pred.append(targets_te.globals.numpy())
+        #     truth_node_prop.append(tf.concat([targets_te.nodes[1:, :],\
+        #         tf.zeros([1, targets_te.nodes.shape[1]])], axis=0).numpy())
+
+        #     num_batches_te += 1
 
         # loss_te = total_loss_te / num_batches_te
-        # predictions = np.concatenate(predictions, axis=0)
-        # truth_info = np.concatenate(truth_info, axis=0)
-        # # print(tf.math.reduce_sum(predictions).numpy(), tf.math.reduce_sum(truth_info).numpy())
+        # node_pred = np.concatenate(node_pred, axis=0)
+        # node_prop = np.concatenate(node_prop, axis=0)
+        # truth_node_pred = np.concatenate(truth_node_pred, axis=0)
+        # truth_node_prop = np.concatenate(truth_node_prop, axis=0)
 
+        # # node predictions
         # y_true, y_pred = (truth_info > threshold), (predictions > threshold)
         # fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
         # metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)

@@ -29,6 +29,7 @@ def make_graph(event, debug=False):
         return [(None, None)]
     elif nodes.shape[0] < max_nodes:
         print("nodes: {} less than maximum {}".format(nodes.shape[0], max_nodes))
+        print(event)
         new_nodes = np.zeros([max_nodes, 4], dtype=np.float32)
         new_nodes[:nodes.shape[0], :] = nodes
         nodes = new_nodes
