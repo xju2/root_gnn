@@ -1,0 +1,87 @@
+#!/usr/bin/env python 
+import numpy as np
+from matplotlib import pyplot as plt
+import sklearn.metrics
+
+from root_gnn import utils_plot
+from root_gnn.src.datasets import herwig_hadrons as hhdata
+from root_gnn.utils_plot import norm_weights
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot the metrics for Herwig hadronisation")
+    add_arg = parser.add_argument
+    add_arg("filename", help='numpy npz file containing the event info and predictions')
+    add_arg("outname", help='output name prefix')
+    args = parser.parse_args()
+
+    outname = args.outname
+    array =  np.load(args.filename)
+
+    num_processing_steps = hhdata.max_nodes
+
+    # ploting and labeling info
+    properties = ['E', 'px', 'py', 'pz']
+    prop_labels = ['E', 'P_{x}', 'P_{y}', 'P_{z}']
+    ppt = "(${0}$ - ${0}^\mathrm{{truth}}$) / ${0}^\mathrm{{truth}}$"
+    diff_labels = [ppt.format(x) for x in prop_labels]
+    figstyle = {
+        "alpha": 1.0,
+        'histtype': 'step',
+        'lw': 2,
+    }
+
+    for istep in range(num_processing_steps):
+        inode_preds = array['node_preds_{}'.format(istep)]
+        inode_preds_truth = array['node_preds_{}_truth'.format(istep)]
+        
+        # if to add a node...
+        threshold = 0.5
+        pred_y_true, _ = (inode_preds_truth > threshold), (inode_preds > threshold)
+        pred_fpr, pred_tpr, _ = sklearn.metrics.roc_curve(pred_y_true, inode_preds)
+        pred_auc = sklearn.metrics.auc(pred_fpr, pred_tpr)
+        print("AUC: {:0.4f}".format(pred_auc))
+        utils_plot.plot_metrics(inode_preds, inode_preds_truth,
+                            outname="{}_node_{}_preds.pdf".format(outname, istep),
+                            true_label="Add",
+                            fake_label="Stop",
+                            y_label="Nodes",
+                            x_label='Node score',
+                            eff_purity_label="Threshold on node score",
+                            )
+
+        pred_name = 'node_props_{}_{}'
+        truth_name = 'node_props_{}_{}_truth'
+        for iprop,propname in enumerate(properties):
+            inode_props = array[pred_name.format(istep, iprop)]
+            inode_props_truth = array[truth_name.format(istep, iprop)]
+            diff = (inode_props - inode_props_truth) / inode_props_truth
+
+            ax = utils_plot.create_one_fig()            
+            _, _, patches = ax.hist(diff, bins=100, range=(-3, 3), **figstyle)
+            utils_plot.add_mean_std(diff, -2.0, 100, ax, color='b', dy=10)
+            ax.set_xlabel(diff_labels[iprop])
+            ax.set_ylabel("Events")
+            plt.savefig("{}_node_{}_diff_{}.pdf".format(outname, istep, propname))
+            plt.clf()
+
+        # compare the predicted distribution and the ground truth
+        _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
+        axs = axs.flatten()
+        for ax in axs:
+            utils_plot.set_xaxis(ax)
+        # ax0, ax1, ax2, ax3 = axs
+        scale = 10.
+        xranges = [(0, 40), (-30, 30), (-30, 30), (-30, 30)]
+        for iprop in range(4):
+            axs[iprop].hist(array[pred_name.format(istep, iprop)]*scale,\
+                label='GNN', bins=100, range=xranges[iprop], **figstyle)
+            axs[iprop].hist(array[truth_name.format(istep, iprop)]*scale,\
+                label='Herwig', bins=100, range=xranges[iprop], **figstyle)
+            axs[iprop].set_xlabel("${}$ [GeV]".format(prop_labels[iprop]))
+            axs[iprop].set_ylabel("Events")
+            axs[iprop].legend()
+
+        plt.savefig("{}_node_{}_props.pdf".format(outname, istep))
+
+    

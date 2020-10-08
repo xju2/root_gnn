@@ -30,15 +30,6 @@ if __name__ == "__main__":
     if not os.path.exists(args.config):
         print("{} does not exists", args.config)
 
-    # ploting and labeling info
-    properties = ['E', 'px', 'py', 'pz']
-    ppt = "(${0}$ - ${0}_\mathrm{{truth}}$) / ${0}_\mathrm{{truth}}$"
-    diff_labels = [ppt.format(x) for x in properties]
-    figstyle = {
-        "alpha": 1.0,
-        'histtype': 'step',
-        'lw': 2,
-    }
 
     # load data
     filenames = tf.io.gfile.glob(args.filenames)
@@ -66,10 +57,6 @@ if __name__ == "__main__":
         node_pred, global_pred = model(inputs, num_processing_steps)
         global_pred = tf.squeeze(tf.concat(global_pred, axis=-1))
 
-        # print("node properties", node_pred)
-        # print("to add a node", global_pred)
-
-
         node_preds.append(global_pred)
         node_props.append(node_pred)
         truth_node_pred.append(tf.squeeze(targets.globals).numpy())
@@ -77,37 +64,22 @@ if __name__ == "__main__":
             tf.zeros([1, targets.nodes.shape[1]])], axis=0).numpy())
         ievt += 1
 
-
+    res_nps = {}
+    # the evaluation is performed for each step, in which a global score indicates
+    # if a new node to be added. The higher the value is the more likely the node is added.
+    # And in the mean time, predict the four-momentum of the new nodes.
     for istep in range(num_processing_steps):
-        istep = 0
         inode_preds = np.array([x[istep] for x in node_preds])
-        # node_prop = np.concatenate(node_prop, axis=0)
         truth_inode_pred = np.array([x[istep] for x in truth_node_pred])
-        # truth_node_prop = np.concatenate(truth_node_prop, axis=0)
-        
-        # node predictions
-        threshold = 0.5
-        pred_y_true, _ = (truth_inode_pred > threshold), (inode_preds > threshold)
-        pred_fpr, pred_tpr, _ = sklearn.metrics.roc_curve(pred_y_true, inode_preds)
-        pred_auc = sklearn.metrics.auc(pred_fpr, pred_tpr)
-        print("AUC: {:0.4f}".format(pred_auc))
-        utils_plot.plot_metrics(inode_preds, truth_inode_pred,
-                            outname="{}_node_{}_preds.pdf".format(outname, istep),
-                            true_label="Add",
-                            fake_label="Stop",
-                            y_label="Nodes",
-                            x_label='Node score',
-                            eff_purity_label="Threshold on node score",
-                            )
 
-        for iprop,propname in enumerate(properties):
+        res_nps['node_preds_{}'.format(istep)] = inode_preds
+        res_nps['node_preds_{}_truth'.format(istep)] = inode_preds
+
+        for iprop in range(4):
             inode_props = np.array([x[istep][iprop] for x in node_props])
             inode_props_truth = np.array([x[istep][iprop] for x in truth_node_prop])
-            diff = (inode_props - inode_props_truth) / inode_props_truth
 
-            _, ax = plt.subplots(1, 1, figsize=(5,5), constrained_layout=True)
-            _, _, patches = ax.hist(diff, bins=100, range=(-3, 3), **figstyle)
-            ax.set_xlabel(diff_labels[iprop])
-            ax.set_ylabel("Events")
-            plt.savefig("{}_node_{}_prop_{}.pdf".format(outname, istep, propname))
-            plt.clf()
+            res_nps['node_props_{}_{}'.format(istep, iprop)] = inode_props
+            res_nps['node_props_{}_{}_truth'.format(istep, iprop)] = inode_props_truth
+
+    np.savez(args.outname+".npz", **res_nps)
