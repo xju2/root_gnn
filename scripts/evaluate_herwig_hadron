@@ -47,6 +47,7 @@ if __name__ == "__main__":
     node_props = [] # node properties
     truth_node_pred = []
     truth_node_prop = []
+    root_props = []
 
     ievt = 0  
     for event in dataset:
@@ -59,12 +60,14 @@ if __name__ == "__main__":
 
         node_preds.append(global_pred)
         node_props.append(node_pred)
+        root_props.append(inputs.nodes)
         truth_node_pred.append(tf.squeeze(targets.globals).numpy())
         truth_node_prop.append(tf.concat([targets.nodes[1:, :],\
             tf.zeros([1, targets.nodes.shape[1]])], axis=0).numpy())
         ievt += 1
 
     res_nps = {}
+    res_nps["root_node_props"] = np.concatenate(root_props, axis=0)
     # the evaluation is performed for each step, in which a global score indicates
     # if a new node to be added. The higher the value is the more likely the node is added.
     # And in the mean time, predict the four-momentum of the new nodes.

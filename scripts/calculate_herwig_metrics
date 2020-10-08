@@ -1,4 +1,5 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
+# TODO: use the node prediction to determine if to add a new node. <xju>
 import numpy as np
 from matplotlib import pyplot as plt
 import sklearn.metrics
@@ -30,7 +31,10 @@ if __name__ == "__main__":
         'histtype': 'step',
         'lw': 2,
     }
+    scale = 10.
+    xranges = [(0, 40), (-30, 30), (-30, 30), (-30, 30)]
 
+    pred_root_props = []
     for istep in range(num_processing_steps):
         inode_preds = array['node_preds_{}'.format(istep)]
         inode_preds_truth = array['node_preds_{}_truth'.format(istep)]
@@ -50,12 +54,15 @@ if __name__ == "__main__":
                             eff_purity_label="Threshold on node score",
                             )
 
+        # two decay products
         pred_name = 'node_props_{}_{}'
         truth_name = 'node_props_{}_{}_truth'
+        all_node_props = []
         for iprop,propname in enumerate(properties):
             inode_props = array[pred_name.format(istep, iprop)]
             inode_props_truth = array[truth_name.format(istep, iprop)]
             diff = (inode_props - inode_props_truth) / inode_props_truth
+            all_node_props.append(np.expand_dims(inode_props, axis=1))
 
             ax = utils_plot.create_one_fig()            
             _, _, patches = ax.hist(diff, bins=100, range=(-3, 3), **figstyle)
@@ -65,14 +72,16 @@ if __name__ == "__main__":
             plt.savefig("{}_node_{}_diff_{}.pdf".format(outname, istep, propname))
             plt.clf()
 
+        all_node_props = np.concatenate(all_node_props, axis=1)
+        print(all_node_props.shape)
+        pred_root_props.append(all_node_props)
+
         # compare the predicted distribution and the ground truth
         _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
         axs = axs.flatten()
         for ax in axs:
             utils_plot.set_xaxis(ax)
-        # ax0, ax1, ax2, ax3 = axs
-        scale = 10.
-        xranges = [(0, 40), (-30, 30), (-30, 30), (-30, 30)]
+        # ax0, ax1, ax2, ax3 = axs=
         for iprop in range(4):
             axs[iprop].hist(array[pred_name.format(istep, iprop)]*scale,\
                 label='GNN', bins=100, range=xranges[iprop], **figstyle)
@@ -84,4 +93,45 @@ if __name__ == "__main__":
 
         plt.savefig("{}_node_{}_props.pdf".format(outname, istep))
 
-    
+    # compare the vector sum of the four-momentum of the decay products with the root particle.
+    n_evts = pred_root_props[0].shape[0]
+    print("total {:,} events".format(n_evts))
+    sum_e = np.sum(np.concatenate([x[:, 0:1] for x in pred_root_props[:-1]], axis=1), axis=1)
+    sum_px = np.sum(np.concatenate([x[:, 1:2] for x in pred_root_props[:-1]], axis=1), axis=1)
+    sum_py = np.sum(np.concatenate([x[:, 2:3] for x in pred_root_props[:-1]], axis=1), axis=1)
+    sum_pz = np.sum(np.concatenate([x[:, 3:4] for x in pred_root_props[:-1]], axis=1), axis=1)
+    inv_mass = np.sqrt(sum_e**2 - sum_px**2 - sum_py**2 - sum_pz**2)*scale
+    root_node_props = array['root_node_props']
+    root_node_invs = np.sqrt(root_node_props[:, 0]**2 - root_node_props[:, 1]**2 - root_node_props[:, 2]**2 - root_node_props[:,3]**2)*scale
+    print(sum_e.shape)
+    print(sum_px.shape)
+
+    # compare the predicted distribution and the ground truth
+    _, axs = plt.subplots(2, 2, figsize=(12, 10),constrained_layout=True)
+    axs = axs.flatten()
+    for ax in axs:
+        utils_plot.set_xaxis(ax)
+    # ax0, ax1, ax2, ax3 = axs
+    sum_predicts = [sum_e, sum_px, sum_py, sum_py]
+
+    for iprop in range(4):
+        axs[iprop].hist(sum_predicts[iprop]*scale,\
+            label='GNN', bins=100, range=xranges[iprop], **figstyle)
+        axs[iprop].hist(root_node_props[:, iprop]*scale,\
+            label='Herwig', bins=100, range=xranges[iprop], **figstyle)
+        axs[iprop].set_xlabel("${}$ [GeV]".format(prop_labels[iprop]))
+        axs[iprop].set_ylabel("Events")
+        axs[iprop].legend()
+    plt.savefig("{}_node_sum_props.pdf".format(outname))
+    plt.clf()
+
+    print(inv_mass.shape)
+    print(root_node_invs.shape)
+    ax = utils_plot.create_one_fig()
+    mass_range = (0, 50)
+    ax.hist(inv_mass, label="GNN", bins=100, range=mass_range, **figstyle)
+    ax.hist(root_node_invs, label="Herwig", bins=100, range=mass_range, **figstyle)
+    ax.set_xlabel("$M$ [GeV]")
+    ax.set_ylabel("Events")
+    ax.legend()
+    plt.savefig("{}_node_sum_invmass.pdf".format(outname))
