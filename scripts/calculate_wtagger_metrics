@@ -7,24 +7,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import sklearn.metrics
 
-from bisect import bisect
 from root_gnn import utils_plot
-
-def norm_weights(array):
-    return np.ones(len(array))/len(array)
-
-def add_mean_std(array, x, y, ax, color=1, dy=0.3, digits=2, fontsize=12, with_std=True):
-    this_mean, this_std = np.mean(array), np.std(array)
-    ax.text(x, y, "Mean: {0:.{1}f}".format(this_mean, digits), color=color, fontsize=12)
-    if with_std:
-        ax.text(x, y-dy, "Standard Deviation: {0:.{1}f}".format(this_std, digits), color=color, fontsize=12)
-
-def set_xaxis(ax):
-    ax.minorticks_on()
-    axsecond = ax.secondary_xaxis('top')
-    axsecond.minorticks_on()
-    axsecond.tick_params(axis='x', which='both', direction='in', labeltop=False)
-    return ax
+from root_gnn.utils_plot import norm_weights, add_mean_std, set_xaxis
 
 if __name__ == "__main__":
     import argparse
