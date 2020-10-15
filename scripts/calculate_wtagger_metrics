@@ -97,7 +97,8 @@ if __name__ == "__main__":
         eta_range = (-5, 5)
         ax1.hist(eta_ljet, label='Leading jet', bins=eta_bins, range=eta_range, **figstyle)
         ax1.hist(eta_gnn, label=tag_name, bins=eta_bins, range=eta_range, **figstyle)
-        ax1.hist(eta_wboson, label='W boson', bins=eta_bins, range=eta_range, **figstyle)
+        if not args.no_w:
+            ax1.hist(eta_wboson, label='W boson', bins=eta_bins, range=eta_range, **figstyle)
         # df[['{}Eta'.format(x) for x in cols]].plot.hist(ax=ax1, **figstyle)
         ax1.set_xlabel(r"$\eta$")
         ax1.set_ylabel("Events")
@@ -110,7 +111,8 @@ if __name__ == "__main__":
         phi_range = (-math.pi, math.pi)
         ax2.hist(phi_ljet, label='Leading jet', bins=phi_bins, range=phi_range, **figstyle)
         ax2.hist(phi_gnn, label=tag_name, bins=phi_bins, range=phi_range, **figstyle)
-        ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)
+        if not args.no_w:
+            ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)
         ax2.set_xlabel(r"$\phi$")
         ax2.set_ylabel("Events")
         ax2.legend(legend, loc='center')
@@ -122,7 +124,8 @@ if __name__ == "__main__":
         mass_range = (0, 200)
         ax3.hist(mass_ljet, label='Leading jet', bins=mass_bins, range=mass_range, **figstyle)
         ax3.hist(mass_gnn, label=tag_name, bins=mass_bins, range=mass_range, **figstyle)
-        ax3.hist(mass_wboson, label='W boson', bins=mass_bins, range=mass_range, **figstyle)
+        if not args.no_w:
+            ax3.hist(mass_wboson, label='W boson', bins=mass_bins, range=mass_range, **figstyle)
         ax3.set_xlabel("M [GeV]")
         ax3.set_ylabel("Events / 5 GeV")
         ax3.legend(legend)

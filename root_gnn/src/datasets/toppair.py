@@ -109,6 +109,4 @@ class ToppairDataSet(DataSet):
 #         print(chain.m_jet_pt)
 #         print(chain.m_jet_eta)
 #         zeros = np.array([0.0], dtype=np.float32)
-
-
 #         make_graph(chain)

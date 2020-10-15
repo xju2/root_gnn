@@ -13,7 +13,7 @@ from graph_nets import blocks
 import sonnet as snt
 
 NUM_LAYERS = 2    # Hard-code number of layers in the edge/node/global models.
-LATENT_SIZE = 128  # Hard-code latent layer sizes for demos.
+LATENT_SIZE = 64  # Hard-code latent layer sizes for demos.
 # DROPOUT_RATE = 0.2  # 0 means no dropout
 
 def make_mlp_model():
@@ -28,12 +28,12 @@ def make_mlp_model():
   # the activation function choices:
   # swish, relu, relu6, leaky_relu
   return snt.Sequential([
-      snt.nets.MLP([LATENT_SIZE]*NUM_LAYERS,
+      snt.nets.MLP([128, 64]*NUM_LAYERS,
                     activation=tf.nn.relu,
                     activate_final=True, 
                   #  dropout_rate=DROPOUT_RATE
         ),
-      snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+      snt.LayerNorm(axis=-1, create_scale=True, create_offset=False)
   ])
 
 class MLPGraphIndependent(snt.Module):

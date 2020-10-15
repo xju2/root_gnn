@@ -14,7 +14,6 @@ import time
 import random
 import functools
 import six
-import nest
 
 import numpy as np
 import sklearn.metrics
@@ -63,11 +62,6 @@ if __name__ == "__main__":
     val_filenames = tf.io.gfile.glob(config['tfrec_dir_val'])
     n_val = len(val_filenames)
 
-    print("Input file names: ", tr_filenames)
-    print("{} training files".format(n_train))
-    print("{} evaluation files".format(n_val))
-    print("Model saved at {}".format(output_dir))
-
     shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
     AUTO = tf.data.experimental.AUTOTUNE
     # options = tf.data.Options()
@@ -88,6 +82,11 @@ if __name__ == "__main__":
     shuffle_eval_size = n_test_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
     testing_dataset = testing_dataset.shuffle(shuffle_eval_size, seed=12345, reshuffle_each_iteration=False)
     testing_dataset = testing_dataset.prefetch(AUTO)
+
+    print("Input file names: ", tr_filenames)
+    print("{} training files, {:,} Events".format(n_train, n_train_graphs))
+    print("{} evaluation files, {:,} Events".format(n_val, n_test_graphs))
+    print("Model saved at {}".format(output_dir))
 
     learning_rate = config_tr['learning_rate']
     # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
@@ -193,7 +192,6 @@ if __name__ == "__main__":
 
         #     tf.profiler.experimental.stop()
 
-            
 
 
     writer = tf.summary.create_file_writer(os.path.join(output_dir, "logs/{}/metrics".format(time_stamp)))
