@@ -1,0 +1,13 @@
+tfrec_dir_train:  /global/cscratch1/sd/xju/TopPairEvts/train/*_*.tfrec
+tfrec_dir_val: /global/cscratch1/sd/xju/TopPairEvts/val/*_*.tfrec
+output_dir:  /global/cscratch1/sd/xju/TopPairEvts/gnn_output/run100
+prod_name: noedge_fullevts_bigger
+model_name: EdgeClassifier
+loss_name: EdgeLoss, 2, 1
+parameters:
+    batch_size: 1
+    n_iters: 5
+    learning_rate: 0.0005
+    epochs: 10
+    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
+    acceptable_failure: 5

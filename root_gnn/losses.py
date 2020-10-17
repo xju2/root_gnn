@@ -67,9 +67,10 @@ class EdgeLoss:
         self.w_edge_fake = fake_edge_weight
 
     def __call__(self, target_op, output_ops):
-        edge_weights = target_op.edges * self.w_edge_real + (1 - target_op.edges) * self.w_edge_fake
+        t_edges = tf.squeeze(target_op.edges)
+        edge_weights = t_edges * self.w_edge_real + (1 - t_edges) * self.w_edge_fake
         loss_ops = [
-            tf.compat.v1.losses.log_loss(target_op.edges, output_op.edges, weights=edge_weights)
+            tf.compat.v1.losses.log_loss(t_edges, tf.squeeze(output_op.edges), weights=edge_weights) 
                 for output_op in output_ops 
         ]
         return tf.stack(loss_ops)    
