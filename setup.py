@@ -46,6 +46,8 @@ setup(
         'scripts/calculate_wtagger_metrics',
         'scripts/train_decay_simulator',
         'scripts/evaluate_herwig_hadron',
-        'scripts/calculate_herwig_metrics'
+        'scripts/calculate_herwig_metrics',
+        'scripts/split_files_for_nn',
+        'scripts/train_top_reco',
     ],
 )

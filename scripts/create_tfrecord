@@ -12,6 +12,8 @@ if __name__ == "__main__":
                      'WTaggerLeadingJetDataset',
                      'HerwigHadrons',
                      'ToppairDataSet',
+                     'TopReco',
+                     'HiggsYYGen',
                      ])
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')

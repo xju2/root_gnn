@@ -105,18 +105,18 @@ class DataSet(object):
                 ievt += 1
                 continue
 
-            ievt += 1
             if max_evts > 0 and ievt > max_evts:
                 break
 
             gen_graphs = self.make_graph(event, debug)
             if gen_graphs[0][0] is None:
-                ievt -= 1
+            
                 ifailed += 1
                 continue
 
             self.graphs += gen_graphs
             self.n_evts += 1
+            ievt += 1
 
             if save and ievt % n_evts_per_record == 0:
                 self.tot_data = len(self.graphs)
@@ -124,8 +124,10 @@ class DataSet(object):
                 self.graphs = []
                 self.n_evts = 0
 
-        ievt -= 1
-        self.tot_data = len(self.graphs)
+        if len(self.graphs) > 0:
+            # save left over graphs
+            self.write_tfrecord(outname, len(self.graphs))
+            
         read_time = time.time() - now
         print("{} added {:,} events, in {:.1f} mins".format(self.__class__.__name__,
             ievt, read_time/60.))

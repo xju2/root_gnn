@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+
+import os
+import tensorflow as tf
+from types import SimpleNamespace
+import random
+
+def my_copy(src, dest):
+    os.symlink(src, dest)
+    # tf.io.gfile.copy
+    
+
+def split(input_dir, output_dir, pattern, no_shuffle, **kwargs):
+
+    pattern = "*.tfrec" if pattern is None else pattern
+    file_dir = os.path.join(input_dir, pattern)
+    datatypes = ['train', 'val', 'test']
+
+    outdirs = SimpleNamespace(**dict(zip(datatypes, [os.path.join(output_dir, x) for x in datatypes])))
+    [os.makedirs(x, exist_ok=True) for x in outdirs.__dict__.values()]
+
+    all_files = tf.io.gfile.glob(file_dir)
+    if not no_shuffle:
+        print("Shuffling input files")
+        random.shuffle(all_files)
+
+    n_files = len(all_files)
+    print("Total {} files".format(n_files))
+
+    train_frac, val_frac = 0.8, 0.1 
+
+    n_train = int(train_frac*n_files)
+    n_val = int(val_frac*n_files)
+    n_test = n_files - n_train - n_val
+    print("Training   {} files".format(n_train))
+    print("Validation {} files".format(n_val))
+    print("Testing    {} files".format(n_test))
+
+    for file_name in all_files[:n_train]:
+        dest = os.path.join(outdirs.train, os.path.basename(file_name))
+        my_copy(file_name, dest)
+
+    for file_name in all_files[n_train:n_train+n_val]:
+        dest = os.path.join(outdirs.val, os.path.basename(file_name))
+        my_copy(file_name, dest)
+
+    for file_name in all_files[n_train+n_val:]:
+        dest = os.path.join(outdirs.test, os.path.basename(file_name))
+        my_copy(file_name, dest)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="split files in a folder into train, val and test")
+    add_arg = parser.add_argument
+    add_arg("input_dir", help="input directory")
+    add_arg("output_dir", help="output directory")
+    add_arg("--pattern", help='input data pattern',)
+    add_arg("--no-shuffle", help='shuffle input files', action='store_true')
+    args = parser.parse_args()
+
+    split(**args.__dict__)
+    

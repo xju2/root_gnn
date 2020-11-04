@@ -96,18 +96,15 @@ if __name__ == "__main__":
         graph.specs_from_graphs_tuple(targets, with_batch_dim),
     )
 
-    # loss_config = config['loss_name'].split(',')
-    # loss_name = loss_config[0]
-    # loss_fcn = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
+
     def loss_fcn(target_op, node_output_ops, global_output_ops):
         nodes_target = tf.concat([target_op.nodes[1:, :], tf.zeros([1, target_op.nodes.shape[1]])],\
             axis=0, name='nodes_target')
-        # loss_ops = [tf.nn.l2_loss(node_output_ops[i]-nodes_target[i]) for i in range(len(node_output_ops))]
+
         loss_ops = tf.nn.l2_loss((node_output_ops - nodes_target))
 
         global_target = target_op.globals
-        # print(global_output_ops)
-        # print(global_target)
+
         global_output_ops = tf.concat(global_output_ops, axis=-1)
         loss_ops += [tf.compat.v1.losses.log_loss(global_target, global_output_ops)]
         return tf.stack(loss_ops)
@@ -138,7 +135,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    log information
+    # log information
     out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
     out_str += '\n'
     out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
