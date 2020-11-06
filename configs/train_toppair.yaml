@@ -11,3 +11,4 @@ parameters:
     epochs: 10
     earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
     acceptable_failure: 5
+    # shuffle_buffer_size: 2

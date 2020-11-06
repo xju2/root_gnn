@@ -3,7 +3,6 @@ import itertools
 import math
 from typing import Optional
 from graph_nets import utils_tf
-import ROOT
 
 from root_gnn.src.datasets.base import DataSet
 
@@ -90,6 +89,7 @@ def make_graph(event, debug=False):
     return [(input_graph, target_graph)]
 
 def read(filename):
+    import ROOT
     tree_name = "nominal_Loose"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)

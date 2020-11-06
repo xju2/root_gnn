@@ -4,9 +4,28 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_input_particle_features = 5
-n_target_node_features = 5
-n_node_features = 5
+n_target_node_features = 7 # top 4-vector, charge (2 bits), and p is-there
+n_node_features = 5 # jet 4-vector and b-tagging
 n_max_tops = 4
+
+onehot_charge_matrix = [
+    [1, 1], # 0
+    [0, 1], # +1
+    [1, 0], # -1
+    [0, 0], # No charge info
+]
+onehot_charge_dict = {
+  0: 0,  # 0
+  1: 1,  # +1
+  -1: 2, # -1
+  2: 3   # not defined
+}
+
+def one_hot_encoder(id):
+    return onehot_charge_matrix[onehot_charge_dict[id]]
+
+def sign(a):
+    return int(a > 0) * 1 + int(a < 0) * (-1)
 
 def num_particles(event):
     return len(event) // n_input_particle_features
@@ -42,7 +61,7 @@ def make_graph(event, debug=False):
         event[inode*n_input_particle_features+2], # py
         event[inode*n_input_particle_features+3], # pz
         event[inode*n_input_particle_features+4],  # E
-        0, 
+        event[inode*n_input_particle_features], # b-tagging
     ] for inode in range(n_tops, n_particles)]
 
     jet_nodes = np.array(jet_nodes, dtype=np.float32) * scale
@@ -82,6 +101,7 @@ def make_graph(event, debug=False):
         event[inode*n_input_particle_features+2], # py
         event[inode*n_input_particle_features+3], # pz
         event[inode*n_input_particle_features+4], # E
+        *one_hot_encoder(sign(inode*n_input_particle_features)), # charge info
         1 # is a top
     ] for inode in range(0, n_tops)]
     top_nodes = np.array(top_nodes, dtype=np.float32)
@@ -106,7 +126,7 @@ def make_graph(event, debug=False):
 def read(filename):
     with open(filename, 'r') as f:
         for line in f:
-            yield [float(x) for x in line.split()]
+            yield [float(x) for x in line.split(',')]
 
 
 class TopReco(DataSet):

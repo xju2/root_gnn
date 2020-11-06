@@ -1,5 +1,4 @@
 import numpy as np
-import ROOT
 import itertools
 
 from graph_nets import utils_tf
@@ -56,6 +55,7 @@ def make_graph(event, debug=False):
 
 
 def read(filename):
+    import ROOT
     tree_name = "output"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)

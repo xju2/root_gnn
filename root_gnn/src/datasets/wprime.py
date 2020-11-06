@@ -1,4 +1,3 @@
-import ROOT # use TLorentzVector
 
 import numpy as np
 import pandas as pd
@@ -8,7 +7,6 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_node_features = 7
-ZERO = ROOT.TLorentzVector() # pylint: disable=maybe-no-member
 
 def num_particles(event):
     return len(event) // n_node_features
@@ -97,6 +95,9 @@ def make_graph(event, debug=False, data_dict=False):
         return [(input_graph, target_graph)]
 
 def evaluate_evt(event):
+    import ROOT
+    ZERO = ROOT.TLorentzVector() # pylint: disable=maybe-no-member
+
     # pylint: disable=maybe-no-member
     n_features = n_node_features
     n_particles = len(event) // n_features
@@ -136,6 +137,9 @@ def evaluate_evt(event):
 
 def invariant_mass(event, p_list):
     # pylint: disable=maybe-no-member
+    import ROOT # use TLorentzVector
+    ZERO = ROOT.TLorentzVector() # pylint: disable=maybe-no-member
+
     if len(p_list) < 1:
         return ZERO
     
@@ -179,6 +183,8 @@ def read(filename):
 
 def evt_img(event):
     # pylint: disable=maybe-no-member
+    import ROOT # use TLorentzVector
+
     n_particles = len(event) // n_node_features
     particles = [
         ROOT.TLorentzVector(ROOT.TVector3(

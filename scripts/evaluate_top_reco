@@ -1,0 +1,69 @@
+#!/usr/bin/env python 
+import os
+
+import tensorflow as tf
+import numpy as np
+import sklearn.metrics
+
+import matplotlib.pyplot as plt
+
+from root_gnn.src.datasets import graph
+from root_gnn.src.models import model_utils
+from root_gnn.src.datasets import topreco
+
+from root_gnn import utils_plot
+
+ckpt_name = 'checkpoint'
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Evaluate Top Reco.')
+    add_arg = parser.add_argument
+    add_arg("filenames", help="input event files in TFRec format")
+    add_arg("config", help="configuration file used for training")
+    add_arg("outname", help='output name prefix')
+    add_arg("--nevts", default=-1, help='number of events', type=int)
+    args = parser.parse_args()
+
+    outname = args.outname
+
+    if not os.path.exists(args.config):
+        print("{} does not exists", args.config)
+
+
+    # load data
+    filenames = tf.io.gfile.glob(args.filenames)
+    AUTO = tf.data.experimental.AUTOTUNE
+    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    nevts = sum([1 for _ in dataset])
+    print("{} files and {:,} events".format(len(filenames), nevts))
+    print("maximum number of tops: {}".format(topreco.n_max_tops))
+
+    model, num_processing_steps, _ = model_utils.create_load_model(args.config)
+
+    top1_pred = []
+    top1_truth = []
+    top2_pred = []
+    top2_truth = []
+
+    ievt = 0  
+    for event in dataset:
+        if args.nevts > 0 and ievt >= args.nevts:
+            break
+
+        inputs, targets = event
+        output_ops = model(inputs, num_processing_steps)
+        output = output_ops[-1]
+        top1_pred.append(output.nodes[0, :]) # to keep 2D
+        top1_truth.append(targets.nodes[0, :])
+        top2_pred.append(output.nodes[1, :])
+        top2_truth.append(targets.nodes[1, :])
+        ievt += 1
+
+    res_nps = {}
+    res_nps['top1_pred'] = np.concatenate(top1_pred, axis=0).reshape((-1, 7))
+    res_nps['top1_truth'] = np.concatenate(top1_truth, axis=0).reshape((-1, 7))
+    res_nps['top2_pred'] = np.concatenate(top2_pred, axis=0).reshape((-1, 7))
+    res_nps['top2_truth'] = np.concatenate(top2_truth, axis=0).reshape((-1, 7))
+    np.savez(args.outname+".npz", **res_nps)

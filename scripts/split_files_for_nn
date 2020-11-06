@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import random
 
 def my_copy(src, dest):
-    os.symlink(src, dest)
+    os.symlink(os.path.abspath(src), dest)
     # tf.io.gfile.copy
     
 

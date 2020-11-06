@@ -23,7 +23,7 @@ id_dict = {
 }
 
 def one_hot_encoder(id):
-    return one_hot_matrix(id_dict[id])
+    return one_hot_matrix[id_dict[id]]
 
 
 def make_graph(event, debug=False):
