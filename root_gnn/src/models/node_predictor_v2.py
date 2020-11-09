@@ -7,7 +7,8 @@ from graph_nets import blocks
 
 from graph_nets.modules import InteractionNetwork
 
-from root_gnn.src.datasets.topreco import n_target_node_features
+from root_gnn.src.datasets.topreco_v2 import n_target_node_features, n_max_tops
+from root_gnn.src.models.base import MLPGraphNetwork
 from root_gnn.src.models.base import make_mlp_model
 
 LATENT_SIZE = 128
@@ -39,31 +40,27 @@ class FourTopPredictor(snt.Module):
             name='node_encoder_block'
         )
 
-        self._core = InteractionNetwork(
-            edge_model_fn=make_mlp_model,
-            node_model_fn=make_mlp_model,
-            reducer=tf.math.unsorted_segment_sum
-        )
-
-        # Transforms the outputs into appropriate shapes.
-        node_output_size = 7
-        node_fn = lambda: snt.nets.MLP([node_output_size],
-                        activation=tf.nn.relu, # default is relu
-                        name='node_output')
-
-        # self._output_transform = modules.GraphIndependent(node_model_fn=node_fn)
-        self._output_transform = blocks.NodeBlock(
-            node_model_fn=node_fn,
-            use_received_edges=True,
-            use_sent_edges=True,
+        self._global_block = blocks.GlobalBlock(
+            global_model_fn=make_mlp_model,
+            use_edges=True,
             use_nodes=True,
             use_globals=False,
-            name='node_decoder_block'
         )
+
+        self._core = MLPGraphNetwork()
+
+        # Transforms the outputs into appropriate shapes.
+        global_output_size = n_target_node_features * n_max_tops
+        global_fn = lambda: snt.nets.MLP([global_output_size],
+                        activation=tf.nn.relu, # default is relu
+                        name='global_output')
+
+        # self._output_transform = modules.GraphIndependent(node_model_fn=node_fn)
+        self._output_transform = modules.GraphIndependent(None, None, global_fn)
 
 
     def __call__(self, input_op, num_processing_steps):
-        latent = self._edge_block(self._node_encoder_block(input_op))
+        latent = self._global_block(self._edge_block(self._node_encoder_block(input_op)))
         latent0 = latent
 
         output_ops = []
@@ -71,6 +68,8 @@ class FourTopPredictor(snt.Module):
             core_input = utils_tf.concat([latent0, latent], axis=1)
             latent = self._core(core_input)
 
+            output = self._output_transform(latent)
+            output = output.replace(globals=tf.squeeze(output.globals))
             output_ops.append(self._output_transform(latent))
 
         return output_ops

@@ -53,8 +53,13 @@ if __name__ == "__main__":
             break
 
         inputs, targets = event
+        print(inputs.nodes)
+        print(inputs.senders)
+        print(inputs.receivers)
         output_ops = model(inputs, num_processing_steps)
         output = output_ops[-1]
+        print(output.nodes[:4, :])
+        print(targets.nodes)
         top1_pred.append(output.nodes[0, :]) # to keep 2D
         top1_truth.append(targets.nodes[0, :])
         top2_pred.append(output.nodes[1, :])
