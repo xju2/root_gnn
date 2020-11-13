@@ -189,8 +189,11 @@ if __name__ == "__main__":
             if len(in_list) == global_batch_size:
                 inputs_tr = utils_tf.concat(in_list, axis=0)
                 targets_tr = utils_tf.concat(target_list, axis=0)
+
+                # scale target values
                 new_target = (targets_tr.globals - target_mean) / target_scales
                 targets_tr = targets_tr.replace(globals=new_target)
+
                 total_loss += update_step(inputs_tr, targets_tr).numpy()
                 in_list = []
                 target_list = []
