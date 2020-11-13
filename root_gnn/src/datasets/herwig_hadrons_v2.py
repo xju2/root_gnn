@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+import re
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
@@ -45,13 +46,13 @@ def make_graph(event, debug=False):
     # rows: particles, 
     # columns: uid, child1, child2, pdgid, 4-momentum
     array = np.array(array)
-    nodes = array[:, 4].astype(np.float32)
+    nodes = array[:, 4:].astype(np.float32)
 
     if nodes.shape[0] > max_nodes:
         print("cluster decays to more than {} nodes".format(max_nodes))
         return [(None, None)]
 
-    n_nodes = nodes.shape[0] - 1
+    n_nodes = nodes.shape[0]
     senders = np.concatenate([array[array[:, 1] > 0, 0].astype(np.int32), array[array[:, 2] > 0, 0].astype(np.int32)])
     receivers = np.concatenate([array[array[:, 1] > 0, 1].astype(np.int32), array[array[:, 2] > 0, 2].astype(np.int32)])
     
@@ -65,7 +66,7 @@ def make_graph(event, debug=False):
     input_datadict = {
         "n_node": 1,
         "n_edge": 1,
-        "nodes": nodes[0, :].reshape((1, -1)),
+        "nodes": nodes[0:1, :],
         "edges": np.expand_dims(np.array([1.0]*1, dtype=np.float32), axis=1),
         "senders": np.array([0]),
         "receivers": np.array([0]),
@@ -85,7 +86,6 @@ def make_graph(event, debug=False):
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     # padding the graph if number of nodes is less than max-nodes??
     # not sure it is nessary..
-
 
     return [(input_graph, target_graph)]
 

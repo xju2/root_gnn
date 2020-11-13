@@ -121,8 +121,11 @@ if __name__ == "__main__":
         
         loss_ops = [tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
             + tf.compat.v1.losses.log_loss(
-                tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
-                tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
+                tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5], tf.int32),\
+                tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5]))
+            + tf.compat.v1.losses.log_loss(
+                tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
+                tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
             for output_op in output_ops
         ]
 
