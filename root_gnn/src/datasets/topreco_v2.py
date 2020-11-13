@@ -27,6 +27,9 @@ def one_hot_encoder(id):
 def sign(a):
     return int(a > 0) * 1 + int(a < 0) * (-1)
 
+def encode_charge(a):
+    return 1 if a > 0 else 0
+
 def num_particles(event):
     return len(event) // n_input_particle_features
 
@@ -90,7 +93,8 @@ def make_graph(event, debug=False):
         event[inode*n_input_particle_features+2], # py
         event[inode*n_input_particle_features+3], # pz
         event[inode*n_input_particle_features+4], # E
-        sign(event[inode*n_input_particle_features]),
+        encode_charge(event[inode*n_input_particle_features]), # charge
+        # sign(event[inode*n_input_particle_features]),
         # *one_hot_encoder(sign(event[inode*n_input_particle_features])), # charge info
         1 # is a top
     ] for inode in range(0, n_tops)]

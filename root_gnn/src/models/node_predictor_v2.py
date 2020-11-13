@@ -51,7 +51,7 @@ class FourTopPredictor(snt.Module):
 
         # Transforms the outputs into appropriate shapes.
         global_output_size = n_target_node_features * n_max_tops
-        global_fn = lambda: snt.nets.MLP([global_output_size],
+        global_fn = lambda: snt.nets.MLP([128, global_output_size],
                         activation=tf.nn.relu, # default is relu
                         name='global_output')
 
