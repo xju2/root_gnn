@@ -129,18 +129,21 @@ if __name__ == "__main__":
         # ]
         
         alpha = tf.constant(1.0, dtype=tf.float32)
-        loss_ops = [alpha * tf.compat.v1.losses.mean_squared_error(
-                        target_op.globals[:, :n_max_tops*4],
-                        output_op.globals[:, :n_max_tops*4])
-            + tf.compat.v1.losses.log_loss(
-                tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5], tf.int32),\
-                tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5]))
+        # loss_fn = tf.compat.v1.losses.mean_squared_error
+        # loss_fn = tf.compat.v1.losses.huber_loss
+        loss_ops = [
+            loss_fn(
+                target_op.globals[:, :n_max_tops*4],
+                output_op.globals[:, :n_max_tops*4], delta=1.0)
+
+            # + tf.compat.v1.losses.log_loss(
+            #     tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
+            #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
             # + tf.compat.v1.losses.log_loss(
             #     tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
             #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
             for output_op in output_ops
         ]
-
         return tf.stack(loss_ops)
 
 
