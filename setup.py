@@ -52,7 +52,7 @@ setup(
         'root_gnn/scripts/evaluate_herwig_hadron',
         'root_gnn/scripts/calculate_herwig_metrics',
         'root_gnn/scripts/split_files_for_nn',
-        'root_gnn/scripts/train_top_reco',
+        'root_gnn/scripts/train_top_reco.py',
         'root_gnn/scripts/evaluate_top_reco',
         'root_gnn/scripts/calculate_topreco_metrics',
     ],
