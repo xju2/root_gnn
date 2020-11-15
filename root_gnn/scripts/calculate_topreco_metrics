@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from root_gnn.src.datasets import topreco_v2 as topreco
 from root_gnn import utils
-from root_gnn.scripts.train_top_reco import target_scales, target_mean
+from root_gnn.scripts import train_top_reco import target_scales, target_mean
 
 max_tops = topreco.n_max_tops
 

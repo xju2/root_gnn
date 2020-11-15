@@ -24,6 +24,11 @@ from root_gnn.src.datasets import topreco_v2 as topreco
 from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
 
+
+target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).T.reshape((-1,))
+target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).T.reshape((-1,))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train GNN for predicting Top quark properties')
     add_arg = parser.add_argument
@@ -181,8 +186,6 @@ if __name__ == "__main__":
 
     epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
     now = time.time()
-    target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).T.reshape((-1,))
-    target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).T.reshape((-1,))
     out_str = ""
     for epoch in range(n_epochs):
         total_loss = 0.
