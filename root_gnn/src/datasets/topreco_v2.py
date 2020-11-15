@@ -128,8 +128,7 @@ def make_graph(event, debug=False):
 def read(filename):
     with open(filename, 'r') as f:
         for line in f:
-            yield [float(x) for x in line.split(',')]
-
+            yield [float(x) for x in line.split()]
 
 class TopReco(DataSet):
     def __init__(self, *args, **kwargs):

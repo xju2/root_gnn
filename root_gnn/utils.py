@@ -40,7 +40,7 @@ def read_log(file_name):
 def plot_log(info, name, axs=None):
     fontsize = 16
     minor_size = 14
-    if type(info) is not 'numpy.ndarray':
+    if type(info) != 'numpy.ndarray':
         info = np.array(info)
     df = pd.DataFrame(info, columns=['iteration', 'time', 'loss_train', 'loss_test', 'precision', 'recall'])
 
@@ -120,3 +120,8 @@ def calc_dphi(phi1, phi2):
     if dphi < -np.pi:
         dphi += 2*np.pi
     return dphi
+
+def check_dir(filename):
+    abs_dir = os.path.dirname(os.path.abspath(filename))
+    if not os.path.exists(abs_dir):
+        os.makedirs(abs_dir)

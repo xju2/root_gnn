@@ -28,9 +28,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train GNN for predicting Top quark properties')
     add_arg = parser.add_argument
     add_arg('config', help='configuration file')
+    add_arg("--no-gpu", help='do not use GPU', action='store_true')
     args = parser.parse_args()
 
     config = load_yaml(args.config)
+    if args.no_gpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
     # add ops to save and restore all the variables
     prod_name = config['prod_name']
@@ -104,7 +107,8 @@ if __name__ == "__main__":
         graph.specs_from_graphs_tuple(targets, with_batch_dim),
     )
 
-
+    # n_max_tops = topreco.n_max_tops
+    n_max_tops = 2
     def loss_fcn(target_op, output_ops):
         # print("target size: ", target_op.nodes.shape)
         # print("output size: ", output_ops[0].nodes.shape)
@@ -119,13 +123,16 @@ if __name__ == "__main__":
         #     for output_op in output_ops
         # ]
         
-        loss_ops = [tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
+        alpha = tf.constant(1.0, dtype=tf.float32)
+        loss_ops = [alpha * tf.compat.v1.losses.mean_squared_error(
+                        target_op.globals[:, :n_max_tops*4],
+                        output_op.globals[:, :n_max_tops*4])
             + tf.compat.v1.losses.log_loss(
                 tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5], tf.int32),\
                 tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5]))
-            + tf.compat.v1.losses.log_loss(
-                tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
-                tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
+            # + tf.compat.v1.losses.log_loss(
+            #     tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
+            #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
             for output_op in output_ops
         ]
 
@@ -176,6 +183,7 @@ if __name__ == "__main__":
     now = time.time()
     target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).T.reshape((-1,))
     target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).T.reshape((-1,))
+    out_str = ""
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
@@ -202,5 +210,9 @@ if __name__ == "__main__":
 
         ckpt_manager.save()
         elapsed = time.time() - start_time
-        print("{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(elapsed/60., epoch, total_loss/num_batches/global_batch_size, num_batches))
+        out_the_epoch = "{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(
+            elapsed/60., epoch, total_loss/num_batches/global_batch_size, num_batches)
+        print(out_the_epoch)
+        with open(log_name, 'a') as f:
+            f.write(out_the_epoch + "\n")
         start_time = time.time()

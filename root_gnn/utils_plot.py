@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 
 import sklearn.metrics
 
-from more_itertools import pairwise
-
 fontsize=16
 minor_size=14
 
@@ -234,6 +232,8 @@ def pixel_matrix(pixel_cluster, show=False):
 
 def plot_ratio(tot, sel, label_tot, label_sel,
                     xlabel, title, outname, **plot_options):
+                    
+    from more_itertools import pairwise
     plt.clf()
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(10, 12), sharex=True, gridspec_kw={'height_ratios':[4, 1]})
     fig.subplots_adjust(hspace=0)

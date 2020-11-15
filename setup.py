@@ -49,6 +49,7 @@ setup(
         'scripts/calculate_herwig_metrics',
         'scripts/split_files_for_nn',
         'scripts/train_top_reco',
-        'scripts/evaluate_top_reco'
+        'scripts/evaluate_top_reco',
+        'scripts/calculate_topreco_metrics',
     ],
 )
