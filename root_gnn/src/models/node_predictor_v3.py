@@ -52,13 +52,15 @@ class FourTopPredictor(snt.Module):
 
         # Transforms the outputs into appropriate shapes.
         global_output_size = n_target_node_features * n_max_tops
-        global_fn = lambda: snt.nets.MLP([128, global_output_size],
-                        activation=tf.nn.relu, # default is relu
-                        name='global_output')
-        self._output_transform = modules.GraphIndependent(None, None, global_fn)
+        self._global_nn = snt.nets.MLP([128, 128, global_output_size],
+                        activation=tf.nn.tanh, # default is relu
+                        dropout_rate=0.10,
+                        name='global_output'
+                    )
 
 
-    def __call__(self, input_op, num_processing_steps, is_train=True):
+
+    def __call__(self, input_op, num_processing_steps, is_training=True):
         latent = self._global_block(self._edge_block(self._node_encoder_block(input_op)))
         latent0 = latent
 
@@ -67,8 +69,7 @@ class FourTopPredictor(snt.Module):
             core_input = utils_tf.concat([latent0, latent], axis=1)
             latent = self._core(core_input)
 
-            output = self._output_transform(latent)
-            output = output.replace(globals=tf.squeeze(output.globals))
-            output_ops.append(self._output_transform(latent))
+            output = latent.replace(globals=self._global_nn(latent.globals, is_training))
+            output_ops.append(output)
 
         return output_ops

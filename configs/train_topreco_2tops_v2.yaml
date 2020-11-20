@@ -1,7 +1,7 @@
-tfrec_dir_train: /global/homes/x/xju/work/TopReco/tthyy/inputs/train/ttH_1*
+tfrec_dir_train: /global/homes/x/xju/work/TopReco/tthyy/inputs/train/ttH_12*
 tfrec_dir_val: /global/homes/x/xju/work/TopReco/tthyy/inputs/val/*
 output_dir:  /global/homes/x/xju/work/TopReco/tthyy/trained
-prod_name: test6
+prod_name: test7
 model_name: FourTopPredictor # don't change!
 parameters:
     batch_size: 500

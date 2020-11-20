@@ -6,7 +6,7 @@ from root_gnn.src.datasets.base import DataSet
 n_input_particle_features = 5
 n_target_node_features = 6 # for each top [top 4-vector, charge (2 bits), and p is-there]
 n_node_features = 5 # jet 4-vector and b-tagging
-n_max_tops = 4
+n_max_tops = 2
 
 onehot_charge_matrix = [
     [1, 1], # 0
@@ -128,7 +128,7 @@ def make_graph(event, debug=False):
 def read(filename):
     with open(filename, 'r') as f:
         for line in f:
-            yield [float(x) for x in line.split(',')]
+            yield [float(x) for x in line.split()]
 
 
 class TopReco(DataSet):
