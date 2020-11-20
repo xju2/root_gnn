@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import time
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Create TFRecord of graphs for training')
@@ -19,6 +21,7 @@ if __name__ == "__main__":
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
     add_arg("--model-config", help='configuration file for training', default=None)
+    add_arg("--num-workers", help='number of threads', default=1, type=int)
 
 
     args = parser.parse_args()
@@ -29,6 +32,7 @@ if __name__ == "__main__":
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
     print("Data type:", args.type)
+    print("# of workers:", args.num_workers)
 
     if args.type is None:
         print("Specify a data type via --type")
@@ -48,6 +52,11 @@ if __name__ == "__main__":
         if args.signal:
             data.signal()
 
-    data.process(filename=args.input_file, save=True, outname=outname,\
+    now = time.time()
+
+    data.process(filename=args.input_file, outname=outname,\
         n_evts_per_record=n_evts_per_record, debug=args.debug,
-        max_evts=args.max_evts)
+        max_evts=args.max_evts, num_workers=args.num_workers)
+    
+    read_time = time.time() - now
+    print("{} finished in {:.1f} mins".format(data.__class__.__name__, read_time/60.))
