@@ -140,6 +140,10 @@ if __name__ == "__main__":
             for output_op in output_ops
         ]
 
+        # loss_ops = [tf.compat.v1.losses.mean_squared_error(target_op.globals[:, :topreco.n_max_tops*4], output_op.globals[:, :topreco.n_max_tops*4])
+        #     for output_op in output_ops
+        # ]
+
         return tf.stack(loss_ops)
 
 
