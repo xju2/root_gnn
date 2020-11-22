@@ -126,34 +126,40 @@ if __name__ == "__main__":
         #     + tf.compat.v1.losses.log_loss(tf.cast(target_op.nodes[:, 6], tf.int32),  tf.math.sigmoid(output_op.nodes[:topreco.n_max_tops, 6]))
         #     for output_op in output_ops
         # ]
-        
-        alpha = tf.constant(1.0, dtype=tf.float32)
-        loss_fn = tf.compat.v1.losses.mean_squared_error
-        output_op = output_ops[-1]
-        loss_ops = loss_fn(target_op.globals[:, :n_max_tops*4], output_op.globals[:, :n_max_tops*4])
-        return loss_ops
-        # loss_fn = tf.compat.v1.losses.huber_loss
-        # loss_ops = [
-        #     loss_fn(
-        #         target_op.globals[:, :n_max_tops*4],
-        #         output_op.globals[:, :n_max_tops*4])
 
-        #     # + tf.compat.v1.losses.log_loss(
-        #     #     tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
-        #     #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
-        #     # + tf.compat.v1.losses.log_loss(
-        #     #     tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
-        #     #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
+        # loss_ops = [tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4])) / target_op.globals.shape[0]
+        #     + tf.compat.v1.losses.log_loss(
+        #         tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5], tf.int32),\
+        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5]))
+        #     + tf.compat.v1.losses.log_loss(
+        #         tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
+        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:]))
         #     for output_op in output_ops
         # ]
-        # return tf.stack(loss_ops)
+        # alpha = tf.constant(1, dtype=tf.float32)
+        # loss_ops = [alpha * tf.compat.v1.losses.mean_squared_error(target_op.globals[:, :topreco.n_max_tops*4], output_op.globals[:, :topreco.n_max_tops*4])
+        #     + tf.compat.v1.losses.log_loss(
+        #         tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
+        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
+        #     for output_op in output_ops
+        # ]
+
+        loss_ops = [ tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
+            for output_op in output_ops
+        ]
+
+        # loss_ops = [tf.compat.v1.losses.mean_squared_error(target_op.globals[:, :topreco.n_max_tops*4], output_op.globals[:, :topreco.n_max_tops*4])
+        #     for output_op in output_ops
+        # ]
+
+        return tf.stack(loss_ops)
 
 
     @functools.partial(tf.function, input_signature=input_signature)
     def update_step(inputs_tr, targets_tr):
         print("Tracing update_step")
         with tf.GradientTape() as tape:
-            output_graphs_tr = model(inputs_tr, num_processing_steps_tr)
+            output_graphs_tr = model(inputs_tr, num_processing_steps_tr, is_training=True)
             # print(output_graphs_tr[-1].globals.shape)
             # print(targets_tr.globals.shape)
             loss_ops_tr = loss_fcn(targets_tr, output_graphs_tr)
@@ -191,7 +197,8 @@ if __name__ == "__main__":
 
     epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
     now = time.time()
-    out_str = ""
+    target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).reshape((topreco.n_max_tops, -1)).T.reshape((-1,))
+    target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).reshape((topreco.n_max_tops, -1)).T.reshape((-1,))
     for epoch in range(n_epochs):
         total_loss = 0.
         num_batches = 0
@@ -218,9 +225,8 @@ if __name__ == "__main__":
 
         ckpt_manager.save()
         elapsed = time.time() - start_time
-        out_the_epoch = "{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(
-            elapsed/60., epoch, total_loss/num_batches/global_batch_size, num_batches)
-        print(out_the_epoch)
+        out_str = "{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(elapsed/60., epoch, total_loss/num_batches/global_batch_size, num_batches)
         with open(log_name, 'a') as f:
-            f.write(out_the_epoch + "\n")
+            f.write(out_str + "\n")
+        print(out_str)
         start_time = time.time()
