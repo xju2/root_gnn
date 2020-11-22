@@ -112,8 +112,7 @@ if __name__ == "__main__":
         graph.specs_from_graphs_tuple(targets, with_batch_dim),
     )
 
-    # n_max_tops = topreco.n_max_tops
-    n_max_tops = 2
+    n_max_tops = topreco.n_max_tops
     def loss_fcn(target_op, output_ops):
         # print("target size: ", target_op.nodes.shape)
         # print("output size: ", output_ops[0].nodes.shape)
@@ -129,22 +128,25 @@ if __name__ == "__main__":
         # ]
         
         alpha = tf.constant(1.0, dtype=tf.float32)
-        # loss_fn = tf.compat.v1.losses.mean_squared_error
+        loss_fn = tf.compat.v1.losses.mean_squared_error
+        output_op = output_ops[-1]
+        loss_ops = loss_fn(target_op.globals[:, :n_max_tops*4], output_op.globals[:, :n_max_tops*4])
+        return loss_ops
         # loss_fn = tf.compat.v1.losses.huber_loss
-        loss_ops = [
-            loss_fn(
-                target_op.globals[:, :n_max_tops*4],
-                output_op.globals[:, :n_max_tops*4], delta=1.0)
+        # loss_ops = [
+        #     loss_fn(
+        #         target_op.globals[:, :n_max_tops*4],
+        #         output_op.globals[:, :n_max_tops*4])
 
-            # + tf.compat.v1.losses.log_loss(
-            #     tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
-            #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
-            # + tf.compat.v1.losses.log_loss(
-            #     tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
-            #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
-            for output_op in output_ops
-        ]
-        return tf.stack(loss_ops)
+        #     # + tf.compat.v1.losses.log_loss(
+        #     #     tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
+        #     #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
+        #     # + tf.compat.v1.losses.log_loss(
+        #     #     tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
+        #     #     tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:])) 
+        #     for output_op in output_ops
+        # ]
+        # return tf.stack(loss_ops)
 
 
     @functools.partial(tf.function, input_signature=input_signature)

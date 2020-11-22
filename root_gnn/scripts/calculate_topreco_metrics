@@ -7,12 +7,14 @@ from root_gnn import utils
 from root_gnn.scripts.train_top_reco import target_scales, target_mean
 
 max_tops = topreco.n_max_tops
+# max_tops = 4
 
 def make_plot(predicts, truths, top_idx, outname):
     # 4 vectors
     _, axs = plt.subplots(2, 2, constrained_layout=True)
     axs = axs.flatten()
     ranges = [(-500, 500), (-500, 500), (-1000, 1000), (0, 2000)]
+    xbins = [20, 20, 20, 20]
     hist_style = {
         "lw": 2, "histtype": 'step', 'alpha': 1.0,
     }
@@ -20,11 +22,11 @@ def make_plot(predicts, truths, top_idx, outname):
     for idx in range(4):
         ax = axs[idx]
         offset = idx * max_tops + top_idx
-        ax.hist(predicts[:, offset], range=ranges[idx], **hist_style, label='predictions')
-        ax.hist(truths[:, offset], range=ranges[idx], **hist_style, label='truths')
+        ax.hist(predicts[:, offset], bins=xbins[idx], range=ranges[idx], **hist_style, label='predictions')
+        ax.hist(truths[:, offset], bins=xbins[idx], range=ranges[idx], **hist_style, label='truths')
         ax.set_xlabel(xlabels[idx])
         ax.set_ylabel("Events")
-        ax.legend()
+        # ax.legend()
         ax.grid()
     plt.savefig("{}_top{}_4vector.pdf".format(outname, top_idx))
 
@@ -47,10 +49,9 @@ def make_plot(predicts, truths, top_idx, outname):
     config = {
         "bins": 100,
         "range": (0, 1),
-        "lw": 2
     }
-    ax.hist(predicts[:, offset], **config, label='predictions')
-    ax.hist(truths[:, offset], **config, label='truths')
+    ax.hist(predicts[:, offset], **config,  **hist_style, label='predictions')
+    ax.hist(truths[:, offset], **config,  **hist_style, label='truths')
     ax.set_xlabel("P")
     ax.set_ylabel("Events")
     plt.savefig("{}_top{}_prob.pdf".format(outname, top_idx))
@@ -72,3 +73,6 @@ if __name__ == "__main__":
     predicts = predicts * target_scales  + target_mean
 
     make_plot(predicts, truths, 0, args.outname)
+    make_plot(predicts, truths, 1, args.outname)
+    make_plot(predicts, truths, 2, args.outname)
+    make_plot(predicts, truths, 3, args.outname)
