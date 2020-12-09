@@ -36,58 +36,6 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def _get_signature(self, this_graph):
-        if self.input_dtype and self.target_dtype:
-            return 
-        if this_graph[0] is None:
-            raise RuntimeError("Wrong graph input")
-
-        ex_input, ex_target = this_graph
-        self.input_dtype, self.input_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_input, with_padding=self.with_padding)
-        self.target_dtype, self.target_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_target, with_padding=self.with_padding)
-    
-
-    def write_tfrecord(self, graphs, filename, n_evts_per_record=10, n_graphs_per_evt=1):
-        self._get_signature(graphs[0])
-        def generator():
-            for G in graphs:
-                yield (G[0], G[1])
-
-        dataset = tf.data.Dataset.from_generator(
-            generator,
-            output_types=(self.input_dtype, self.target_dtype),
-            output_shapes=(self.input_shape, self.target_shape),
-            args=None)
-
-        n_evts = len(graphs) // n_graphs_per_evt
-        n_files = n_evts//n_evts_per_record
-        if n_evts%n_evts_per_record > 0:
-            n_files += 1
-
-        print("In total {} graphs, {} graphs per event".format(len(graphs), n_graphs_per_evt))
-        print("In total {} events, write to {} files".format(n_evts, n_files))
-        abs_outdir = os.path.dirname(os.path.abspath(filename))
-        if not os.path.exists(abs_outdir):
-            os.makedirs(abs_outdir)
-
-        n_files_saved = 0
-        igraph = -1
-        ifile = -1
-        writer = None
-        n_graphs_per_record = n_graphs_per_evt * n_evts_per_record
-        for data in dataset:
-            igraph += 1
-            if igraph % n_graphs_per_record == 0:
-                ifile += 1
-                if writer is not None:
-                    writer.close()
-                outname = "{}_{}.tfrec".format(filename, n_files_saved+ifile)
-                writer = tf.io.TFRecordWriter(outname)
-            example = graph.serialize_graph(*data)
-            writer.write(example)
-
     def subprocess(self, ijob, n_evts_per_record, num_evts, filename, outname, debug):
         ievt = -1
         ifailed = 0

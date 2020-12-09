@@ -1,14 +1,7 @@
-<<<<<<< HEAD:root_gnn/configs/train_topreco_2tops_v2.yaml
 tfrec_dir_train: /global/homes/x/xju/work/TopReco/tthyy/inputs/train/*
 tfrec_dir_val: /global/homes/x/xju/work/TopReco/tthyy/inputs/val/*
 output_dir:  /global/homes/x/xju/work/TopReco/tthyy/trained
 prod_name: test2
-=======
-tfrec_dir_train: /global/homes/x/xju/work/TopReco/tthyy/inputs/train/ttH_12*
-tfrec_dir_val: /global/homes/x/xju/work/TopReco/tthyy/inputs/val/*
-output_dir:  /global/homes/x/xju/work/TopReco/tthyy/trained
-prod_name: test7
->>>>>>> b7823ea12fa8aef958378d2e51f733c3f3da3d9f:configs/train_topreco_2tops_v2.yaml
 model_name: FourTopPredictor # don't change!
 parameters:
     batch_size: 500
