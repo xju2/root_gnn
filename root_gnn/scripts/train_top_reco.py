@@ -214,7 +214,12 @@ def train_and_evaluate(args):
         #     for output_op in output_ops
         # ]
 
-        loss_ops = [ tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
+        # loss_ops = [ tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
+        #     for output_op in output_ops
+        # ]
+        loss_ops = [ tf.compat.v1.losses.absolute_difference(
+                            target_op.globals[:, :topreco.n_max_tops*4],\
+                            output_op.globals[:, :topreco.n_max_tops*4])
             for output_op in output_ops
         ]
 
@@ -266,7 +271,8 @@ def train_and_evaluate(args):
             total_loss += train_step(input_tr, targets_tr, batch==0).numpy()
             batch += 1
         logging.info("total batches: {}".format(batch))
-        return total_loss/batch/args.batch_size, batch
+        return total_loss/batch, batch
+        # return total_loss/batch/args.batch_size, batch
 
     out_str  = "Start training " + time.strftime('%d %b %Y %H:%M:%S', time.localtime())
     out_str += '\n'
