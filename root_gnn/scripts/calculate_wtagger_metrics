@@ -1,29 +1,14 @@
 #!/usr/bin/env python
 import os
 
+import math
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import sklearn.metrics
 
-from bisect import bisect
 from root_gnn import utils_plot
-
-def norm_weights(array):
-    return np.ones(len(array))/len(array)
-
-def add_mean_std(array, x, y, ax, color=1, dy=0.3, digits=2, fontsize=12, with_std=True):
-    this_mean, this_std = np.mean(array), np.std(array)
-    ax.text(x, y, "Mean: {0:.{1}f}".format(this_mean, digits), color=color, fontsize=12)
-    if with_std:
-        ax.text(x, y-dy, "Standard Deviation: {0:.{1}f}".format(this_std, digits), color=color, fontsize=12)
-
-def set_xaxis(ax):
-    ax.minorticks_on()
-    axsecond = ax.secondary_xaxis('top')
-    axsecond.minorticks_on()
-    axsecond.tick_params(axis='x', which='both', direction='in', labeltop=False)
-    return ax
+from root_gnn.utils_plot import norm_weights, add_mean_std, set_xaxis
 
 if __name__ == "__main__":
     import argparse
@@ -96,7 +81,8 @@ if __name__ == "__main__":
         eta_range = (-5, 5)
         ax1.hist(eta_ljet, label='Leading jet', bins=eta_bins, range=eta_range, **figstyle)
         ax1.hist(eta_gnn, label=tag_name, bins=eta_bins, range=eta_range, **figstyle)
-        ax1.hist(eta_wboson, label='W boson', bins=eta_bins, range=eta_range, **figstyle)
+        if not args.no_w:
+            ax1.hist(eta_wboson, label='W boson', bins=eta_bins, range=eta_range, **figstyle)
         # df[['{}Eta'.format(x) for x in cols]].plot.hist(ax=ax1, **figstyle)
         ax1.set_xlabel(r"$\eta$")
         ax1.set_ylabel("Events")
@@ -106,10 +92,11 @@ if __name__ == "__main__":
         phi_gnn = df['{}Phi'.format(gnn_name)]
         phi_wboson = df["wbosonPhi"]
         phi_bins = 10
-        phi_range = (-3.2, 3.2)
+        phi_range = (-math.pi, math.pi)
         ax2.hist(phi_ljet, label='Leading jet', bins=phi_bins, range=phi_range, **figstyle)
         ax2.hist(phi_gnn, label=tag_name, bins=phi_bins, range=phi_range, **figstyle)
-        ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)
+        if not args.no_w:
+            ax2.hist(phi_wboson, label='W boson', bins=phi_bins, range=phi_range, **figstyle)
         ax2.set_xlabel(r"$\phi$")
         ax2.set_ylabel("Events")
         ax2.legend(legend, loc='center')
@@ -121,7 +108,8 @@ if __name__ == "__main__":
         mass_range = (0, 200)
         ax3.hist(mass_ljet, label='Leading jet', bins=mass_bins, range=mass_range, **figstyle)
         ax3.hist(mass_gnn, label=tag_name, bins=mass_bins, range=mass_range, **figstyle)
-        ax3.hist(mass_wboson, label='W boson', bins=mass_bins, range=mass_range, **figstyle)
+        if not args.no_w:
+            ax3.hist(mass_wboson, label='W boson', bins=mass_bins, range=mass_range, **figstyle)
         ax3.set_xlabel("M [GeV]")
         ax3.set_ylabel("Events / 5 GeV")
         ax3.legend(legend)

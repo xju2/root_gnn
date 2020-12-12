@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 
 import sklearn.metrics
 
-from more_itertools import pairwise
-
 fontsize=16
 minor_size=14
 
@@ -234,6 +232,8 @@ def pixel_matrix(pixel_cluster, show=False):
 
 def plot_ratio(tot, sel, label_tot, label_sel,
                     xlabel, title, outname, **plot_options):
+                    
+    from more_itertools import pairwise
     plt.clf()
     fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(10, 12), sharex=True, gridspec_kw={'height_ratios':[4, 1]})
     fig.subplots_adjust(hspace=0)
@@ -250,3 +250,25 @@ def plot_ratio(tot, sel, label_tot, label_sel,
     ax1.set_xlabel(xlabel)
     ax1.set_ylabel('ratio')
     plt.savefig(outname)
+
+
+def norm_weights(array):
+    return np.ones(len(array))/len(array)
+
+def add_mean_std(array, x, y, ax, color='k', dy=0.3, digits=2, fontsize=12, with_std=True):
+    this_mean, this_std = np.mean(array), np.std(array)
+    ax.text(x, y, "mean: {0:.{1}f}".format(this_mean, digits), color=color, fontsize=12)
+    if with_std:
+        ax.text(x, y-dy, "std: {0:.{1}f}".format(this_std, digits), color=color, fontsize=12)
+
+def set_xaxis(ax):
+    ax.minorticks_on()
+    axsecond = ax.secondary_xaxis('top')
+    axsecond.minorticks_on()
+    axsecond.tick_params(axis='x', which='both', direction='in', labeltop=False)
+    return ax
+
+def create_one_fig():
+    _, ax = plt.subplots(1, 1, figsize=(5, 5))
+    set_xaxis(ax)
+    return ax

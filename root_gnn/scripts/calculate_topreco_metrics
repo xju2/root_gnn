@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+import numpy as np
+import matplotlib.pyplot as plt
+
+from root_gnn.src.datasets import topreco_v2 as topreco
+from root_gnn import utils
+from root_gnn.scripts.train_top_reco import target_scales, target_mean
+
+max_tops = topreco.n_max_tops
+# max_tops = 4
+
+def make_plot(predicts, truths, top_idx, outname):
+    # 4 vectors
+    _, axs = plt.subplots(2, 2, constrained_layout=True)
+    axs = axs.flatten()
+    ranges = [(-500, 500), (-500, 500), (-1000, 1000), (0, 2000)]
+    xbins = [20, 20, 20, 20]
+    hist_style = {
+        "lw": 2, "histtype": 'step', 'alpha': 1.0,
+    }
+    xlabels = ['$P_x$ [GeV]', '$P_y$ [GeV]', '$P_z$ [GeV]', '$E$ [GeV]' ]
+    for idx in range(4):
+        ax = axs[idx]
+        offset = idx * max_tops + top_idx
+        ax.hist(predicts[:, offset], bins=xbins[idx], range=ranges[idx], **hist_style, label='predictions')
+        ax.hist(truths[:, offset], bins=xbins[idx], range=ranges[idx], **hist_style, label='truths')
+        ax.set_xlabel(xlabels[idx])
+        ax.set_ylabel("Events")
+        # ax.legend()
+        ax.grid()
+    plt.savefig("{}_top{}_4vector.pdf".format(outname, top_idx))
+
+    # charge
+    _, ax = plt.subplots(1, 1, constrained_layout=True)
+    offset = 4*max_tops + top_idx
+    config = {
+        "bins": 100,
+        "range": (0, 1),
+    }
+    ax.hist(predicts[:, offset], **config, **hist_style, label='predictions')
+    ax.hist(truths[:, offset], **config, **hist_style, label='truths')
+    ax.set_xlabel("Charge")
+    ax.set_ylabel("Events")
+    plt.savefig("{}_top{}_charge.pdf".format(outname, top_idx))
+
+    # confidence being in the event
+    _, ax = plt.subplots(1, 1, constrained_layout=True)
+    offset = 5*max_tops + top_idx
+    config = {
+        "bins": 100,
+        "range": (0, 1),
+    }
+    ax.hist(predicts[:, offset], **config,  **hist_style, label='predictions')
+    ax.hist(truths[:, offset], **config,  **hist_style, label='truths')
+    ax.set_xlabel("P")
+    ax.set_ylabel("Events")
+    plt.savefig("{}_top{}_prob.pdf".format(outname, top_idx))
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="calculate metrics for top reconstruction")
+    add_arg = parser.add_argument
+    add_arg("filename", help="input files from the evaluation")
+    add_arg("outname", help='output name')
+    args = parser.parse_args()
+
+    utils.check_dir(args.outname)
+    
+    array = np.load(args.filename)
+    predicts = array['predicts']
+    truths = array['truths']
+    predicts = predicts * target_scales  + target_mean
+
+    make_plot(predicts, truths, 0, args.outname)
+    make_plot(predicts, truths, 1, args.outname)
+    make_plot(predicts, truths, 2, args.outname)
+    make_plot(predicts, truths, 3, args.outname)

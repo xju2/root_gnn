@@ -15,7 +15,7 @@ def create_load_model(config):
     ckpt_name = 'checkpoint'
     modeldir = os.path.join(config['output_dir'], prod_name)
     global_batch_size = config_tr['batch_size']
-    num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
+    num_processing_steps_tr = config_tr.get('num_iters', 0)      ## level of message-passing
     
     learning_rate = config_tr['learning_rate']
     optimizer = snt.optimizers.Adam(learning_rate)

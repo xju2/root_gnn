@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
         global_predicts.append(output.globals)
         global_truths.append(targets_tr.globals)
+        ievt += 1
 
     
     global_predicts = np.concatenate(global_predicts, axis=0)

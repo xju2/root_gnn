@@ -1,0 +1,87 @@
+#!/usr/bin/env python 
+import os
+
+import numpy as np
+import sklearn.metrics
+import matplotlib.pyplot as plt
+
+import tensorflow as tf
+from graph_nets import utils_tf
+
+from root_gnn.src.datasets import graph
+from root_gnn.src.models import model_utils
+from root_gnn.src.datasets import topreco_v2 as topreco
+
+from root_gnn import utils_plot
+
+ckpt_name = 'checkpoint'
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Evaluate Top Reco.')
+    add_arg = parser.add_argument
+    add_arg("filenames", help="input event files in TFRec format")
+    add_arg("config", help="configuration file used for training")
+    add_arg("outname", help='output name prefix')
+    add_arg("--nevts", default=-1, help='number of events', type=int)
+    add_arg("--batch-size", default=-1, help="batch size", type=int)
+    add_arg("--no-gpu", help="no gpus", action='store_true')
+    args = parser.parse_args()
+
+    if args.no_gpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+    outname = args.outname
+    if not os.path.exists(args.config):
+        print("{} does not exists", args.config)
+
+    # load data
+    filenames = tf.io.gfile.glob(args.filenames)
+    AUTO = tf.data.experimental.AUTOTUNE
+    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    nevts = sum([1 for _ in dataset])
+
+    model, num_processing_steps, global_batch_size = model_utils.create_load_model(args.config)
+    if args.batch_size > 0:
+        global_batch_size = args.batch_size
+    
+    print("{} files and {:,} events".format(len(filenames), nevts))
+    print("maximum number of tops: {}".format(topreco.n_max_tops))
+    print("global batch size: {}".format(global_batch_size))
+
+    predicts = []
+    truths = []
+    ievt = 0
+    in_list = []
+    target_list = []
+    for event in dataset:
+        if args.nevts > 0 and ievt >= args.nevts:
+            break
+
+        ievt += 1
+        inputs_tr, targets_tr = event
+        in_list.append(inputs_tr)
+        target_list.append(targets_tr)
+        if len(in_list) == global_batch_size:
+            inputs_tr = utils_tf.concat(in_list, axis=0)
+            targets_tr = utils_tf.concat(target_list, axis=0)
+            output_ops = model(inputs_tr, num_processing_steps, is_training=False)
+            output = output_ops[-1]
+            predicts.append(output.globals)
+            truths.append(targets_tr.globals)
+            in_list = []
+            target_list = []
+    if len(in_list) > 0:
+        inputs_tr = utils_tf.concat(in_list, axis=0)
+        targets_tr = utils_tf.concat(target_list, axis=0)
+        output_ops = model(inputs_tr, num_processing_steps, is_training=False)
+        output = output_ops[-1]
+        predicts.append(output.globals)
+        truths.append(targets_tr.globals)
+
+
+    res_nps = {}
+    res_nps['predicts'] = np.concatenate(predicts, axis=0)
+    res_nps['truths'] = np.concatenate(truths, axis=0)
+    np.savez(args.outname+".npz", **res_nps)

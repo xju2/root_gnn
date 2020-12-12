@@ -1,18 +1,18 @@
 import numpy as np
-import ROOT
 import itertools
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
-def make_graph(event):
+def make_graph(event, debug=False):
     # n_max_nodes = 60
-    n_nodes = len(event.m_jet_pt)
-    print(np.array(event.m_jet_pt).shape)
-    nodes = np.hstack((event.m_jet_pt, event.m_jet_eta, event.m_jet_phi, event.m_jet_E))
-    nodes = nodes.reshape(-1, n_nodes).transpose()
-    print(n_nodes)
-    print(nodes)
+    n_nodes = len(event.jet_pt)
+    nodes = np.hstack((event.jet_pt, event.jet_eta, event.jet_phi, event.jet_e))
+    nodes = nodes.reshape( (n_nodes, 4) )
+    if debug:
+        print(np.array(event.jet_pt).shape)
+        print(n_nodes)
+        print(nodes)
 
     # edges
     all_edges = list(itertools.combinations(range(n_nodes), 2))
@@ -20,14 +20,15 @@ def make_graph(event):
     receivers = np.array([x[1] for x in all_edges])
     n_edges = len(all_edges)
     edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
-    true_edges = set(list(itertools.combinations(event.reco_triplet_1, 2)) \
-        + list(itertools.combinations(event.reco_triplet_2, 2)))
+    true_edges = set(list(itertools.combinations(event.reco_triplet_0, 2)) \
+        + list(itertools.combinations(event.reco_triplet_1, 2)))
     truth_labels = [int(x in true_edges) for x in all_edges]
-    print(true_edges)
-    print(event.reco_triplet_1)
-    print(event.reco_triplet_2)
-    print(truth_labels)
-    truth_labels = np.array(truth_labels)
+    if debug:
+        print(all_edges)
+        print(event.reco_triplet_0)
+        print(event.reco_triplet_1)
+        print(truth_labels)
+    truth_labels = np.array(truth_labels, dtype=np.float32)
     zeros = np.array([0.0], dtype=np.float32)
 
     input_datadict = {
@@ -54,6 +55,7 @@ def make_graph(event):
 
 
 def read(filename):
+    import ROOT
     tree_name = "output"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
@@ -109,6 +111,4 @@ class ToppairDataSet(DataSet):
 #         print(chain.m_jet_pt)
 #         print(chain.m_jet_eta)
 #         zeros = np.array([0.0], dtype=np.float32)
-
-
 #         make_graph(chain)

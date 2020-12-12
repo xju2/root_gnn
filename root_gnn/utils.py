@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import yaml
 import os
 
+
+
 def read_log(file_name):
     time_format = '%d %b %Y %H:%M:%S'
     get2nd = lambda x: x.split()[1]
@@ -38,7 +40,7 @@ def read_log(file_name):
 def plot_log(info, name, axs=None):
     fontsize = 16
     minor_size = 14
-    if type(info) is not 'numpy.ndarray':
+    if type(info) != 'numpy.ndarray':
         info = np.array(info)
     df = pd.DataFrame(info, columns=['iteration', 'time', 'loss_train', 'loss_test', 'precision', 'recall'])
 
@@ -91,7 +93,21 @@ class IndexMgr:
 
 
 def load_yaml(file_name):
-    assert(os.path.exists(file_name))
+    find_file = False
+    if not os.path.exists(file_name):
+        import pkg_resources
+        try:
+            file_name = pkg_resources.resource_filename('root_gnn', os.path.join('configs', file_name))
+        except:
+            pass
+        finally:
+            find_file = True
+    else:
+        find_file = True
+
+    if not find_file:
+        raise FileNotFoundError(file_name,"missing")
+    
     with open(file_name) as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
@@ -104,3 +120,8 @@ def calc_dphi(phi1, phi2):
     if dphi < -np.pi:
         dphi += 2*np.pi
     return dphi
+
+def check_dir(filename):
+    abs_dir = os.path.dirname(os.path.abspath(filename))
+    if not os.path.exists(abs_dir):
+        os.makedirs(abs_dir)
