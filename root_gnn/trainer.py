@@ -45,6 +45,7 @@ def read_dataset(filenames):
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
     return dataset, tr_filenames
 
+
 def loop_dataset(datasets, batch_size):
     if batch_size > 0:
         in_list = []
@@ -62,34 +63,65 @@ def loop_dataset(datasets, batch_size):
             yield dataset
 
 class TrainerBase(object):
-    def __init__(self, config, distributed=False, verbose="INFO"):
-        pass
+    def __init__(self, input_dir, output_dir, lr,
+                batch_size, num_epochs,
+                num_iters,
+                decay_lr=True, # if to use decay learning rate...
+                decay_lr_start_epoch=10,
+                patterns='*', distributed=False, verbose="INFO", *args, **kwargs):
+        self.model = None
+        self.loss_fcn = None
+        self.num_iters = num_iters
 
-    def loss_fcn(self, truth_graph, predict_graph):
-        raise NotImplementedError
+        # datasets
+        self.input_dir = input_dir
+        self.output_dir = output_dir
 
-    def train(self):
+        # create optimizer
+        self.init_lr = lr
+        self.lr = tf.Variable(lr, trainable=False, name='lr', dtype=tf.float32)
+        self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
+        self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
+        self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
+        self.decay_lr = decay_lr # if use decay lr
+
+        # perform distributed training
+        self.distributed = distributed
+
+        # calcualte metrics to be recorded
+        self.metric_dict = {}
+
+    def setup_training_loop(self, model, loss_fcn):
+        input_signature = self.input_signature()
+
+        def update_step(inputs, targets):
+            print("Tracing update_step")
+            with tf.GradientTape() as tape:
+                output_ops = model(inputs, self.num_iters)
+                loss_ops_tr = loss_fcn(targets, output_ops)
+                loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
+
+            gradients = tape.gradient(loss_op_tr, model.trainable_variables)
+            self.optimizer.apply(gradients, model.trainable_variables)
+            return loss_op_tr
+
+        self.training_step = tf.function(update_step, input_signature=input_signature)
+
+
+    def update_step(self, model, loss_fcn):
         self.setup_training_loop()
 
         self.train_one_epoch()
         self.ckpt_manager.save()
 
         self.after_train_one_epoch()
+
+    def eval(self, model):
+        raise NotImplementedError
         
-    
-    def train_one_epoch(self):
-        num_batches = 0
-        total_loss = 0
-        for inputs in loop_dataset(self.data_train):
-            inputs_tr, targets_tr = inputs
-            total_loss += self.training_step(inputs_tr, targets_tr).numpy()
-            num_batches += 1
-        return total_loss, num_batches
 
-
-    def aftet_train_one_epoch():
+    def after_train_one_epoch(self):
         pass
-        
 
     def validate_one_epoch(self):
         for data in loop_dataset(self.data_val):
@@ -115,7 +147,6 @@ class TrainerBase(object):
     def optimizer(self, lr):
         self.optimizer = snt.optimizers.Adam(lr)
 
-
     def input_signature(self):
         with_batch_dim = False
         input_list = []
@@ -132,22 +163,13 @@ class TrainerBase(object):
         )
         return input_signature
 
-    def apply(self, inputs):
-        outputs = self.model(inputs, self.num_iters)
-        return outputs
 
-    def setup_training_loop(self):
-        input_signature = self.input_signature()
+    def train_one_epoch(self):
+        num_batches = 0
+        total_loss = 0
+        for inputs in loop_dataset(self.data_train):
+            inputs_tr, targets_tr = inputs
+            total_loss += self.training_step(inputs_tr, targets_tr).numpy()
+            num_batches += 1
+        return total_loss, num_batches
 
-        def update_step(inputs, targets):
-            print("Tracing update_step")
-            with tf.GradientTape() as tape:
-                output_ops = self.apply(inputs)
-                loss_ops_tr = self.loss_fcn(targets, output_ops)
-                loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
-
-            gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
-            self.optimizer.apply(gradients, self.model.trainable_variables)
-            return loss_op_tr
-
-        self.training_step = tf.function(update_step, input_signature=input_signature)
