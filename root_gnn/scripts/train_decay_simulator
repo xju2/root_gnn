@@ -101,7 +101,9 @@ if __name__ == "__main__":
         nodes_target = tf.concat([target_op.nodes[1:, :], tf.zeros([1, target_op.nodes.shape[1]])],\
             axis=0, name='nodes_target')
 
-        loss_ops = tf.nn.l2_loss((node_output_ops - nodes_target))
+        loss_ops = tf.nn.l2_loss((node_output_ops - nodes_target)) #+ tf.nn.l2_loss((target_op.nodes[0, :], tf.math.reduce_sum(node_output_ops, axis=0)))
+        # loss_conservation = tf.nn.l2_loss((target_op.nodes[0, :], tf.math.reduce_sum(node_output_ops, axis=0)))
+        # print(target_op.nodes[0, :], tf.math.reduce_sum(nodes_target, axis=0), tf.math.reduce_sum(node_output_ops, axis=0))
 
         global_target = target_op.globals
 

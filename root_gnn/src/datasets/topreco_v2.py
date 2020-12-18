@@ -129,11 +129,7 @@ def read(filename):
     with open(filename, 'r') as f:
         for line in f:
             yield [float(x) for x in line.split()]
-<<<<<<< HEAD
-=======
-
->>>>>>> b7823ea12fa8aef958378d2e51f733c3f3da3d9f
-
+            
 class TopReco(DataSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
