@@ -27,7 +27,7 @@ import horovod.tensorflow as hvd
 
 
 from root_gnn import model as all_models
-from root_gnn.src.datasets import topreco_v2 as topreco
+from root_gnn.src.datasets import topreco
 from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
 
