@@ -12,7 +12,7 @@ from root_gnn.src.models.edge_global_classifier import EdgeGlobalClassifier
 from root_gnn.src.models.global_classifier import GlobalClassifierNoEdgeInfo
 from root_gnn.src.models.node_edge_classifier import NodeEdgeClassifier
 from root_gnn.src.models.decay_simulator import DecaySimulator
-from root_gnn.src.models.node_predictor_v3 import FourTopPredictor
+from root_gnn.src.models.node_predictor import FourTopPredictor
 
 __all__ = (
     "GeneralClassifier",

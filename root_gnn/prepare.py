@@ -14,7 +14,7 @@ from root_gnn.src.datasets.wprimefiltered import WTaggerFilteredDataset
 from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 
 from root_gnn.src.datasets.herwig_hadrons_v2 import HerwigHadrons
-from root_gnn.src.datasets.topreco_v2 import TopReco
+from root_gnn.src.datasets.topreco import TopReco
 from root_gnn.src.datasets.hyy_gen import HiggsYYGen
 
 __all__ = (
