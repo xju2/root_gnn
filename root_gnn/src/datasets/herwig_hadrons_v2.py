@@ -5,7 +5,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_node_features = 6
-max_nodes = 3 # including the root particle that decays
+max_nodes = 84 # including the root particle that decays
 
 def num_particles(event):
     return len(event) // n_node_features

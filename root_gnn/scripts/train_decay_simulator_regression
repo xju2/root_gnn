@@ -1,0 +1,235 @@
+#!/usr/bin/env python
+
+import tensorflow as tf
+
+import os
+import sys
+import argparse
+
+import re
+import time
+import random
+import functools
+import six
+
+import numpy as np
+import sklearn.metrics
+
+
+from graph_nets import utils_tf
+from graph_nets import utils_np
+import sonnet as snt
+
+from root_gnn import model as all_models
+from root_gnn.src.datasets import herwig_hadrons
+from root_gnn.src.datasets import graph
+from root_gnn.utils import load_yaml
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Train nx-graph with configurations')
+    add_arg = parser.add_argument
+    add_arg('config', help='configuration file')
+    args = parser.parse_args()
+
+    config = load_yaml(args.config)
+
+    # add ops to save and restore all the variables
+    prod_name = config['prod_name']
+    output_dir = os.path.join(config['output_dir'], prod_name)
+    os.makedirs(output_dir, exist_ok=True)
+
+    config_tr = config['parameters']
+    num_processing_steps_tr = herwig_hadrons.max_nodes
+    metric_name = config_tr['earlystop_metric']
+    metric_dict = {
+        "auc_te": 0.0, "acc_te": 0.0, "prec_te": 0.0, "rec_te": 0.0, "loss_te": 0.0
+    }
+    if metric_name not in metric_dict.keys():
+        msg = "earlystop_metric: {} not supported. Use one of the following\n".format(metric_name) + "\n".join(list(metric_dict.keys()))
+        raise ValueError(msg)
+    acceptable_fails = config_tr['acceptable_failure']
+    n_epochs = config_tr['epochs']  
+
+ 
+    # prepare inputs
+    tr_filenames = tf.io.gfile.glob(config['tfrec_dir_train'])
+    n_train = len(tr_filenames)
+    val_filenames = tf.io.gfile.glob(config['tfrec_dir_val'])
+    n_val = len(val_filenames)
+
+    print("Input file names: ", tr_filenames)
+    print("{} training files".format(n_train))
+    print("{} evaluation files".format(n_val))
+    print("Model saved at {}".format(output_dir))
+
+    shuffle_buffer_size = config_tr.get("shuffle_buffer_size", -1)
+    AUTO = tf.data.experimental.AUTOTUNE
+    # options = tf.data.Options()
+    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    # training_dataset = training_dataset.with_options(options)
+
+    training_dataset = tf.data.TFRecordDataset(tr_filenames)
+    training_dataset = training_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_train_graphs = sum([1 for _ in training_dataset])
+    shuffle_train_size = n_train_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    training_dataset = training_dataset.shuffle(shuffle_train_size, seed=12345, reshuffle_each_iteration=False)
+    training_dataset = training_dataset.prefetch(AUTO)
+
+    testing_dataset = tf.data.TFRecordDataset(val_filenames)
+    testing_dataset = testing_dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    n_test_graphs = sum([1 for _ in testing_dataset])
+    shuffle_eval_size = n_test_graphs if shuffle_buffer_size < 0 else shuffle_buffer_size
+    testing_dataset = testing_dataset.shuffle(shuffle_eval_size, seed=12345, reshuffle_each_iteration=False)
+    testing_dataset = testing_dataset.prefetch(AUTO)
+
+    learning_rate = config_tr['learning_rate']
+    # learning_rate = tf.compat.v1.train.exponential_decay(start_learning_rate, )
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(all_models, 'DecaySimulator')()
+
+    # inputs, targets = doublet_graphs.create_graph(batch_size)
+    with_batch_dim = False
+    inputs, targets = next(training_dataset.take(1).as_numpy_iterator())
+
+    input_signature = (
+        graph.specs_from_graphs_tuple(inputs, with_batch_dim),
+        graph.specs_from_graphs_tuple(targets, with_batch_dim),
+    )
+
+
+    def loss_fcn(target_op, node_output_ops, global_output_ops):
+        nodes_target = tf.concat([target_op.nodes[1:, :], tf.zeros([1, target_op.nodes.shape[1]])],\
+            axis=0, name='nodes_target')
+
+        loss_ops = tf.nn.l2_loss((node_output_ops - nodes_target)) #+ tf.nn.l2_loss((target_op.nodes[0, :], tf.math.reduce_sum(node_output_ops, axis=0)))
+        # loss_conservation = tf.nn.l2_loss((target_op.nodes[0, :], tf.math.reduce_sum(node_output_ops, axis=0)))
+        # print(target_op.nodes[0, :], tf.math.reduce_sum(nodes_target, axis=0), tf.math.reduce_sum(node_output_ops, axis=0))
+
+        global_target = target_op.globals
+
+        global_output_ops = tf.concat(global_output_ops, axis=-1)
+        loss_ops += [tf.compat.v1.losses.log_loss(global_target, global_output_ops)]
+        return tf.stack(loss_ops)
+
+
+    @functools.partial(tf.function, input_signature=input_signature)
+    def update_step(inputs_tr, targets_tr):
+        print("Tracing update_step")
+        with tf.GradientTape() as tape:
+            node_pred_tr, global_pred_tr = model(inputs_tr, num_processing_steps_tr)
+            loss_ops_tr = loss_fcn(targets_tr, node_pred_tr, global_pred_tr)
+            loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(num_processing_steps_tr, dtype=tf.float32)
+
+        gradients = tape.gradient(loss_op_tr, model.trainable_variables)
+        optimizer.apply(gradients, model.trainable_variables)
+        return loss_op_tr
+
+    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir,\
+        max_to_keep=3, keep_checkpoint_every_n_hours=1)
+    checkpoint.restore(ckpt_manager.latest_checkpoint)
+    if ckpt_manager.latest_checkpoint:
+        print("Restore from {}".format(ckpt_manager.latest_checkpoint))
+    else:
+        print("Initializing from scratch.")
+
+    start_time = time.time()
+
+    # log information
+    out_str  = time.strftime('%d %b %Y %H:%M:%S', time.localtime())
+    out_str += '\n'
+    out_str += "# (iteration number), T (elapsed seconds), Ltr (training loss), Lge (testing loss)"\
+        "AUC, Accuracy, Precision, Recall\n"
+    log_name = os.path.join(output_dir, "log_training.txt")
+    with open(log_name, 'a') as f:
+        f.write(out_str)
+
+    previous_metric = 0.0
+    threshold = 0.5
+    n_fails = 0
+
+    epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
+    now = time.time()
+    for epoch in range(n_epochs):
+        total_loss = 0.
+        num_batches = 0
+
+        for inputs in training_dataset:
+            inputs_tr, targets_tr = inputs
+            total_loss += update_step(inputs_tr, targets_tr).numpy()
+            num_batches += 1
+
+        ckpt_manager.save()
+        elapsed = time.time() - start_time
+        print("{:.2f} minutes, epoch {:,} with loss {:.4f} in {:,} batches".format(elapsed/60., epoch, total_loss/num_batches, num_batches))
+        start_time = time.time()        
+
+        # eval_output_name = os.path.join(output_dir, "eval_{}.npz".format(
+        #     ckpt_manager.checkpoint.save_counter.numpy()))
+
+        # loss_tr = total_loss/num_batches
+
+        # elapsed = time.time() - start_time
+        # node_pred = [] # node prediction
+        # node_prop = [] # node properties
+        # truth_node_pred = []
+        # truth_node_prop = []
+        # num_batches_te = 0
+        # total_loss_te = 0
+        # for inputs in testing_dataset:
+        #     inputs_te, targets_te = inputs
+        #     node_pred_te, global_pred_te = model(inputs_te, num_processing_steps_tr)
+
+        #     total_loss_te += (tf.math.reduce_sum(
+        #         loss_fcn(targets_te, node_pred_te, global_pred_te))/tf.constant(
+        #             num_processing_steps_tr, dtype=tf.float32)).numpy()
+
+        #     node_pred.append(node_pred_te.numpy())
+        #     node_prop.append(global_pred_te.numpy())
+        #     truth_node_pred.append(targets_te.globals.numpy())
+        #     truth_node_prop.append(tf.concat([targets_te.nodes[1:, :],\
+        #         tf.zeros([1, targets_te.nodes.shape[1]])], axis=0).numpy())
+
+        #     num_batches_te += 1
+
+        # loss_te = total_loss_te / num_batches_te
+        # node_pred = np.concatenate(node_pred, axis=0)
+        # node_prop = np.concatenate(node_prop, axis=0)
+        # truth_node_pred = np.concatenate(truth_node_pred, axis=0)
+        # truth_node_prop = np.concatenate(truth_node_prop, axis=0)
+
+        # # node predictions
+        # y_true, y_pred = (truth_info > threshold), (predictions > threshold)
+        # fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+        # metric_dict['auc_te'] = sklearn.metrics.auc(fpr, tpr)
+        # metric_dict['acc_te'] = sklearn.metrics.accuracy_score(y_true, y_pred)
+        # metric_dict['pre_te'] = sklearn.metrics.precision_score(y_true, y_pred)
+        # metric_dict['rec_te'] = sklearn.metrics.recall_score(y_true, y_pred)
+        # metric_dict['loss_te'] = loss_te
+        # out_str = "* {:05d}, T {:.1f}, Ltr {:.4f}, Lge {loss_te:.4f}, AUC {auc_te:.4f}, A {acc_te:.4f}, P {pre_te:.4f}, R {rec_te:.4f}".format(
+        #     epoch, elapsed, loss_tr, **metric_dict)
+        # print(out_str)
+        # with open(log_name, 'a') as f:
+        #     f.write(out_str+"\n")
+        # np.savez(eval_output_name, predictions=predictions, truth_info=truth_info)
+
+        # # save metrics to the summary file
+        # metric_dict['loss_tr'] = loss_tr
+        # with writer.as_default():
+        #     for key,val in metric_dict.items():
+        #         tf.summary.scalar(key, val, step=epoch_count)
+        #     writer.flush()
+        # epoch_count.assign_add(1)
+
+        # metric = metric_dict[metric_name]
+        # if metric < previous_metric:
+        #     print("Current metric {} {:.4f} is lower than previous {:.4f}.".format(metric_name, metric, previous_metric))
+        #     if n_fails < acceptable_fails:
+        #         n_fails += 1
+        #     else:
+        #         print("Reached maximum failure threshold: {} times. Stop Training".format(acceptable_fails))
+        #         break
+        # else:
+        #     previous_metric = metric
