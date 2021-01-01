@@ -58,8 +58,8 @@ def make_graph(event, debug=False):
     
     # convert node id to [0, xxx]
     # remove root id in the edges
-    senders = np.array([node_dict[i] for i in senders if i != root_uid], dtype=np.int32)
-    receivers = np.array([node_dict[j] for i,j in zip(senders,receivers) if i != root_uid], dtype=np.int32)
+    senders = np.array([node_dict[i] for i in senders], dtype=np.int32)
+    receivers = np.array([node_dict[j] for i,j in zip(senders,receivers)], dtype=np.int32)
     n_edges = senders.shape[0]
 
 
@@ -79,9 +79,11 @@ def make_graph(event, debug=False):
         "edges": np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1),
         "senders": senders,
         "receivers": receivers,
-        "globals": np.array([1]*(n_nodes-1)+[0]*(max_nodes-n_nodes+1), dtype=np.float32)
+        # "globals": np.array([1]*(n_nodes-1)+[0]*(max_nodes-n_nodes+1), dtype=np.float32)
+        "globals": np.array([0], dtype=np.float32)
     }
-
+    # print("input: ", input_datadict)
+    # print("target:", target_datadict)
     input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     # padding the graph if number of nodes is less than max-nodes??

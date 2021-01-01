@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import time
+import os
 
 if __name__ == "__main__":
     import argparse
@@ -33,6 +34,9 @@ if __name__ == "__main__":
     print("{} events per record".format(n_evts_per_record))
     print("Data type:", args.type)
     print("# of workers:", args.num_workers)
+
+    out_dir = os.path.abspath(os.path.dirname(outname))
+    os.makedirs(out_dir, exist_ok=True)
 
     if args.type is None:
         print("Specify a data type via --type")

@@ -7,7 +7,7 @@ from graph_nets import blocks
 
 from graph_nets.modules import InteractionNetwork
 
-from root_gnn.src.datasets.topreco_v2 import n_target_node_features, n_max_tops
+from root_gnn.src.datasets.topreco import n_target_node_features, n_max_tops
 from root_gnn.src.models.base import MLPGraphNetwork
 from root_gnn.src.models.base import make_mlp_model
 

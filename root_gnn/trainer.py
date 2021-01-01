@@ -43,7 +43,7 @@ def read_dataset(filenames):
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    return dataset, tr_filenames
+    return dataset, n_files
 
 
 def loop_dataset(datasets, batch_size):
@@ -61,6 +61,24 @@ def loop_dataset(datasets, batch_size):
     else:
         for dataset in datasets:
             yield dataset
+
+
+def get_signature(dataset, batch_size):
+    with_batch_dim = False
+    input_list = []
+    target_list = []
+    for dd in dataset.take(batch_size).as_numpy_iterator():
+        input_list.append(dd[0])
+        target_list.append(dd[1])
+
+    inputs = utils_tf.concat(input_list, axis=0)
+    targets = utils_tf.concat(target_list, axis=0)
+    input_signature = (
+        graph.specs_from_graphs_tuple(inputs, with_batch_dim),
+        graph.specs_from_graphs_tuple(targets, with_batch_dim),
+        tf.TensorSpec(shape=[], dtype=tf.bool)
+    )
+    return input_signature
 
 class TrainerBase(object):
     def __init__(self, input_dir, output_dir, lr,

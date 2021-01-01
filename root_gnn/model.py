@@ -13,6 +13,7 @@ from root_gnn.src.models.global_classifier import GlobalClassifierNoEdgeInfo
 from root_gnn.src.models.node_edge_classifier import NodeEdgeClassifier
 from root_gnn.src.models.decay_simulator import DecaySimulator
 from root_gnn.src.models.node_predictor import FourTopPredictor
+from root_gnn.src.models.gnn_gan import GraphGenerator
 
 __all__ = (
     "GeneralClassifier",
@@ -22,4 +23,5 @@ __all__ = (
     "NodeEdgeClassifier",
     "DecaySimulator",
     'FourTopPredictor',
+    'GraphGenerator',
 )
