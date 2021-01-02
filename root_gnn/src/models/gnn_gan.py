@@ -36,7 +36,8 @@ class GraphGenerator(snt.Module):
 
     def __call__(self, input_op, max_nodes, training):
         """
-        input_op: a vector containing [px, py, pz, E, N-dimension noises]
+        input_op: 2D vector with dimensions [batch-size, features], 
+        the latter containing [px, py, pz, E, N-dimension noises]
         """
         encoded_adj = []
         node_pred = []
