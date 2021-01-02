@@ -150,6 +150,16 @@ def decode_adj_to_edges(adj_output):
     return (tf.constant(all_senders), tf.constant(all_receivers))
 
 
+def scaled_hacky_sigmoid_l2(nodes):
+    dim = tf.shape(nodes)[1]
+    r = tf.reduce_sum(tf.square(nodes), 1)
+    r = tf.reshape(r, [-1, 1])
+    D = r - 2 * tf.matmul(nodes, nodes, transpose_b=True) + tf.transpose(r)
+    #TODO: make tunable param
+    D /= tf.sqrt(tf.dtypes.cast(dim, tf.float32))
+    r = 10
+    return tf.math.sigmoid(r * (1 - D))
+
 def adj_to_edges(adj):
     return tnp.nonzero(adj)
 
