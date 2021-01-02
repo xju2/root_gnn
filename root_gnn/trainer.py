@@ -43,7 +43,8 @@ def read_dataset(filenames):
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    return dataset, n_files
+    n_graphs = sum([1 for _ in dataset])
+    return dataset, n_graphs
 
 
 def loop_dataset(datasets, batch_size):
@@ -58,6 +59,8 @@ def loop_dataset(datasets, batch_size):
                 inputs_tr = utils_tf.concat(in_list, axis=0)
                 targets_tr = utils_tf.concat(target_list, axis=0)
                 yield (inputs_tr, targets_tr)
+                in_list = []
+                target_list = []
     else:
         for dataset in datasets:
             yield dataset
