@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import tensorflow as tf
-import tensorflow.experimental.numpy as tnp
+# import tensorflow.experimental.numpy as tnp
 
 import os
 import sys
@@ -94,24 +94,24 @@ def decode_adj(adj_output):
 
     return adj_full
 
-def tf_decode_adj(adj_output):
-    '''
-        recover to adj from adj_output
-        note: here adj_output have shape (n-1)*m
-    '''
-    max_prev_node = adj_output.shape[1]
-    adj = tnp.zeros((adj_output.shape[0], adj_output.shape[0]))
-    for i in range(adj_output.shape[0]):
-        input_start = max(0, i - max_prev_node + 1)
-        input_end = i + 1
-        output_start = max_prev_node + max(0, i - max_prev_node + 1) - (i + 1)
-        output_end = max_prev_node
-        adj[i, input_start:input_end] = adj_output[i,::-1][output_start:output_end] # reverse order
-    adj_full = tnp.zeros((adj_output.shape[0]+1, adj_output.shape[0]+1))
-    n = adj_full.shape[0]
-    adj_full[1:n, 0:n-1] = np.tril(adj, 0)
-    adj_full = adj_full + adj_full.T
-    return adj_full
+# def tf_decode_adj(adj_output):
+#     '''
+#         recover to adj from adj_output
+#         note: here adj_output have shape (n-1)*m
+#     '''
+#     max_prev_node = adj_output.shape[1]
+#     adj = tnp.zeros((adj_output.shape[0], adj_output.shape[0]))
+#     for i in range(adj_output.shape[0]):
+#         input_start = max(0, i - max_prev_node + 1)
+#         input_end = i + 1
+#         output_start = max_prev_node + max(0, i - max_prev_node + 1) - (i + 1)
+#         output_end = max_prev_node
+#         adj[i, input_start:input_end] = adj_output[i,::-1][output_start:output_end] # reverse order
+#     adj_full = tnp.zeros((adj_output.shape[0]+1, adj_output.shape[0]+1))
+#     n = adj_full.shape[0]
+#     adj_full[1:n, 0:n-1] = np.tril(adj, 0)
+#     adj_full = adj_full + adj_full.T
+#     return adj_full
 
 def decode_adj_to_edges(adj_output):
     senders = []
@@ -144,11 +144,15 @@ def decode_adj_to_edges(adj_output):
         all_senders = [0]
         all_receivers = [0]
 
-    # print(all_senders)
-    # print(all_receivers)
-
     return (tf.constant(all_senders), tf.constant(all_receivers))
 
+def hacky_sigmoid_l2(nodes):
+    r = tf.reduce_sum(tf.square(nodes), 1)
+    r = tf.reshape(r, [-1, 1])
+    D = r - 2 * tf.matmul(nodes, nodes, transpose_b=True) + tf.transpose(r)
+    #TODO: make tunable param
+    r = 10
+    return tf.math.sigmoid(r * (1 - D))
 
 def scaled_hacky_sigmoid_l2(nodes):
     dim = tf.shape(nodes)[1]
@@ -160,8 +164,8 @@ def scaled_hacky_sigmoid_l2(nodes):
     r = 10
     return tf.math.sigmoid(r * (1 - D))
 
-def adj_to_edges(adj):
-    return tnp.nonzero(adj)
+# def adj_to_edges(adj):
+#     return tnp.nonzero(adj)
 
 def edges_to_adj(senders, receivers, n_nodes):
     n_edges = receivers.shape[0]
