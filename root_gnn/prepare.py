@@ -17,6 +17,8 @@ from root_gnn.src.datasets.herwig_hadrons_v2 import HerwigHadrons
 from root_gnn.src.datasets.topreco import TopReco
 from root_gnn.src.datasets.hyy_gen import HiggsYYGen
 
+from root_gnn.src.datasets.hadronic import HadronicInteraction
+
 __all__ = (
     "TopTaggerDataset",
     "FourTopDataset",
@@ -27,4 +29,5 @@ __all__ = (
     "HerwigHadrons",
     "TopReco",
     "HiggsYYGen",
+    "HadronicInteraction",
 )

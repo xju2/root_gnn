@@ -66,7 +66,7 @@ def loop_dataset(datasets, batch_size):
             yield dataset
 
 
-def get_signature(dataset, batch_size):
+def get_signature(dataset, batch_size, with_bool=False):
     with_batch_dim = False
     input_list = []
     target_list = []
@@ -76,11 +76,17 @@ def get_signature(dataset, batch_size):
 
     inputs = utils_tf.concat(input_list, axis=0)
     targets = utils_tf.concat(target_list, axis=0)
-    input_signature = (
-        graph.specs_from_graphs_tuple(inputs, with_batch_dim),
-        graph.specs_from_graphs_tuple(targets, with_batch_dim),
-        tf.TensorSpec(shape=[], dtype=tf.bool)
-    )
+    if with_bool:
+        input_signature = (
+            graph.specs_from_graphs_tuple(inputs, with_batch_dim),
+            graph.specs_from_graphs_tuple(targets, with_batch_dim),
+            tf.TensorSpec(shape=[], dtype=tf.bool)
+        )
+    else:
+        input_signature = (
+            graph.specs_from_graphs_tuple(inputs, with_batch_dim),
+            graph.specs_from_graphs_tuple(targets, with_batch_dim)
+        )
     return input_signature
 
 class TrainerBase(object):
