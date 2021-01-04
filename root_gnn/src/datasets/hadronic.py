@@ -37,6 +37,10 @@ def make_graph(event, debug=False):
         print("ERROR, {} nodes larger than maximum nodes {}.".format(n_nodes, n_max_nodes))
         return [(None, None)]
 
+    if n_nodes < n_max_nodes:
+        nodes = np.concatenate([nodes, np.zeros([n_max_nodes-n_nodes, nodes.shape[1]], dtype=np.float32)], axis=0)
+    
+    n_nodes = n_max_nodes
     # all input nodes connecting to each other
     all_edges = list(itertools.combinations(range(n_nodes), 2))
 
@@ -45,8 +49,6 @@ def make_graph(event, debug=False):
     n_edges = len(all_edges)
     edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
 
-    if n_nodes < n_max_nodes:
-        nodes = np.concatenate([nodes, np.zeros([n_max_nodes-n_nodes, nodes.shape[1]], dtype=np.float32)], axis=0)
 
     zero = np.array([0], dtype=np.float32)
     input_datadict = {
