@@ -168,6 +168,9 @@ def train_and_evaluate(args):
             # my_print(targets_tr, data=True)
 
             # discriminator
+            # add noise to target nodes
+            noise_target = tf.random.normal(targets_tr.nodes.shape)
+            targets_tr = targets_tr.replace(nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
             real_output = model_disc(targets_tr, args.dis_num_iters)
             fake_output = model_disc(pred_graph, args.dis_num_iters)
 
