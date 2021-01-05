@@ -9,6 +9,7 @@ n_max_nodes = 18
 def num_particles(event):
     return len(event) // n_input_particle_features
 
+
 def make_graph(event, debug=False):
     """
     Convert events to graphs. Each event contains a list of particles,
@@ -46,7 +47,9 @@ def make_graph(event, debug=False):
 
     senders = np.array([x[0] for x in all_edges])
     receivers = np.array([x[1] for x in all_edges])
-    n_edges = len(all_edges)
+    all_senders = np.concatenate([senders, receivers], axis=0)
+    all_receivers = np.concatenate([receivers, senders], axis=0)
+    n_edges = len(all_edges*2)
     edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
 
 
@@ -66,8 +69,8 @@ def make_graph(event, debug=False):
         "n_edge": n_edges,
         "nodes": nodes[1:, ],
         "edges": edges,
-        "senders": senders,
-        "receivers": receivers,
+        "senders": all_senders,
+        "receivers": all_receivers,
         "globals": zero,
     }
 

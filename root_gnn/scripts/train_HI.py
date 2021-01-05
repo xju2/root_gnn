@@ -48,7 +48,6 @@ def my_print(g, data=False):
             print(field_name, ":", per_replica_sample.shape)
             if data and  field_name != "edges":
                 print(per_replica_sample)
-            
 
 def init_workers(distributed=False):
     return SimpleNamespace(rank=0, size=1, local_rank=0, local_size=1, comm=None)
@@ -124,7 +123,7 @@ def train_and_evaluate(args):
     training_dataset = training_dataset.prefetch(AUTO)
     logging.info("rank {} has {} training graphs".format(dist.rank, ngraphs_train))
 
-    input_signature = get_signature(training_dataset, args.batch_size)
+    input_signature = get_signature(training_dataset, args.batch_size, dynamic_num_nodes=False)
 
 
     learning_rate = args.learning_rate
@@ -133,6 +132,10 @@ def train_and_evaluate(args):
 
     model_gen = sets_gan.SetsGenerator(input_dim=4+args.noise_dim, out_dim=4)
     model_disc = sets_gan.SetsDiscriminator()
+
+    # regularization terms for discriminator
+    l2_reg = snt.regularizers.L2(0.01)
+
 
     def generator_loss(fake_output):
         loss_ops = [tf.compat.v1.losses.log_loss(tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals)
