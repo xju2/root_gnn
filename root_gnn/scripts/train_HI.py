@@ -144,23 +144,26 @@ def train_and_evaluate(args):
         return tf.stack(loss_ops)
 
     def discriminator_loss(real_output, fake_output):
-        loss_ops = [tf.compat.v1.losses.log_loss(tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals)
+        loss_ops = [tf.compat.v1.losses.log_loss(
+                                    tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=1-args.disc_alpha)
                 for output_op in real_output]
-        loss_ops += [tf.compat.v1.losses.log_loss(tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals)
+        loss_ops += [tf.compat.v1.losses.log_loss(
+                                    tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=args.disc_beta)
                 for output_op in fake_output]
         return tf.stack(loss_ops)
 
 
     n_node = tf.constant([MAX_NODES]*args.batch_size, dtype=tf.int32)
     n_edge = tf.constant([0]*args.batch_size, dtype=tf.int32)
-    @functools.partial(tf.function, input_signature=input_signature)
+    # @functools.partial(tf.function, input_signature=input_signature)
     def train_step(inputs_tr, targets_tr):
         noise = tf.random.normal([args.batch_size, args.noise_dim])
         input_op = tf.concat([inputs_tr.nodes, noise], axis=-1)
+        inputs_tr = inputs_tr.replace(nodes=input_op)
 
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # generator
-            node_pred = model_gen(input_op, max_nodes=MAX_NODES, training=True)
+            node_pred = model_gen(inputs_tr, max_nodes=MAX_NODES, training=True)
             pred_graph = graphs.GraphsTuple(
                 nodes=node_pred, edges=None, globals=tf.constant([0]*args.batch_size, dtype=tf.float32),
                 receivers=None, senders=None, n_node=n_node,
@@ -174,14 +177,14 @@ def train_and_evaluate(args):
             # add noise to target nodes
             noise_target = tf.random.normal(targets_tr.nodes.shape)
             targets_tr = targets_tr.replace(nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
-            real_output = model_disc(targets_tr, args.dis_num_iters)
-            fake_output = model_disc(pred_graph, args.dis_num_iters)
+            real_output = model_disc(targets_tr, args.disc_num_iters)
+            fake_output = model_disc(pred_graph, args.disc_num_iters)
 
             gen_loss = generator_loss(fake_output)
             disc_loss = discriminator_loss(real_output, fake_output)
 
-            gen_loss = tf.math.reduce_sum(gen_loss) / tf.constant(args.dis_num_iters, dtype=tf.float32)
-            disc_loss = tf.math.reduce_sum(disc_loss) / tf.constant(args.dis_num_iters, dtype=tf.float32)
+            gen_loss = tf.math.reduce_mean(gen_loss) / tf.constant(args.disc_num_iters, dtype=tf.float32)
+            disc_loss = tf.math.reduce_mean(disc_loss) / tf.constant(args.disc_num_iters, dtype=tf.float32)
 
         gradients_of_generator = gen_tape.gradient(gen_loss, model_gen.trainable_variables)
         gradients_of_discriminator = disc_tape.gradient(disc_loss, model_disc.trainable_variables)
@@ -195,12 +198,15 @@ def train_and_evaluate(args):
         total_gen_loss = 0
         total_disc_loss = 0
         batch = 0
+        max_batches = 100
         for inputs in loop_dataset(dataset, args.batch_size):
             inputs_tr, targets_tr = inputs
             gen_loss, disc_loss = train_step(inputs_tr, targets_tr)
             batch += 1
             total_gen_loss += gen_loss.numpy()
             total_disc_loss += disc_loss.numpy()
+            if batch > max_batches:
+                break
         return total_gen_loss/batch, total_disc_loss/batch, batch
 
     
@@ -251,7 +257,9 @@ if __name__ == "__main__":
     add_arg("--shuffle-size", type=int, help="number of events for shuffling", default=650)
 
     add_arg("--noise-dim", type=int, help='dimension of noises', default=8)
-    add_arg("--dis-num-iters", type=int, help='number of message passing', default=4)
+    add_arg("--disc-num-iters", type=int, help='number of message passing for discriminator', default=4)
+    add_arg("--disc-alpha", type=float, help='inversely scale true dataset in the loss calculation', default=0.1)
+    add_arg("--disc-beta", type=float, help='scales generated dataset in the loss calculation', default=0.8)
 
     add_arg("-v", "--verbose", help='verbosity', choices=['DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN'],\
         default="INFO")
