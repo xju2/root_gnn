@@ -31,6 +31,7 @@ setup(
         "matplotlib",
         "sklearn",
         'pyyaml>=5.1',
+        'tqdm',
     ],
     package_data = {
         "root_gnn": ["config/*.yaml"]
