@@ -36,6 +36,19 @@ def make_mlp_model():
       snt.LayerNorm(axis=-1, create_scale=True, create_offset=False)
   ])
 
+def make_mlp(latent_size=128, num_layers=2, dropout_rate=0.30,
+             activations=tf.nn.relu, activate_final=True, name='MLP', *args, **kwargs):
+  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+  create_offset = False if not "create_offset" in kwargs else kwargs['create_offset']
+  return snt.Sequential([
+      snt.nets.MLP([latent_size]*num_layers,
+                    activation=activations,
+                    activate_final=activate_final, 
+                    dropout_rate=dropout_rate
+        ),
+      snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
+  ], name=name)  
+
 class MLPGraphIndependent(snt.Module):
   """GraphIndependent with MLP edge, node, and global models."""
 

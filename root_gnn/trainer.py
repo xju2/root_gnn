@@ -43,7 +43,8 @@ def read_dataset(filenames):
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    return dataset, tr_filenames
+    n_graphs = sum([1 for _ in dataset])
+    return dataset, n_graphs
 
 
 def loop_dataset(datasets, batch_size):
@@ -58,9 +59,47 @@ def loop_dataset(datasets, batch_size):
                 inputs_tr = utils_tf.concat(in_list, axis=0)
                 targets_tr = utils_tf.concat(target_list, axis=0)
                 yield (inputs_tr, targets_tr)
+                in_list = []
+                target_list = []
     else:
         for dataset in datasets:
             yield dataset
+
+
+def get_signature(
+        dataset, batch_size, with_bool=False,
+        dynamic_num_nodes=True,
+        dynamic_num_edges=True,
+        ):
+    """
+    Get signature of inputs for the training loop.
+    The signature is used by the tf.function
+    """
+    with_batch_dim = False
+    input_list = []
+    target_list = []
+    for dd in dataset.take(batch_size).as_numpy_iterator():
+        input_list.append(dd[0])
+        target_list.append(dd[1])
+
+    inputs = utils_tf.concat(input_list, axis=0)
+    targets = utils_tf.concat(target_list, axis=0)
+    input_signature = (
+        graph.specs_from_graphs_tuple(
+            inputs, with_batch_dim,
+            dynamic_num_nodes=dynamic_num_nodes,
+            dynamic_num_edges=dynamic_num_edges
+        ),
+        graph.specs_from_graphs_tuple(
+            targets, with_batch_dim,
+            dynamic_num_nodes=dynamic_num_nodes,
+            dynamic_num_edges=dynamic_num_edges
+        )
+    )
+    if with_bool:
+        input_signature = input_signature + (tf.TensorSpec(shape=[], dtype=tf.bool), )
+        
+    return input_signature
 
 class TrainerBase(object):
     def __init__(self, input_dir, output_dir, lr,
