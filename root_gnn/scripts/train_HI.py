@@ -155,15 +155,23 @@ def train_and_evaluate(args):
 
     n_node = tf.constant([MAX_NODES]*args.batch_size, dtype=tf.int32)
     n_edge = tf.constant([0]*args.batch_size, dtype=tf.int32)
+    out_dim = 4
     # @functools.partial(tf.function, input_signature=input_signature)
     def train_step(inputs_tr, targets_tr):
         noise = tf.random.normal([args.batch_size, args.noise_dim])
+        incident_info = inputs_tr.nodes
         input_op = tf.concat([inputs_tr.nodes, noise], axis=-1)
         inputs_tr = inputs_tr.replace(nodes=input_op)
 
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # generator
             node_pred = model_gen(inputs_tr, max_nodes=MAX_NODES, training=True)
+
+            # concatnate the incident particle 4-vector to the predicted 4 vectors
+            incident_info = tf.reshape(incident_info, [args.batch_size, 1, out_dim])
+            node_pred = tf.concat([inputs_tr, node_pred], axis=1)
+            node_pred = tf.reshape(node_pred, [-1, out_dim])
+
             pred_graph = graphs.GraphsTuple(
                 nodes=node_pred, edges=None, globals=tf.constant([0]*args.batch_size, dtype=tf.float32),
                 receivers=None, senders=None, n_node=n_node,
@@ -171,7 +179,8 @@ def train_and_evaluate(args):
             )
             pred_graph = utils_tf.fully_connect_graph_static(pred_graph, exclude_self_edges=True)
             pred_graph = pred_graph.replace(edges=tf.zeros([pred_graph.senders.shape[0], 1], dtype=tf.float32))
-            # my_print(targets_tr, data=True)
+            my_print(pred_graph, data=False)
+            my_print(targets_tr, data=True)
 
             # discriminator
             # add noise to target nodes

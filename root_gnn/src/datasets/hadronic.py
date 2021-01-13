@@ -4,7 +4,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_input_particle_features = 5
-n_max_nodes = 18
+n_max_nodes = 18 # maximum number of out-going particles
 
 def num_particles(event):
     return len(event) // n_input_particle_features
@@ -33,7 +33,7 @@ def make_graph(event, debug=False):
     ] for inode in range(n_particles)]
 
     nodes = np.array(nodes, dtype=np.float32) * scale
-    n_nodes = nodes.shape[0] - 1
+    n_nodes = nodes.shape[0] - 1 
     if n_nodes > n_max_nodes:
         print("ERROR, {} nodes larger than maximum nodes {}.".format(n_nodes, n_max_nodes))
         return [(None, None)]
@@ -41,7 +41,7 @@ def make_graph(event, debug=False):
     if n_nodes < n_max_nodes:
         nodes = np.concatenate([nodes, np.zeros([n_max_nodes-n_nodes, nodes.shape[1]], dtype=np.float32)], axis=0)
     
-    n_nodes = n_max_nodes
+    n_nodes = nodes.shape[0]
     # all input nodes connecting to each other
     all_edges = list(itertools.combinations(range(n_nodes), 2))
 
@@ -65,9 +65,9 @@ def make_graph(event, debug=False):
     }
 
     target_datadict = {
-        "n_node": n_max_nodes,
+        "n_node": n_nodes,
         "n_edge": n_edges,
-        "nodes": nodes[1:, ],
+        "nodes": nodes,
         "edges": edges,
         "senders": all_senders,
         "receivers": all_receivers,

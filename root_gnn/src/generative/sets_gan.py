@@ -146,7 +146,7 @@ class SetsGenerator(snt.Module):
             # latent = latent.replace(nodes=nodes_tobe, n_node=n_node,\
             #     n_edge=n_edge, edges=edges, senders=senders, receivers=receivers)
         # print("HERE", nodes[1:].shape)    
-        nodes = tf.reshape(nodes[:, 1:, :], [-1, self.out_dim])
+        # nodes = tf.reshape(nodes[:, 1:, :], [-1, self.out_dim])
         return nodes
 
 
