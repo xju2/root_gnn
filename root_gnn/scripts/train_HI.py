@@ -177,7 +177,9 @@ def train_and_evaluate(args):
             # discriminator
             # add noise to target nodes
             # noise_target = tf.random.normal(targets_tr.nodes.shape)
-            # targets_tr = targets_tr.replace(nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
+            noise_target = tf.ones_like(targets_tr.nodes.shape) * 0.001
+            targets_tr = targets_tr.replace(nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
+
             real_output = model_disc(targets_tr, args.disc_num_iters)
             fake_output = model_disc(pred_graph, args.disc_num_iters)
 
@@ -194,6 +196,7 @@ def train_and_evaluate(args):
         optimizer_disc.apply(gradients_of_discriminator, model_disc.trainable_variables)
 
         return gen_loss, disc_loss
+        # return gen_loss, gen_loss
 
     def train_epoch(dataset):
         total_gen_loss = 0

@@ -7,6 +7,7 @@ import sonnet as snt
 from graph_nets import utils_tf
 from graph_nets import blocks
 from graph_nets import modules
+import graph_nets as gn
 
 from root_gnn.src.models.base import make_mlp
 from root_gnn.src.models.base import make_mlp_model
@@ -85,7 +86,10 @@ class SetsGenerator(snt.Module):
 
         self.out_dim = out_dim
 
-    def __call__(self, input_op, max_nodes, training):
+    def __call__(self, 
+        target_op: gn.GraphsTuple, 
+        max_nodes: int, 
+        training: bool) -> tf.Tensor:
         """
         Args: 
             input_op: 2D vector with dimensions [batch-size, features], 
