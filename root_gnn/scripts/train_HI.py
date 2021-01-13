@@ -17,6 +17,7 @@ import six
 
 import numpy as np
 import sklearn.metrics
+import tqdm
 
 
 from graph_nets import utils_tf
@@ -184,8 +185,10 @@ def train_and_evaluate(args):
 
             # discriminator
             # add noise to target nodes
-            noise_target = tf.random.normal(targets_tr.nodes.shape)
+            # noise_target = tf.random.normal(targets_tr.nodes.shape)
+            noise_target = tf.ones_like(targets_tr.nodes.shape) * 0.001
             targets_tr = targets_tr.replace(nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
+
             real_output = model_disc(targets_tr, args.disc_num_iters)
             fake_output = model_disc(pred_graph, args.disc_num_iters)
 
@@ -202,20 +205,21 @@ def train_and_evaluate(args):
         optimizer_disc.apply(gradients_of_discriminator, model_disc.trainable_variables)
 
         return gen_loss, disc_loss
+        # return gen_loss, gen_loss
 
     def train_epoch(dataset):
         total_gen_loss = 0
         total_disc_loss = 0
         batch = 0
-        max_batches = 100
+        # max_batches = 100
         for inputs in loop_dataset(dataset, args.batch_size):
             inputs_tr, targets_tr = inputs
             gen_loss, disc_loss = train_step(inputs_tr, targets_tr)
             batch += 1
             total_gen_loss += gen_loss.numpy()
             total_disc_loss += disc_loss.numpy()
-            if batch > max_batches:
-                break
+            # if batch > max_batches:
+            #     break
         return total_gen_loss/batch, total_disc_loss/batch, batch
 
     
@@ -235,22 +239,30 @@ def train_and_evaluate(args):
 
 
     start_time = time.time()
-    for epoch in range(n_epochs):
+    pre_gen_loss = pre_disc_loss = 0
+    with tqdm.trange(n_epochs) as t:
+        for epoch in t:
+            training_dataset = training_dataset.shuffle(args.shuffle_size, seed=12345, reshuffle_each_iteration=True)
 
-        training_dataset = training_dataset.shuffle(args.shuffle_size, seed=12345, reshuffle_each_iteration=True)
+            gen_loss, disc_loss, batches = train_epoch(training_dataset)
+            this_epoch = time.time()
 
-        gen_loss, disc_loss, batches = train_epoch(training_dataset)
-        this_epoch = time.time()
+            t.set_description(f'Epoch {epoch}')
+            t.set_postfix(
+                G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
+                D_loss=disc_loss, D_loss_change=disc_loss-pre_disc_loss,
+                batches=batches,)
+            pre_gen_loss = gen_loss
+            pre_disc_loss = disc_loss
+            # logging.info("{} epoch takes {:.2f} mins with generator loss {:.4f}, discriminator loss {:.4f} in {} batches".format(
+            #     epoch, (this_epoch-start_time)/60., gen_loss, disc_loss, batches))
 
-        logging.info("{} epoch takes {:.2f} mins with generator loss {:.4f}, discriminator loss {:.4f} in {} batches".format(
-            epoch, (this_epoch-start_time)/60., gen_loss, disc_loss, batches))
-
-        ckpt_manager.save()
-        # log some metrics
-        with train_summary_writer.as_default():
-            tf.summary.scalar("generator loss", gen_loss, step=epoch)
-            tf.summary.scalar("discriminator loss", disc_loss, step=epoch)
-            tf.summary.scalar("time", (this_epoch-start_time)/60., step=epoch)
+            ckpt_manager.save()
+            # log some metrics
+            with train_summary_writer.as_default():
+                tf.summary.scalar("generator loss", gen_loss, step=epoch)
+                tf.summary.scalar("discriminator loss", disc_loss, step=epoch)
+                tf.summary.scalar("time", (this_epoch-start_time)/60., step=epoch)
 
 
 if __name__ == "__main__":

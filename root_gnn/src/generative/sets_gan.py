@@ -7,6 +7,7 @@ import sonnet as snt
 from graph_nets import utils_tf
 from graph_nets import blocks
 from graph_nets import modules
+import graph_nets as gn
 
 from root_gnn.src.models.base import make_mlp
 from root_gnn.src.models.base import make_mlp_model
@@ -19,52 +20,52 @@ class SetsGenerator(snt.Module):
     def __init__(self, name="SetsGenerator", input_dim=12, out_dim=4):
         super(SetsGenerator, self).__init__(name=name)
 
-        self._edge_block = blocks.EdgeBlock(
-            edge_model_fn=make_mlp_model,
-            use_edges=False,
-            use_receiver_nodes=True,
-            use_sender_nodes=True,
-            use_globals=False,
-            name='edge_encoder_block'
-        )
-        self._node_encoder_block = blocks.NodeBlock(
-            node_model_fn=make_mlp_model,
-            use_received_edges=False,
-            use_sent_edges=False,
-            use_nodes=True,
-            use_globals=False,
-            name='node_encoder_block'
-        )
+        # self._edge_block = blocks.EdgeBlock(
+        #     edge_model_fn=make_mlp_model,
+        #     use_edges=False,
+        #     use_receiver_nodes=True,
+        #     use_sender_nodes=True,
+        #     use_globals=False,
+        #     name='edge_encoder_block'
+        # )
+        # self._node_encoder_block = blocks.NodeBlock(
+        #     node_model_fn=make_mlp_model,
+        #     use_received_edges=False,
+        #     use_sent_edges=False,
+        #     use_nodes=True,
+        #     use_globals=False,
+        #     name='node_encoder_block'
+        # )
 
-        self._global_encoder_block = blocks.GlobalBlock(
-            global_model_fn=make_mlp_model,
-            use_edges=True,
-            use_nodes=True,
-            use_globals=False,
-            nodes_reducer=tf.math.unsorted_segment_sum,
-            edges_reducer=tf.math.unsorted_segment_sum,
-            name='global_encoder_block'
-        )
+        # self._global_encoder_block = blocks.GlobalBlock(
+        #     global_model_fn=make_mlp_model,
+        #     use_edges=True,
+        #     use_nodes=True,
+        #     use_globals=False,
+        #     nodes_reducer=tf.math.unsorted_segment_sum,
+        #     edges_reducer=tf.math.unsorted_segment_sum,
+        #     name='global_encoder_block'
+        # )
 
-        self._core = MLPGraphNetwork()
+        # self._core = MLPGraphNetwork()
 
         # # Transforms the outputs into appropriate shapes.
-        node_fn =lambda: snt.Sequential([
-            snt.nets.MLP([LATENT_SIZE],
-                        activation=tf.nn.relu, # default is relu
-                        name='node_output')])
-
-        # global_output_size = 1
-        # global_fn = lambda: snt.Sequential([
-        #     snt.nets.MLP([global_output_size],
+        # node_fn =lambda: snt.Sequential([
+        #     snt.nets.MLP([LATENT_SIZE],
         #                 activation=tf.nn.relu, # default is relu
-        #                 name='global_output'),
-        #     tf.sigmoid])
+        #                 name='node_output')])
 
-        self._output_transform = modules.GraphIndependent(
-            edge_model_fn=None, 
-            node_model_fn=node_fn,
-            global_model_fn=None)
+        # # global_output_size = 1
+        # # global_fn = lambda: snt.Sequential([
+        # #     snt.nets.MLP([global_output_size],
+        # #                 activation=tf.nn.relu, # default is relu
+        # #                 name='global_output'),
+        # #     tf.sigmoid])
+
+        # self._output_transform = modules.GraphIndependent(
+        #     edge_model_fn=None, 
+        #     node_model_fn=node_fn,
+        #     global_model_fn=None)
 
 
         # graph creation
@@ -85,7 +86,10 @@ class SetsGenerator(snt.Module):
 
         self.out_dim = out_dim
 
-    def __call__(self, input_op, max_nodes, training):
+    def __call__(self, 
+        target_op: gn.GraphsTuple, 
+        max_nodes: int, 
+        training: bool) -> tf.Tensor:
         """
         Args: 
             input_op: 2D vector with dimensions [batch-size, features], 
