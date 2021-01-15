@@ -42,6 +42,10 @@ graph_types = {
     'globals': tf.float32,
 }
 
+other_features = {
+    
+}
+
 def padding(g, max_nodes, max_edges, do_concat=True):
     f_dtype = np.float32
     n_nodes = np.sum(g.n_node)

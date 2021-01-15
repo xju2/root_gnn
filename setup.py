@@ -26,11 +26,13 @@ setup(
         "numpy",
         "scipy",
         "pandas",
+        "tables",
         "setuptools",
         "six",
         "matplotlib",
         "sklearn",
         'pyyaml>=5.1',
+        'tqdm',
     ],
     package_data = {
         "root_gnn": ["config/*.yaml"]
@@ -55,5 +57,6 @@ setup(
         'root_gnn/scripts/train_top_reco.py',
         'root_gnn/scripts/evaluate_top_reco',
         'root_gnn/scripts/calculate_topreco_metrics',
+        'root_gnn/scripts/train_HI.py',
     ],
 )

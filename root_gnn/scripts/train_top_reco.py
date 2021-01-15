@@ -27,9 +27,13 @@ import horovod.tensorflow as hvd
 
 
 from root_gnn import model as all_models
-from root_gnn.src.datasets import topreco_v2 as topreco
+from root_gnn.src.datasets import topreco
 from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
+
+from root_gnn.trainer import read_dataset
+from root_gnn.trainer import loop_dataset
+from root_gnn.trainer import get_signature
 
 
 target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).T.reshape((-1,))
@@ -50,70 +54,7 @@ def init_workers(distributed=False):
     else:
         print("not doing distributed")
         return SimpleNamespace(rank=0, size=1, local_rank=0, local_size=1, comm=None)
-
-def read_dataset(filenames):
-    """
-    Read dataset...
-    """
-    AUTO = tf.data.experimental.AUTOTUNE
-    tr_filenames = tf.io.gfile.glob(filenames)
-    n_files = len(tr_filenames)
-
-    dataset = tf.data.TFRecordDataset(tr_filenames)
-    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    return dataset, n_files
-
-
-def loop_dataset(datasets, batch_size):
-    if batch_size > 0:
-        in_list = []
-        target_list = []
-        for dataset in datasets:
-            inputs_tr, targets_tr = dataset
-            in_list.append(inputs_tr)
-            target_list.append(targets_tr)
-            if len(in_list) == batch_size:
-                inputs_tr = utils_tf.concat(in_list, axis=0)
-                targets_tr = utils_tf.concat(target_list, axis=0)
-                yield (inputs_tr, targets_tr)
-    else:
-        for dataset in datasets:
-            yield dataset
-
-def get_input_signature(dataset, batch_size):
-    with_batch_dim = False
-    input_list = []
-    target_list = []
-    for dd in dataset.take(batch_size).as_numpy_iterator():
-        input_list.append(dd[0])
-        target_list.append(dd[1])
-
-    inputs = utils_tf.concat(input_list, axis=0)
-    targets = utils_tf.concat(target_list, axis=0)
-    input_signature = (
-        graph.specs_from_graphs_tuple(inputs, with_batch_dim),
-        graph.specs_from_graphs_tuple(targets, with_batch_dim),
-        tf.TensorSpec(shape=[], dtype=tf.bool)
-    )
-    return input_signature
-
-def loop_dataset(datasets, batch_size):
-    if batch_size > 0:
-        in_list = []
-        target_list = []
-        for dataset in datasets:
-            inputs_tr, targets_tr = dataset
-            in_list.append(inputs_tr)
-            target_list.append(targets_tr)
-            if len(in_list) == batch_size:
-                inputs_tr = utils_tf.concat(in_list, axis=0)
-                targets_tr = utils_tf.concat(target_list, axis=0)
-                yield (inputs_tr, targets_tr)
-                in_list = []
-                target_list = []
-    else:
-        for dataset in datasets:
-            yield dataset
+        
 
 def train_and_evaluate(args):
     dist = init_workers(args.distributed)
@@ -167,7 +108,7 @@ def train_and_evaluate(args):
     training_dataset, ngraphs_train = read_dataset(train_files)
     training_dataset = training_dataset.prefetch(AUTO)
 
-    input_signature = get_input_signature(training_dataset, args.batch_size)
+    input_signature = get_signature(training_dataset, args.batch_size)
 
 
     learning_rate = args.learning_rate

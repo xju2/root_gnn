@@ -12,6 +12,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets import graph
 
 
+
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
         self.input_dtype = None
@@ -30,13 +31,24 @@ class DataSet(object):
         """
         raise NotImplementedError
 
+    def _num_evts(self, filename: str) -> int:
+        """
+        return total number of events in the filename
+        """
+        return sum([1 for _ in self.read(filename)])
+
     def make_graph(self, event, debug):
         """
         Convert the event into a graphs_tuple. 
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, num_evts, filename, outname, debug):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, debug):
+        outname = "{}_{}.tfrec".format(outname, ijob)
+        if os.path.exists(outname):
+            print(outname,"is there. skip...")
+            return 0, n_evts_per_record
+
         ievt = -1
         ifailed = 0
         all_graphs = []
@@ -71,7 +83,6 @@ class DataSet(object):
             output_shapes=(input_shape, target_shape),
             args=None)
 
-        outname = "{}_{}.tfrec".format(outname, ijob)
         writer = tf.io.TFRecordWriter(outname)
         for data in dataset:
             example = graph.serialize_graph(*data)
@@ -83,18 +94,17 @@ class DataSet(object):
     def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, **kwargs):
         now = time.time()
 
-        all_evts = sum([1 for _ in self.read(filename)])
+        all_evts = self._num_evts(filename)
         all_evts = max_evts if max_evts > 0 and all_evts > max_evts else all_evts
 
         n_files = all_evts // n_evts_per_record
         if all_evts%n_evts_per_record > 0:
             n_files += 1
 
-        print("In total {} events, write to {} files".format(all_evts, n_files))
+        print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
         with Pool(num_workers) as p:
             process_fnc = partial(self.subprocess,
                         n_evts_per_record=n_evts_per_record,
-                        num_evts=all_evts,
                         filename=filename,
                         outname=outname,
                         debug=debug)

@@ -75,3 +75,8 @@ class TopTaggerDataset(DataSet):
         super().__init__(*args, **kwargs)
         self.read = read
         self.make_graph = make_graph
+
+    def _num_evts(self, filename):
+        with pd.HDFStore(filename, mode='r') as store:
+            df = store['table']
+        return df.shape[0]
