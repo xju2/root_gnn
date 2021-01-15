@@ -43,7 +43,12 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, num_evts, filename, outname, debug):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, debug):
+        outname = "{}_{}.tfrec".format(outname, ijob)
+        if os.path.exists(outname):
+            print(outname,"is there. skip...")
+            return 0, n_evts_per_record
+
         ievt = -1
         ifailed = 0
         all_graphs = []
@@ -78,7 +83,6 @@ class DataSet(object):
             output_shapes=(input_shape, target_shape),
             args=None)
 
-        outname = "{}_{}.tfrec".format(outname, ijob)
         writer = tf.io.TFRecordWriter(outname)
         for data in dataset:
             example = graph.serialize_graph(*data)
@@ -101,7 +105,6 @@ class DataSet(object):
         with Pool(num_workers) as p:
             process_fnc = partial(self.subprocess,
                         n_evts_per_record=n_evts_per_record,
-                        num_evts=all_evts,
                         filename=filename,
                         outname=outname,
                         debug=debug)
