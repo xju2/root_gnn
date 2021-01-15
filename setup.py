@@ -26,6 +26,7 @@ setup(
         "numpy",
         "scipy",
         "pandas",
+        "tables",
         "setuptools",
         "six",
         "matplotlib",
