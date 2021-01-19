@@ -3,7 +3,7 @@ Generative model based on Graph Neural Network
 """
 import tensorflow as tf
 import sonnet as snt
-from root_gnn.src.models.base import make_mlp
+
 
 LATENT_SIZE = 128
 NUM_LAYERS = 2
