@@ -11,8 +11,10 @@ import sonnet as snt
 
 from root_gnn import model
 from root_gnn.utils import load_yaml
-from root_gnn.dataset import graph
 from root_gnn import utils_plot
+
+from root_gnn.trainer import read_dataset
+from root_gnn.trainer import loop_dataset
 
 
 ckpt_name = 'checkpoint'
@@ -53,10 +55,9 @@ if __name__ == "__main__":
     file_names = tf.io.gfile.glob(args.filenames)
     n_files = len(file_names)
     print("Total {} files".format(n_files))
-    
-    raw_dataset = tf.data.TFRecordDataset(file_names)
-    dataset = raw_dataset.map(graph.parse_tfrec_function)
+
     AUTO = tf.data.experimental.AUTOTUNE
+    dataset, _ = read_dataset(file_names)
     dataset = dataset.prefetch(AUTO)
 
     def create_loss_ops(target_op, output_ops):
@@ -68,26 +69,18 @@ if __name__ == "__main__":
         ]
         return tf.stack(loss_ops)
 
-    in_list = []
-    target_list = []
     predictions = []
     truth_info = []
     num_batches = 0
     total_loss = 0
-    for inputs in dataset:
+    for inputs in loop_dataset(dataset, global_batch_size):
         inputs_tr, targets_tr = inputs
-        in_list.append(inputs_tr)
-        target_list.append(targets_tr)
-        if len(in_list) == global_batch_size:
-            inputs_tr = utils_tf.concat(in_list, axis=0)
-            targets_tr = utils_tf.concat(target_list, axis=0)
-            outputs_tr = model(inputs_tr, num_processing_steps_tr)
-            total_loss += (tf.math.reduce_sum(create_loss_ops(targets_tr, outputs_tr)) / tf.constant(num_processing_steps_tr, dtype=tf.float32)).numpy()
-            predictions.append(outputs_tr[-1].globals)
-            truth_info.append(targets_tr.globals)
-            in_list = []
-            target_list = []
-            num_batches += 1
+        outputs_tr = model(inputs_tr, num_processing_steps_tr)
+        total_loss += (tf.math.reduce_sum(create_loss_ops(targets_tr, outputs_tr)) / tf.constant(num_processing_steps_tr, dtype=tf.float32)).numpy()
+        predictions.append(outputs_tr[-1].globals)
+        truth_info.append(targets_tr.globals)
+        num_batches += 1
+
     print("Total {} batches with batch size of {}".format(num_batches, global_batch_size))
     print("Averaged Loss:", total_loss/num_batches)
     predictions = np.concatenate(predictions, axis=0)
