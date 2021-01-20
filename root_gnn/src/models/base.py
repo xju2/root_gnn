@@ -93,10 +93,7 @@ class MLPGraphNetwork(snt.Module):
             edge_model_kwargs=None,
             node_model_kwargs=None,
             global_model_kwargs=None):
-        return self._network(inputs,
-                      edge_model_kwargs=edge_model_kwargs,
-                      node_model_kwargs=node_model_kwargs,
-                      global_model_kwargs=global_model_kwargs)
+        return self._network(inputs)
 
 
 

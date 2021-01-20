@@ -191,8 +191,8 @@ def train_and_evaluate(args):
             if step_num and (step_num % steps_per_epoch == 0):
                 t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
                 t.set_postfix(
-                    G_loss=gen_loss, G_loss_change=gen_loss.numpy()-pre_gen_loss,
-                    D_loss=disc_loss, D_loss_change=disc_loss.numpy()-pre_disc_loss,
+                    G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
+                    D_loss=disc_loss, D_loss_change=disc_loss-pre_disc_loss,
                 )                
                 ckpt_manager.save()
                 pre_gen_loss = gen_loss

@@ -14,11 +14,18 @@ from graph_nets import modules
 
 from graph_nets import graphs
 
-from root_gnn.src.models.base import MLPGraphNetwork
-
 LATENT_SIZE = 128
 NUM_LAYERS = 2
 
+def my_print(g, data=False):
+    for field_name in graphs.ALL_FIELDS:
+        per_replica_sample = getattr(g, field_name)
+        if per_replica_sample is None:
+            print(field_name, "EMPTY")
+        else:
+            print(field_name, ":", per_replica_sample.shape)
+            if data and field_name != "edges":
+                print(per_replica_sample)
 
 # Use Spectral Normalization, arXiv:1802.05957,
 # in Generator and discriminators.
@@ -245,6 +252,27 @@ class SetsGenerator(snt.Module):
         return nodes[:, 1:, :]
 
 
+
+class MLPGraphNetwork(snt.Module):
+    """GraphIndependent with MLP edge, node, and global models."""
+    def __init__(self, name="MLPGraphNetwork"):
+        super(MLPGraphNetwork, self).__init__(name=name)
+        self._network = modules.GraphNetwork(
+            edge_model_fn=make_regulized_mlp,
+            node_model_fn=make_regulized_mlp,
+            global_model_fn=make_regulized_mlp
+            )
+
+    def __call__(self, inputs,
+            edge_model_kwargs=None,
+            node_model_kwargs=None,
+            global_model_kwargs=None):
+        return self._network(inputs,
+                    edge_model_kwargs=edge_model_kwargs,
+                    node_model_kwargs=node_model_kwargs,
+                    global_model_kwargs=global_model_kwargs)
+
+
 class SetsDiscriminator(snt.Module):
     def __init__(self, name="SetsDiscriminator"):
         super(SetsDiscriminator, self).__init__(name=name)
@@ -285,14 +313,22 @@ class SetsDiscriminator(snt.Module):
             None, None, global_fn)
 
     def __call__(self, input_op, num_processing_steps, is_training=True):
-        latent = self._global_block(self._edge_block(
-            self._node_encoder_block(input_op)))
+        kwargs = dict(is_training=is_training)
+        latent = self._node_encoder_block(input_op, kwargs)
+        latent = self._edge_block(latent, kwargs)
+        latent = self._global_block(latent, kwargs)
+
         latent0 = latent
 
         output_ops = []
         for _ in range(num_processing_steps):
             core_input = utils_tf.concat([latent0, latent], axis=1)
-            latent = self._core(core_input)
+            latent = self._core(
+                core_input,
+                edge_model_kwargs=kwargs,
+                node_model_kwargs=kwargs,
+                global_model_kwargs=kwargs
+            )
             output_ops.append(self._output_transform(latent))
 
         return output_ops
@@ -346,10 +382,10 @@ def generator_loss(fake_output):
 
 def discriminator_loss(real_output, fake_output, disc_alpha, disc_beta):
     loss_ops = [tf.compat.v1.losses.log_loss(
-        tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=1-args.disc_alpha)
+        tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=disc_alpha)
         for output_op in real_output]
     loss_ops += [tf.compat.v1.losses.log_loss(
-        tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=args.disc_beta)
+        tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=disc_beta)
         for output_op in fake_output]
     return tf.stack(loss_ops)
 
@@ -392,31 +428,27 @@ class SetGANOptimizer(snt.Module):
         self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
         self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
 
+        self.disc_alpha = tf.constant(1-disc_alpha, dtype=tf.float32)
+        self.disc_beta = tf.constant(disc_beta, dtype=tf.float32)
+
     def get_noise_batch(self):
         noise_shape = [self.hyparams.batch_size, self.hyparams.noise_dim]
         return tf.random.normal(noise_shape, dtype=tf.float32)
-
-    def my_print(self, g, data=False):
-        for field_name in graphs.ALL_FIELDS:
-            per_replica_sample = getattr(g, field_name)
-            if per_replica_sample is None:
-                print(field_name, "EMPTY")
-            else:
-                print(field_name, ":", per_replica_sample.shape)
-                if data and field_name != "edges":
-                    print(per_replica_sample)
 
     def disc_step(self, inputs_tr, targets_tr, lr_mult=1.0):
         gan = self.gan
         with tf.GradientTape() as tape:
             gen_graph = gan.generate(inputs_tr, self.get_noise_batch())
-            self.my_print(gen_graph)
-            self.my_print(targets_tr)
+            # my_print(gen_graph)
+            # my_print(targets_tr)
 
             real_output = gan.discriminate(gen_graph)
             fake_output = gan.discriminate(targets_tr)
             
-            loss = discriminator_loss(real_output, fake_output)
+            loss = discriminator_loss(
+                real_output, fake_output,
+                self.disc_alpha,
+                self.disc_beta)
 
         disc_params = gan.discriminator.trainable_variables
         disc_grads = tape.gradient(loss, disc_params)
