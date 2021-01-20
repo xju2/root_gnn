@@ -183,7 +183,7 @@ def train_and_evaluate(args):
     with tqdm.trange(n_epochs*steps_per_epoch) as t:
 
         for step_num in t:
-            epoch = tf.constant(int(step_num / steps_per_epoch))
+            epoch = tf.constant(int(step_num / steps_per_epoch), dtype=tf.int32)
             inputs_tr, targets_tr = next(training_data)
             disc_loss, gen_loss, lr_mult = step(inputs_tr, targets_tr, epoch)
             disc_loss = disc_loss.numpy()
@@ -201,6 +201,7 @@ def train_and_evaluate(args):
                 # log some metrics
                 this_epoch = time.time()
                 with train_summary_writer.as_default():
+                    epoch = epoch.numpy()
                     tf.summary.scalar("generator loss", gen_loss, step=epoch)
                     tf.summary.scalar("discriminator loss", disc_loss, step=epoch)
                     tf.summary.scalar(

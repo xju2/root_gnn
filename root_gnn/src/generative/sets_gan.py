@@ -479,7 +479,7 @@ class SetGANOptimizer(snt.Module):
         if decay_epoch < tf.constant(0, dtype=tf.float32):
             return tf.constant(1., dtype=tf.float32)
 
-        num_decay_epochs = tf.cast(self.hyparams.num_epochs - self.decay_lr_start_epoch,
+        num_decay_epochs = tf.cast(self.num_epochs - self.decay_lr_start_epoch,
                                 dtype=tf.float32)
         return (num_decay_epochs - decay_epoch) / num_decay_epochs
 
