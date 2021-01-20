@@ -377,7 +377,7 @@ def generator_loss(fake_output):
     loss_ops = [tf.compat.v1.losses.log_loss(tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals)
                 for output_op in fake_output
                 ]
-    return tf.stack(loss_ops)
+    return tf.reduce_mean(tf.stack(loss_ops))
 
 
 def discriminator_loss(real_output, fake_output, disc_alpha, disc_beta):
@@ -387,7 +387,7 @@ def discriminator_loss(real_output, fake_output, disc_alpha, disc_beta):
     loss_ops += [tf.compat.v1.losses.log_loss(
         tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=disc_beta)
         for output_op in fake_output]
-    return tf.stack(loss_ops)
+    return tf.reduce_mean(tf.stack(loss_ops))
 
 
 class SetGANOptimizer(snt.Module):
