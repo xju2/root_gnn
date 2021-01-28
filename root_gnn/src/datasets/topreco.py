@@ -3,10 +3,10 @@ import itertools
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
-n_input_particle_features = 5
+n_input_particle_features = 5 # jet 4-vector and b-tagging
 n_target_node_features = 6 # for each top [top 4-vector, charge (2 bits), and p is-there]
-n_node_features = 5 # jet 4-vector and b-tagging
-n_max_tops = 1
+
+n_max_tops = 2 # number of maximum top
 
 onehot_charge_matrix = [
     [1, 1], # 0
@@ -24,7 +24,13 @@ onehot_charge_dict = {
 def one_hot_encoder(id):
     return onehot_charge_matrix[onehot_charge_dict[id]]
 
-def sign(a):
+def sign(a): 
+    """
+    return 1  for positive charge
+    return -1 for negative charge
+    """
+    if a==0:
+        return 0
     return int(a > 0) * 1 + int(a < 0) * (-1)
 
 def encode_charge(a):
@@ -50,7 +56,7 @@ def make_graph(event, debug=False):
             break
 
     if n_particles == n_tops:
-        # event only contains top quark information.
+        # event only containing top quark information rejected
         return [(None, None)]
 
     if debug:
@@ -93,9 +99,9 @@ def make_graph(event, debug=False):
         event[inode*n_input_particle_features+2], # py
         event[inode*n_input_particle_features+3], # pz
         event[inode*n_input_particle_features+4], # E
-        encode_charge(event[inode*n_input_particle_features]), # charge
+        # encode_charge(event[inode*n_input_particle_features]), # charge, 0 for negative, 1 for positive
         # sign(event[inode*n_input_particle_features]),
-        # *one_hot_encoder(sign(event[inode*n_input_particle_features])), # charge info
+        *one_hot_encoder(sign(event[inode*n_input_particle_features])), # charge info
         1 # is a top
     ] for inode in range(0, n_tops)]
     
