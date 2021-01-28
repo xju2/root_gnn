@@ -36,7 +36,12 @@ def make_graph(event, debug=False):
         # WARN: assuming the number of decay products could be 0, 1 and 2
         if len(children) == 1:
             children += [-1]
-        momentum = [float(x) for x in items[idx:]]
+        try:
+            momentum = [float(x) for x in items[idx:]]
+        except ValueError:
+            print(particles)
+            print("missing 4vec info, skipped")
+            return [(None, None)]
         all_info = [uid] + children + pdgid + momentum
         array.append(all_info)
 
@@ -56,15 +61,25 @@ def make_graph(event, debug=False):
     n_nodes = nodes.shape[0]
     senders = np.concatenate([array[array[:, 1] > 0, 0].astype(np.int32), array[array[:, 2] > 0, 0].astype(np.int32)])
     receivers = np.concatenate([array[array[:, 1] > 0, 1].astype(np.int32), array[array[:, 2] > 0, 2].astype(np.int32)])
-    
-    # convert node id to [0, xxx]
-    # remove root id in the edges
-    # use fully-connected graph?
-    senders = np.array([node_dict[i] for i in senders], dtype=np.int32)
-    receivers = np.array([node_dict[j] for i,j in zip(senders,receivers)], dtype=np.int32)
-    n_edges = senders.shape[0]
-    edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
+
     zero = np.array([0], dtype=np.float32)
+    
+    # # convert node id to [0, xxx]
+    # # remove root id in the edges
+    # senders = np.array([node_dict[i] for i in senders], dtype=np.int32)
+    # receivers = np.array([node_dict[j] for i,j in zip(senders,receivers)], dtype=np.int32)
+    # n_edges = senders.shape[0]
+    # edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
+
+
+    # use fully connected graph
+    all_edges = list(itertools.combinations(range(n_nodes), 2))
+    senders = np.array([x[0] for x in all_edges])
+    receivers = np.array([x[1] for x in all_edges])
+    all_senders = np.concatenate([senders, receivers], axis=0)
+    all_receivers = np.concatenate([receivers, senders], axis=0)
+    n_edges = len(all_edges*2)
+    edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
 
     input_datadict = {
         "n_node": 1,
@@ -80,8 +95,8 @@ def make_graph(event, debug=False):
         "n_edge": n_edges,
         "nodes": nodes,
         "edges": edges,
-        "senders": senders,
-        "receivers": receivers,
+        "senders": all_senders,
+        "receivers": all_receivers,
         # "globals": np.array([1]*(n_nodes-1)+[0]*(max_nodes-n_nodes+1), dtype=np.float32)
         "globals": zero,
     }

@@ -40,6 +40,34 @@ logging.info("TF Version:{}".format(tf.__version__))
 MAX_NODES = 2
 OUT_DIM = 4
 
+node_mean = np.array([
+    [14.13, 0.05, -0.10, -0.04], 
+    [7.73, 0.02, -0.04, -0.08],
+    [6.41, 0.04, -0.06, 0.04]
+], dtype=np.float32)
+node_scales = np.array([
+    [13.29, 10.54, 10.57, 12.20], 
+    [8.62, 6.29, 6.35, 7.29],
+    [6.87, 5.12, 5.13, 5.90]
+], dtype=np.float32)
+
+node_min = np.array([
+    [0.75, -46.3, -46.0, -47.0],
+    [0.13, -40.5, -37.0, -39.5],
+    [0.14, -36.4, -35.5, -35.0]
+], dtype=np.float32)
+
+node_max = np.array([
+    [49.1, 47.7, 44.2, 46.6],
+    [46.2, 35.7, 41.0, 37.8],
+    [42.8, 36.3, 37.0, 35.5]
+], dtype=np.float32)
+
+node_abs_max = np.array([
+    [49.1, 47.7, 46.0, 47.0],
+    [46.2, 40.5, 41.0, 39.5],
+    [42.8, 36.4, 37.0, 35.5]
+], dtype=np.float32)
 
 def my_print(g, data=False):
     for field_name in graphs.ALL_FIELDS:
@@ -78,6 +106,7 @@ def scaled_hacky_sigmoid_l2(nodes):
 
 def train_and_evaluate(args):
     dist = init_workers(args.distributed)
+    batch_size = args.batch_size
 
     device = 'CPU'
     gpus = tf.config.experimental.list_physical_devices("GPU")
@@ -101,7 +130,7 @@ def train_and_evaluate(args):
 
     n_epochs = args.max_epochs
     logging.info("{} epochs with batch size {}".format(
-        n_epochs, args.batch_size))
+        n_epochs, batch_size))
     logging.info("I am in hvd rank: {} of  total {} ranks".format(
         dist.rank, dist.size))
 
@@ -142,7 +171,7 @@ def train_and_evaluate(args):
         dist.rank, ngraphs_train))
 
     input_signature = get_signature(
-        training_dataset, args.batch_size, dynamic_num_nodes=False)
+        training_dataset, batch_size, dynamic_num_nodes=False)
 
 
     gan = sets_gan.SetGAN(
@@ -153,16 +182,23 @@ def train_and_evaluate(args):
 
     optimizer = sets_gan.SetGANOptimizer(
                         gan,
-                        batch_size=args.batch_size,
+                        batch_size=batch_size,
                         noise_dim=args.noise_dim,
-                        num_epcohs=n_epochs
+                        num_epcohs=n_epochs,
+                        disc_lr=args.disc_lr,
+                        gen_lr=args.gen_lr,
                         )
+    
+    disc_step = optimizer.disc_step
     step = optimizer.step
     if not args.debug:
         step = tf.function(step)
+        disc_step = tf.function(disc_step)
 
-    training_data = loop_dataset(training_dataset, args.batch_size)
-    steps_per_epoch = ngraphs_train // args.batch_size
+    
+
+    training_data = loop_dataset(training_dataset, batch_size)
+    steps_per_epoch = ngraphs_train // batch_size
 
 
     log_dir = os.path.join(output_dir, "logs/{}/train".format(time_stamp))
@@ -177,18 +213,49 @@ def train_and_evaluate(args):
     logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
     _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
 
+    
+    if args.warm_up:
+        # train discriminator for certain batches
+        # to "warm up" the discriminator
+        print("start to warm up discriminator with {} batches".format(args.disc_batches))
+        for _ in range(args.disc_batches):
+            inputs_tr, targets_tr = next(training_data)
+            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
+            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
+            targets_tr = targets_tr.replace(nodes=target_nodes)
+            disc_step(inputs_tr, targets_tr)
+        print("finished the warm up")
+
+
 
     pre_gen_loss = pre_disc_loss = 0
     start_time = time.time()
+
     with tqdm.trange(n_epochs*steps_per_epoch) as t:
 
         for step_num in t:
             epoch = tf.constant(int(step_num / steps_per_epoch), dtype=tf.int32)
             inputs_tr, targets_tr = next(training_data)
+
+            # --------------------------------------------------------
+            # scale the inputs and outputs to norm distribution
+            # inputs_tr = inputs_tr.replace(nodes=(inputs_tr.nodes - node_mean[0]) / node_scales[0])
+            # target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            # target_nodes = np.reshape((target_nodes - node_mean) / node_scales, [-1, 4])
+            # targets_tr = targets_tr.replace(nodes=target_nodes)
+            # --------------------------------------------------------
+            # scale the inputs and outputs to [-1, 1]
+            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
+            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
+            targets_tr = targets_tr.replace(nodes=target_nodes)
+            # --------------------------------------------------------
+
             disc_loss, gen_loss, lr_mult = step(inputs_tr, targets_tr, epoch)
             disc_loss = disc_loss.numpy()
             gen_loss = gen_loss.numpy()
-            if step_num and (step_num % steps_per_epoch == 0):
+            if step_num and (step_num % 50 == 0):
                 t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
                 t.set_postfix(
                     G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
@@ -201,11 +268,11 @@ def train_and_evaluate(args):
                 # log some metrics
                 this_epoch = time.time()
                 with train_summary_writer.as_default():
-                    epoch = epoch.numpy()
-                    tf.summary.scalar("generator loss", gen_loss, step=epoch)
-                    tf.summary.scalar("discriminator loss", disc_loss, step=epoch)
+                    # epoch = epoch.numpy()
+                    tf.summary.scalar("generator loss", gen_loss, step=step_num)
+                    tf.summary.scalar("discriminator loss", disc_loss, step=step_num)
                     tf.summary.scalar(
-                        "time", (this_epoch-start_time)/60., step=epoch)
+                        "time", (this_epoch-start_time)/60., step=step_num)
                     
 
 if __name__ == "__main__":
@@ -218,13 +285,15 @@ if __name__ == "__main__":
     add_arg("--patterns", help='file patterns', default='*')
     add_arg('-d', '--distributed', action='store_true',
             help='data distributed training')
-    add_arg("--disc-lr", help='learning rate for discriminator', default=0.0005, type=float)
-    add_arg("--gen-lr", help='learning rate for generator', default=0.0005, type=float)
+    add_arg("--disc-lr", help='learning rate for discriminator', default=2e-4, type=float)
+    add_arg("--gen-lr", help='learning rate for generator', default=5e-5, type=float)
     add_arg("--max-epochs", help='number of epochs', default=1, type=int)
     add_arg("--batch-size", type=int,
             help='training/evaluation batch size', default=500)
     add_arg("--shuffle-size", type=int,
             help="number of events for shuffling", default=650)
+    add_arg("--warm-up", action='store_true', help='warm up discriminator first')
+    add_arg("--disc-batches", help='number of batches training discriminator only', type=int, default=100)
 
     add_arg("--noise-dim", type=int, help='dimension of noises', default=8)
     add_arg("--disc-num-iters", type=int,

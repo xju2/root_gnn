@@ -100,7 +100,7 @@ class RegulizedMLP(snt.Module):
                  output_sizes: Iterable[int],
                  with_batch_norm: bool = False,
                  dropout_rate=None,
-                 activation: Callable[[tf.Tensor], tf.Tensor] = tf.nn.relu,
+                 activation: Callable[[tf.Tensor], tf.Tensor] = tf.nn.leaky_relu,
                  activate_final: bool = False,
                  name: Optional[Text] = None):
         """
@@ -133,16 +133,18 @@ class RegulizedMLP(snt.Module):
         return inputs
 
 
-def make_regulized_mlp():
+def make_regulized_mlp(dropout=0.30):
     return snt.Sequential([
             RegulizedMLP([LATENT_SIZE]*NUM_LAYERS,
-                    activation=tf.nn.relu,
+                    activation=tf.nn.leaky_relu,
                     activate_final=True,
-                    dropout_rate=0.30,
+                    dropout_rate=dropout,
                     with_batch_norm=True,
                     ),
             snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
             ])
+
+make_regulized_mlp_no_dropout = functools.partial(make_regulized_mlp, dropout=None)
 
 
 class SetsGenerator(snt.Module):
@@ -160,8 +162,8 @@ class SetsGenerator(snt.Module):
         # graph creation
         self._node_linear = snt.Sequential([
             MLP_fn([LATENT_SIZE]*NUM_LAYERS+[out_dim],
-                    activation=tf.nn.relu,
-                    activate_final=False,
+                    activation=tf.nn.leaky_relu,
+                    activate_final=True,
                     dropout_rate=0.30,
                     with_batch_norm=with_batch_norm,
                     name="node_encoder_nn"
@@ -172,10 +174,10 @@ class SetsGenerator(snt.Module):
 
         # node properties
         self._node_rnn = snt.GRU(hidden_size=LATENT_SIZE, name="node_rnn")
-        self._node_prop_nn = MLP_fn([LATENT_SIZE]*NUM_LAYERS+[out_dim],
-                                    activation=tf.nn.relu,
-                                    activate_final=False,
-                                    dropout_rate=0.30,
+        self._node_prop_nn = MLP_fn([512, out_dim],
+                                    activation=tf.nn.tanh,
+                                    activate_final=True,
+                                    dropout_rate=None,
                                     with_batch_norm=with_batch_norm,
                                     name="node_prop_nn")
 
@@ -278,7 +280,7 @@ class SetsDiscriminator(snt.Module):
         super(SetsDiscriminator, self).__init__(name=name)
 
         self._edge_block = blocks.EdgeBlock(
-            edge_model_fn=make_regulized_mlp,
+            edge_model_fn=make_regulized_mlp_no_dropout,
             use_edges=False,
             use_receiver_nodes=True,
             use_sender_nodes=True,
@@ -286,7 +288,7 @@ class SetsDiscriminator(snt.Module):
             name='edge_encoder_block')
 
         self._node_encoder_block = blocks.NodeBlock(
-            node_model_fn=make_regulized_mlp,
+            node_model_fn=make_regulized_mlp_no_dropout,
             use_received_edges=False,
             use_sent_edges=False,
             use_nodes=True,
@@ -295,7 +297,7 @@ class SetsDiscriminator(snt.Module):
         )
 
         self._global_block = blocks.GlobalBlock(
-            global_model_fn=make_regulized_mlp,
+            global_model_fn=make_regulized_mlp_no_dropout,
             use_edges=True,
             use_nodes=True,
             use_globals=False,
@@ -422,8 +424,10 @@ class SetGANOptimizer(snt.Module):
         self.gen_lr = tf.Variable(
             gen_lr, trainable=False, name='gen_lr', dtype=tf.float32)
         
-        self.disc_opt = snt.optimizers.Adam(learning_rate=self.disc_lr, beta1=0.0)
-        self.gen_opt = snt.optimizers.Adam(learning_rate=self.gen_lr, beta1=0.0)
+        # self.disc_opt = snt.optimizers.Adam(learning_rate=self.disc_lr, beta1=0.0)
+        # self.gen_opt = snt.optimizers.Adam(learning_rate=self.gen_lr, beta1=0.0)
+        self.disc_opt = snt.optimizers.SGD(learning_rate=self.disc_lr)
+        self.gen_opt = snt.optimizers.Adam(learning_rate=self.gen_lr)
 
         self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
         self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
@@ -437,18 +441,28 @@ class SetGANOptimizer(snt.Module):
 
     def disc_step(self, inputs_tr, targets_tr, lr_mult=1.0):
         gan = self.gan
+        flip = tf.random.uniform(shape=[1], dtype=tf.float32) > 0.9
         with tf.GradientTape() as tape:
             gen_graph = gan.generate(inputs_tr, self.get_noise_batch())
             # my_print(gen_graph)
             # my_print(targets_tr)
 
-            real_output = gan.discriminate(gen_graph)
-            fake_output = gan.discriminate(targets_tr)
-            
+            real_output = gan.discriminate(targets_tr)
+            fake_output = gan.discriminate(gen_graph)
             loss = discriminator_loss(
-                real_output, fake_output,
-                self.disc_alpha,
-                self.disc_beta)
+                    real_output, fake_output,
+                    self.disc_alpha,
+                    self.disc_beta)
+            # if flip:
+            #     loss = discriminator_loss(
+            #         fake_output, real_output,
+            #         self.disc_alpha,
+            #         self.disc_beta)
+            # else:
+            #     loss = discriminator_loss(
+            #         real_output, fake_output,
+            #         self.disc_alpha,
+            #         self.disc_beta)
 
         disc_params = gan.discriminator.trainable_variables
         disc_grads = tape.gradient(loss, disc_params)
@@ -486,5 +500,7 @@ class SetGANOptimizer(snt.Module):
     def step(self, inputs_tr, targets_tr, epoch):
         lr_mult = self._get_lr_mult(epoch)
         disc_loss = self.disc_step(inputs_tr, targets_tr, lr_mult=lr_mult)
+        # disc_loss = 1.0
         gen_loss = self.gen_step(inputs_tr, lr_mult=lr_mult)
+        # gen_loss += self.gen_step(inputs_tr, lr_mult=lr_mult)
         return disc_loss, gen_loss, lr_mult
