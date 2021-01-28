@@ -4,7 +4,7 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_input_particle_features = 5 # jet 4-vector and b-tagging
-n_target_node_features = 6 # for each top [top 4-vector, charge (2 bits), and p is-there]
+n_target_node_features = 7 # for each top [top 4-vector, charge (2 bits), and p is-there]
 
 n_max_tops = 2 # number of maximum top
 

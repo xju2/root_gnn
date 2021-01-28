@@ -10,6 +10,7 @@ import time
 import random
 import functools
 import six
+import tqdm
 
 import numpy as np
 import sklearn.metrics
@@ -23,7 +24,10 @@ from types import SimpleNamespace
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.info("TF Version:{}".format(tf.__version__))
-import horovod.tensorflow as hvd
+try:
+    import horovod.tensorflow as hvd
+except ModuleNotFoundError:
+    logging.warning("No horvod module, cannot perform distributed training")
 
 
 from root_gnn import model as all_models
@@ -36,8 +40,10 @@ from root_gnn.trainer import loop_dataset
 from root_gnn.trainer import get_signature
 
 
-target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).T.reshape((-1,))
-target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).T.reshape((-1,))
+target_scales = np.array([145.4, 145.6, 432.9, 281.4, 1, 1, 1]*topreco.n_max_tops).reshape(
+    (topreco.n_max_tops, -1)).T.reshape((-1,))
+target_mean = np.array([0.067, -0.062, 0.042, 420, 0, 0, 0]*topreco.n_max_tops).reshape(
+    (topreco.n_max_tops, -1)).T.reshape((-1,))
 
 
 def init_workers(distributed=False):
@@ -57,7 +63,8 @@ def init_workers(distributed=False):
         
 
 def train_and_evaluate(args):
-    dist = init_workers(args.distributed)
+    # dist = init_workers(args.distributed)
+    dist = init_workers()
 
     device = 'CPU'
     gpus = tf.config.experimental.list_physical_devices("GPU")
@@ -71,14 +78,18 @@ def train_and_evaluate(args):
     if gpus and args.distributed:
         tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
+    time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
     output_dir = args.output_dir
+    batch_size = args.batch_size
+
     if dist.rank == 0:
+        print(output_dir)
         os.makedirs(output_dir, exist_ok=True)
     logging.info("Checkpoints and models saved at {}".format(output_dir))
 
     num_processing_steps_tr = args.num_iters     ## level of message-passing
     n_epochs = args.max_epochs
-    logging.info("{} epochs with batch size {}".format(n_epochs, args.batch_size))
+    logging.info("{} epochs with batch size {}".format(n_epochs, batch_size))
     logging.info("{} processing steps in the model".format(num_processing_steps_tr))
     logging.info("I am in hvd rank: {} of  total {} ranks".format(dist.rank, dist.size))
 
@@ -105,66 +116,37 @@ def train_and_evaluate(args):
         dist.rank, len(train_files), len(eval_files)))
 
     AUTO = tf.data.experimental.AUTOTUNE
+    train_files = [train_files[0]]
     training_dataset, ngraphs_train = read_dataset(train_files)
-    training_dataset = training_dataset.prefetch(AUTO)
+    training_dataset = training_dataset.repeat(n_epochs).prefetch(AUTO).shuffle(
+        args.shuffle_size, seed=12345, reshuffle_each_iteration=False
+    )
 
-    input_signature = get_signature(training_dataset, args.batch_size)
+    input_signature = get_signature(training_dataset, batch_size, with_bool=True)
 
 
     learning_rate = args.learning_rate
     optimizer = snt.optimizers.Adam(learning_rate)
     model = getattr(all_models, 'FourTopPredictor')()
 
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir,
-                                max_to_keep=5, keep_checkpoint_every_n_hours=8)
-    logging.info("Loading latest checkpoint from: {}".format(output_dir))
-    _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
-
-    target_scales = np.array([145.34593924, 145.57711889, 432.92148524, 281.44161905, 1, 1]*topreco.n_max_tops).reshape((topreco.n_max_tops, -1)).T.reshape((-1,))
-    target_mean = np.array([6.74674671e-02, -6.17142186e-02,  4.18239305e-01, 4.24881531e+02, 0, 0]*topreco.n_max_tops).reshape((topreco.n_max_tops, -1)).T.reshape((-1,))
     # training loss
     def loss_fcn(target_op, output_ops):
         # print("target size: ", target_op.nodes.shape)
         # print("output size: ", output_ops[0].nodes.shape)
-        # output_op = output_ops[-1]
-        # print("loss of 4-vect: ", tf.nn.l2_loss((target_op.nodes[:, :4] - output_op.nodes[:topreco.n_max_tops, :4])))
-        # print("loss of charge: ", tf.math.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(tf.cast(target_op.nodes[:, 4:6], tf.int32),  output_op.nodes[:topreco.n_max_tops, 4:6])))
-        # print("loss of predictions: ", tf.compat.v1.losses.log_loss(tf.cast(target_op.nodes[:, 6], tf.int32),  tf.math.sigmoid(output_op.nodes[:topreco.n_max_tops, 6])))
 
-        # loss_ops = [tf.nn.l2_loss((target_op.nodes[:, :4] - output_op.nodes[:topreco.n_max_tops, :4]))
-        #     + tf.math.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(tf.cast(target_op.nodes[:, 4:6], tf.int32),  output_op.nodes[:topreco.n_max_tops, 4:6]))
-        #     + tf.compat.v1.losses.log_loss(tf.cast(target_op.nodes[:, 6], tf.int32),  tf.math.sigmoid(output_op.nodes[:topreco.n_max_tops, 6]))
-        #     for output_op in output_ops
-        # ]
-
-        # loss_ops = [tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4])) / target_op.globals.shape[0]
-        #     + tf.compat.v1.losses.log_loss(
-        #         tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5], tf.int32),\
-        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*5]))
-        #     + tf.compat.v1.losses.log_loss(
-        #         tf.cast(target_op.globals[:, topreco.n_max_tops*5:], tf.int32),\
-        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*5:]))
-        #     for output_op in output_ops
-        # ]
-        # alpha = tf.constant(1, dtype=tf.float32)
-        # loss_ops = [alpha * tf.compat.v1.losses.mean_squared_error(target_op.globals[:, :topreco.n_max_tops*4], output_op.globals[:, :topreco.n_max_tops*4])
-        #     + tf.compat.v1.losses.log_loss(
-        #         tf.cast(target_op.globals[:, topreco.n_max_tops*4:], tf.int32),\
-        #         tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:]))
-        #     for output_op in output_ops
-        # ]
-
-        # loss_ops = [ tf.nn.l2_loss((target_op.globals[:, :topreco.n_max_tops*4] - output_op.globals[:, :topreco.n_max_tops*4]))
-        #     for output_op in output_ops
-        # ]
-        loss_ops = [ tf.compat.v1.losses.absolute_difference(
-                            target_op.globals[:, :topreco.n_max_tops*4],\
-                            output_op.globals[:, :topreco.n_max_tops*4])
+        loss_ops = [tf.compat.v1.losses.absolute_difference(
+                        target_op.globals[:, :topreco.n_max_tops*4],
+                        output_op.globals[:, :topreco.n_max_tops*4])
+                    + tf.compat.v1.losses.log_loss(
+                        tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7], tf.int32),\
+                        tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7]))
             for output_op in output_ops
         ]
 
-        # loss_ops = [tf.compat.v1.losses.mean_squared_error(target_op.globals[:, :topreco.n_max_tops*4], output_op.globals[:, :topreco.n_max_tops*4])
+        # The following works well for the top 4-vector predictions
+        # loss_ops = [ tf.compat.v1.losses.absolute_difference(
+        #                     target_op.globals[:, :topreco.n_max_tops*4],\
+        #                     output_op.globals[:, :topreco.n_max_tops*4])
         #     for output_op in output_ops
         # ]
 
@@ -202,50 +184,38 @@ def train_and_evaluate(args):
         return loss_op_tr
 
 
-    def train_epoch(dataset):
-        total_loss = 0.
-        batch = 0
-        for inputs in loop_dataset(dataset, args.batch_size):
-            input_tr, targets_tr = inputs
+    training_data = loop_dataset(training_dataset, batch_size)
+    steps_per_epoch = ngraphs_train // batch_size
+    log_dir = os.path.join(output_dir, "logs/{}/train".format(time_stamp))
+    train_summary_writer = tf.summary.create_file_writer(log_dir)
+    ckpt_dir = os.path.join(output_dir, "checkpoints")
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=ckpt_dir,
+                                max_to_keep=5, keep_checkpoint_every_n_hours=8)
+    logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
+    _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
+
+
+    start_time = time.time()
+    with tqdm.trange(n_epochs*steps_per_epoch) as t:
+        for step_num in t:
+            epoch = tf.constant(int(step_num / steps_per_epoch), dtype=tf.int32)
+            inputs_tr, targets_tr = next(training_data)
             new_target = (targets_tr.globals - target_mean) / target_scales
             targets_tr = targets_tr.replace(globals=new_target)
-            total_loss += train_step(input_tr, targets_tr, batch==0).numpy()
-            batch += 1
-        logging.info("total batches: {}".format(batch))
-        return total_loss/batch, batch
-        # return total_loss/batch/args.batch_size, batch
+            loss =  train_step(inputs_tr, targets_tr, step_num==0).numpy()
 
-    out_str  = "Start training " + time.strftime('%d %b %Y %H:%M:%S', time.localtime())
-    out_str += '\n'
-    out_str += "Epoch, Time [mins], Loss\n"
-    log_name = os.path.join(output_dir, "training_log.txt")
-    if dist.rank == 0:
-        with open(log_name, 'a') as f:
-            f.write(out_str)
-    now = time.time()
+            if step_num and (step_num % args.log_every_iter == 0):
+                t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
+                t.set_postfix(loss=loss)             
+                ckpt_manager.save()
 
-    for epoch in range(n_epochs):
-        logging.info("start epoch {} on {}".format(epoch, device))
-
-        # shuffle the dataset before training
-        training_dataset = training_dataset.shuffle(args.shuffle_size, seed=12345, reshuffle_each_iteration=True)
-        loss,batches = train_epoch(training_dataset)
-        this_epoch = time.time()
-
-        logging.info("{} epoch takes {:.2f} mins with loss {:.4f} in {} batches".format(
-            epoch, (this_epoch-now)/60., loss, batches))
-        out_str = "{}, {:.2f}, {:.4f}\n".format(epoch, (this_epoch-now)/60., loss)
-
-        now = this_epoch
-        if dist.rank == 0:
-            with open(log_name, 'a') as f:
-                f.write(out_str)
-            ckpt_manager.save()
-
-    if dist.rank == 0:
-        out_log = "End @ " + time.strftime('%d %b %Y %H:%M:%S', time.localtime()) + "\n"
-        with open(log_name, 'a') as f:
-            f.write(out_log)
+                # log some metrics
+                this_epoch = time.time()
+                with train_summary_writer.as_default():
+                    # epoch = epoch.numpy()
+                    tf.summary.scalar("loss", loss, step=step_num)
+                    tf.summary.scalar("time", (this_epoch-start_time)/60., step=step_num)
 
 
 if __name__ == "__main__":
@@ -262,6 +232,7 @@ if __name__ == "__main__":
     add_arg("--shuffle-size", type=int, help="number of events for shuffling", default=650)
     add_arg("-v", "--verbose", help='verbosity', choices=['DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN'],\
         default="INFO")
+    add_arg("--log-every-iter", type=int, help='logger every N interactions', default=100)
     args, _ = parser.parse_known_args()
 
     # Set python level verbosity
