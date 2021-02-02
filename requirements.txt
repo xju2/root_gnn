@@ -5,7 +5,7 @@ astroid==2.4.1
 astunparse==1.6.3
 attrs==19.3.0
 backcall==0.1.0
-bleach==3.1.4
+bleach==3.3.0
 cachetools==4.0.0
 certifi==2020.6.20
 cffi==1.14.0
