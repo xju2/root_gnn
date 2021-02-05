@@ -10,7 +10,7 @@ from graph_nets import utils_tf
 
 from root_gnn.src.datasets import graph
 from root_gnn.src.models import model_utils
-from root_gnn.src.datasets import topreco_v2 as topreco
+from root_gnn.src.datasets import topreco as topreco
 
 from root_gnn import utils_plot
 
@@ -21,19 +21,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate Top Reco.')
     add_arg = parser.add_argument
     add_arg("filenames", help="input event files in TFRec format")
-    add_arg("config", help="configuration file used for training")
+    add_arg("ckpt_dir", help="checkpoint directory")
     add_arg("outname", help='output name prefix')
     add_arg("--nevts", default=-1, help='number of events', type=int)
-    add_arg("--batch-size", default=-1, help="batch size", type=int)
+    add_arg("--batch-size", default=16, help="batch size", type=int)
     add_arg("--no-gpu", help="no gpus", action='store_true')
+    add_arg("--model-name", help='model name', default='FourTopPredictor')
+    add_arg("--num-iters", help='number of processing', default=8)
     args = parser.parse_args()
 
     if args.no_gpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
     outname = args.outname
-    if not os.path.exists(args.config):
-        print("{} does not exists", args.config)
 
     # load data
     filenames = tf.io.gfile.glob(args.filenames)
@@ -42,13 +42,16 @@ if __name__ == "__main__":
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
     nevts = sum([1 for _ in dataset])
 
-    model, num_processing_steps, global_batch_size = model_utils.create_load_model(args.config)
-    if args.batch_size > 0:
-        global_batch_size = args.batch_size
-    
+    # model, num_processing_steps, global_batch_size = model_utils.create_load_model(args.config)
+    model = model_utils.load_model(args.model_name, args.ckpt_dir)
+    global_batch_size = args.batch_size
+    num_processing_steps = args.num_iters
+
     print("{} files and {:,} events".format(len(filenames), nevts))
     print("maximum number of tops: {}".format(topreco.n_max_tops))
-    print("global batch size: {}".format(global_batch_size))
+    print("batch size: {}".format(global_batch_size))
+    print("# of message passing: {}".format(num_processing_steps))
+
 
     predicts = []
     truths = []

@@ -6,7 +6,6 @@ from root_gnn.utils import load_yaml
 from root_gnn import model as GNN
 
 
-
 def create_load_model(config):
     config = load_yaml(config)
     config_tr = config['parameters']
@@ -29,3 +28,16 @@ def create_load_model(config):
         raise ValueError("Cannot find model at:", modeldir)
     
     return (model, num_processing_steps_tr, global_batch_size)
+
+
+def load_model(model_name, ckpt_dir):
+    lr = 0.001
+    optimizer = snt.optimizers.Adam(lr)
+    model = getattr(GNN, model_name)()
+
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=ckpt_dir, max_to_keep=5)
+    _ = checkpoint.restore(ckpt_manager.latest_checkpoint).expect_partial()
+    print("Loaded latest checkpoint from {}".format(ckpt_dir))
+
+    return model

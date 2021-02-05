@@ -392,6 +392,11 @@ def discriminator_loss(real_output, fake_output, disc_alpha, disc_beta):
     return tf.reduce_mean(tf.stack(loss_ops))
 
 
+def hinge_loss_disc(preds_real, preds_gen):
+    loss_real = tf.reduce_mean(tf.nn.relu(1. - preds_real))
+    loss_gen = tf.reduce_mean(tf.nn.relu(1. + preds_gen))
+    return loss_real + loss_gen
+
 class SetGANOptimizer(snt.Module):
 
     def __init__(self,
@@ -449,7 +454,11 @@ class SetGANOptimizer(snt.Module):
 
             real_output = gan.discriminate(targets_tr)
             fake_output = gan.discriminate(gen_graph)
-            loss = discriminator_loss(
+            # loss = discriminator_loss(
+            #         real_output, fake_output,
+            #         self.disc_alpha,
+            #         self.disc_beta)
+            loss = hinge_loss_disc(
                     real_output, fake_output,
                     self.disc_alpha,
                     self.disc_beta)

@@ -83,7 +83,6 @@ def train_and_evaluate(args):
     batch_size = args.batch_size
 
     if dist.rank == 0:
-        print(output_dir)
         os.makedirs(output_dir, exist_ok=True)
     logging.info("Checkpoints and models saved at {}".format(output_dir))
 
@@ -116,7 +115,6 @@ def train_and_evaluate(args):
         dist.rank, len(train_files), len(eval_files)))
 
     AUTO = tf.data.experimental.AUTOTUNE
-    train_files = [train_files[0]]
     training_dataset, ngraphs_train = read_dataset(train_files)
     training_dataset = training_dataset.repeat(n_epochs).prefetch(AUTO).shuffle(
         args.shuffle_size, seed=12345, reshuffle_each_iteration=False
@@ -134,12 +132,18 @@ def train_and_evaluate(args):
         # print("target size: ", target_op.nodes.shape)
         # print("output size: ", output_ops[0].nodes.shape)
 
+        # loss_ops = [tf.compat.v1.losses.absolute_difference(
+        #                 target_op.globals[:, :topreco.n_max_tops*4],
+        #                 output_op.globals[:, :topreco.n_max_tops*4]) * 10
+        #             + tf.compat.v1.losses.log_loss(
+        #                 tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7], tf.int32),\
+        #                 tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7]))
+        #     for output_op in output_ops
+        # ]
+
         loss_ops = [tf.compat.v1.losses.absolute_difference(
                         target_op.globals[:, :topreco.n_max_tops*4],
                         output_op.globals[:, :topreco.n_max_tops*4])
-                    + tf.compat.v1.losses.log_loss(
-                        tf.cast(target_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7], tf.int32),\
-                        tf.math.sigmoid(output_op.globals[:, topreco.n_max_tops*4:topreco.n_max_tops*7]))
             for output_op in output_ops
         ]
 
