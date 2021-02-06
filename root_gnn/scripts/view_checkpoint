@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+from tensorflow.python.training import py_checkpoint_reader
+import os
+import numpy as np
+import re
+
+def count_total_params(reader, count_exclude_pattern=""):
+  """Count total number of variables."""
+  var_to_shape_map = reader.get_variable_to_shape_map()
+
+  # Filter out tensors that we don't want to count
+  if count_exclude_pattern:
+    regex_pattern = re.compile(count_exclude_pattern)
+    new_var_to_shape_map = {}
+    exclude_num_tensors = 0
+    exclude_num_params = 0
+    for v in var_to_shape_map:
+      if regex_pattern.search(v):
+        exclude_num_tensors += 1
+        exclude_num_params += np.prod(var_to_shape_map[v])
+      else:
+        new_var_to_shape_map[v] = var_to_shape_map[v]
+    var_to_shape_map = new_var_to_shape_map
+    print("# Excluding %d tensors (%d params) that match %s when counting." % (
+        exclude_num_tensors, exclude_num_params, count_exclude_pattern))
+
+  var_sizes = [np.prod(var_to_shape_map[v]) for v in var_to_shape_map]
+  return np.sum(var_sizes, dtype=int)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="count number of parameters in a checkpoint")
+    add_arg = parser.add_argument
+    add_arg("filename", help="checkpoint file name")
+    args = parser.parse_args()
+
+    reader = py_checkpoint_reader.NewCheckpointReader(args.filename)
+    print("Trainable variables {:,}".format(
+        count_total_params(reader, count_exclude_pattern="optimizer")))

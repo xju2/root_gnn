@@ -14,7 +14,7 @@ from graph_nets import modules
 
 from graph_nets import graphs
 
-LATENT_SIZE = 128
+LATENT_SIZE = 256
 NUM_LAYERS = 2
 
 def my_print(g, data=False):
@@ -164,7 +164,7 @@ class SetsGenerator(snt.Module):
             MLP_fn([LATENT_SIZE]*NUM_LAYERS+[out_dim],
                     activation=tf.nn.leaky_relu,
                     activate_final=True,
-                    dropout_rate=0.30,
+                    dropout_rate=None,
                     with_batch_norm=with_batch_norm,
                     name="node_encoder_nn"
                     ),
@@ -174,7 +174,7 @@ class SetsGenerator(snt.Module):
 
         # node properties
         self._node_rnn = snt.GRU(hidden_size=LATENT_SIZE, name="node_rnn")
-        self._node_prop_nn = MLP_fn([512, out_dim],
+        self._node_prop_nn = MLP_fn([512, 256, out_dim],
                                     activation=tf.nn.tanh,
                                     activate_final=True,
                                     dropout_rate=None,
@@ -352,7 +352,7 @@ class SetGAN(snt.Module):
         input_op = tf.concat([inputs_tr.nodes, noise], axis=-1)
         inputs_tr = inputs_tr.replace(nodes=input_op)
 
-        node_pred = self.generator(inputs_tr, max_nodes=self._max_nodes)
+        node_pred = self.generator(inputs_tr, max_nodes=self._max_nodes, training=is_training)
         incident_info = tf.reshape(
             incident_info, [self._batch_size, 1, 4])
         node_pred = tf.concat([incident_info, node_pred], axis=1)
@@ -393,9 +393,10 @@ def discriminator_loss(real_output, fake_output, disc_alpha, disc_beta):
 
 
 def hinge_loss_disc(preds_real, preds_gen):
-    loss_real = tf.reduce_mean(tf.nn.relu(1. - preds_real))
-    loss_gen = tf.reduce_mean(tf.nn.relu(1. + preds_gen))
+    loss_real = tf.reduce_mean([tf.nn.relu(1. - output_op.globals) for output_op in preds_real])
+    loss_gen = tf.reduce_mean([tf.nn.relu(1. + output_op.globals) for output_op in preds_gen])
     return loss_real + loss_gen
+
 
 class SetGANOptimizer(snt.Module):
 
@@ -459,9 +460,7 @@ class SetGANOptimizer(snt.Module):
             #         self.disc_alpha,
             #         self.disc_beta)
             loss = hinge_loss_disc(
-                    real_output, fake_output,
-                    self.disc_alpha,
-                    self.disc_beta)
+                    real_output, fake_output)
             # if flip:
             #     loss = discriminator_loss(
             #         fake_output, real_output,

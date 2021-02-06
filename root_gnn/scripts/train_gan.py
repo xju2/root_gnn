@@ -163,7 +163,8 @@ def train_and_evaluate(args):
     AUTO = tf.data.experimental.AUTOTUNE
     training_dataset, ngraphs_train = read_dataset(train_files)
     training_dataset = training_dataset.repeat(n_epochs).prefetch(AUTO)
-    training_dataset = training_dataset.shuffle(
+    if args.shuffle_size > 0:
+        training_dataset = training_dataset.shuffle(
                 args.shuffle_size, seed=12345, reshuffle_each_iteration=False)
 
 
