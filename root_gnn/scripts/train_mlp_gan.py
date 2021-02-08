@@ -33,6 +33,18 @@ import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.info("TF Version:{}".format(tf.__version__))
 
+node_mean = np.array([
+    [14.13, 0.05, -0.10, -0.04], 
+    [7.73, 0.02, -0.04, -0.08],
+    [6.41, 0.04, -0.06, 0.04]
+], dtype=np.float32)
+
+node_scales = np.array([
+    [13.29, 10.54, 10.57, 12.20], 
+    [8.62, 6.29, 6.35, 7.29],
+    [6.87, 5.12, 5.13, 5.90]
+], dtype=np.float32)
+
 
 node_abs_max = np.array([
     [49.1, 47.7, 46.0, 47.0],
@@ -116,10 +128,6 @@ def train_and_evaluate(args):
     logging.info("rank {} has {} training graphs".format(
         dist.rank, ngraphs_train))
 
-    # input_signature = get_signature(
-    #     training_dataset, batch_size, dynamic_num_nodes=False)
-
-
     gan = toGan.GAN()
 
     optimizer = toGan.GANOptimizer(
@@ -158,8 +166,8 @@ def train_and_evaluate(args):
 
     
     def normalize(inputs, targets):
-        input_nodes = inputs_tr.nodes/node_abs_max[0]
-        target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+        input_nodes = (inputs.nodes - node_mean[0])/node_scales[0]
+        target_nodes = np.reshape(targets.nodes, [batch_size, -1, 4])
         target_nodes = np.reshape(target_nodes/node_abs_max, [batch_size, -1])
         return input_nodes, target_nodes
 
