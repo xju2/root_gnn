@@ -452,11 +452,39 @@ class SetGANOptimizer(snt.Module):
         return tf.random.normal(noise_shape, dtype=tf.float32)
 
 
+    def Discriminator_Regularizer(self, p_true, grad_D_true_logits, p_gen, grad_D_gen_logits):
+        """
+        Args:
+            p_true: probablity from Discriminator for true events
+            grad_D_true_logits: gradient of Discrimantor logits w.r.t its input variables
+            p_gen: probability from Discriminator for generated events
+            grad_D_gen_logits: gradient of Discrimantor logits w.r.t its input variables
+        Returns:
+            discriminator regularizer
+        """
+        grad_D_true_logits_norm = tf.norm(
+            tf.reshape(grad_D_true_logits, [self.hyparams.batch_size -1]),
+            axis=1, keep_dims=True
+        )
+        grad_D_gen_logits_norm = tf.norm(
+            tf.reshape(grad_D_gen_logits, [self.hyparams.batch_size, -1]),
+            axis=1, keep_dims=True
+        )
+        assert grad_D_true_logits_norm.shape == p_true.shape
+        assert grad_D_gen_logits_norm.shape == p_gen.shape
+            
+        reg_true = tf.multiply(tf.square(1.0 - p_true), tf.square(grad_D_true_logits_norm))
+        reg_gen = tf.multiply(tf.square(p_gen), tf.square(grad_D_gen_logits_norm))
+        disc_regularizer = tf.reduce_mean(reg_true + reg_gen)
+        return disc_regularizer
+
     def disc_step(self, inputs_tr, targets_tr, lr_mult=1.0):
         gan = self.gan
         flip = tf.random.uniform(shape=[1], dtype=tf.float32) > 0.9
         with tf.GradientTape() as tape:
             gen_graph = gan.generate(inputs_tr, self.get_noise_batch())
+            # my_print(gen_graph)
+            # my_print(targets_tr)
 
             real_output = gan.discriminate(targets_tr)
             fake_output = gan.discriminate(gen_graph)

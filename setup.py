@@ -60,6 +60,7 @@ setup(
         'root_gnn/scripts/calculate_topreco_metrics',
         'root_gnn/scripts/train_HI.py',
         'root_gnn/scripts/train_gan.py',
+        'root_gnn/scripts/train_mlp_gan.py',
         'root_gnn/scripts/view_checkpoint',
     ],
 )
