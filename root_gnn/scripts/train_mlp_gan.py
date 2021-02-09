@@ -124,9 +124,12 @@ def train_and_evaluate(args):
         training_dataset = training_dataset.shuffle(
                 args.shuffle_size, seed=12345, reshuffle_each_iteration=False)
 
+    validating_dataset, ngraphs_val = read_dataset(eval_files)
+    validating_dataset = validating_dataset.repeat().prefetch(AUTO)
 
-    logging.info("rank {} has {} training graphs".format(
-        dist.rank, ngraphs_train))
+
+    logging.info("rank {} has {:,} training events and {:,} validating events".format(
+        dist.rank, ngraphs_train, ngraphs_val))
 
     gan = toGan.GAN()
 
@@ -149,6 +152,7 @@ def train_and_evaluate(args):
 
 
     training_data = loop_dataset(training_dataset, batch_size)
+    validating_data = loop_dataset(validating_dataset, batch_size)
     steps_per_epoch = ngraphs_train // batch_size
 
 
@@ -185,6 +189,7 @@ def train_and_evaluate(args):
 
     pre_gen_loss = pre_disc_loss = 0
     start_time = time.time()
+
 
     with tqdm.trange(n_epochs*steps_per_epoch) as t:
 
@@ -227,6 +232,18 @@ def train_and_evaluate(args):
                 pre_gen_loss = gen_loss
                 pre_disc_loss = disc_loss
 
+                # adding testing results
+                predict_4vec = []
+                truth_4vec = []
+                for ib in range(args.val_batches):
+                    inputs_val, targets_val = normalize(* (next(validating_data)))
+                    gen_evts_val = optimizer.cond_gen(inputs_val)
+                    predict_4vec.append(tf.reshape(gen_evts_val, [batch_size, -1, 4]))
+                    truth_4vec.append(tf.reshape(targets_val, [batch_size, -1, 4])[:, 1:, :])
+        
+                predict_4vec = tf.concat(predict_4vec, axis=0)
+                truth_4vec = tf.concat(truth_4vec, axis=0)
+
                 # log some metrics
                 this_epoch = time.time()
                 with train_summary_writer.as_default():
@@ -239,8 +256,18 @@ def train_and_evaluate(args):
                         tf.summary.scalar("discr_reg", disc_reg.numpy(), description='discriminator regularization')
                         tf.summary.scalar("reg_gen", reg_gen.numpy(), description='regularization on generated events')
                         tf.summary.scalar("reg_true", reg_true.numpy(), description='regularization on truth events')
-                        tf.summary.scalar("grad_D1_logits_norm", grad_D_true_logits_norm, description="gradients of true logits")
-                        tf.summary.scalar("grad_D2_logits_norm", grad_D_gen_logits_norm, description="gradients of generated logits")
+                        tf.summary.scalar("grad_D1_logits_norm", grad_D_true_logits_norm,
+                                    description="gradients of true logits")
+                        tf.summary.scalar("grad_D2_logits_norm", grad_D_gen_logits_norm,
+                                    description="gradients of generated logits")
+                    tf.summary.histogram("predict_4vec", predict_4vec, descriptions='generated events')
+                    tf.summary.histogram("truth_4vec", truth_4vec, descriptions='truth events')
+                    
+
+
+                tf.summary.histogram
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -272,6 +299,7 @@ if __name__ == "__main__":
     add_arg("--with-disc-reg", action='store_true', help='with discriminator regularizer')
     add_arg("--gamma-reg", type=float, help="scale the regularization term", default=1e-3)
     add_arg("--log-freq", type=int, help='log per number of steps', default=50)
+    add_arg("--val-batches", type=int, default=1, help='number of batches for validation')
 
     add_arg("-v", "--verbose", help='verbosity', choices=['DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN'],
             default="INFO")

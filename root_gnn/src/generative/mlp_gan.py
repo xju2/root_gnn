@@ -237,3 +237,10 @@ class GANOptimizer(snt.Module):
         disc_loss = self.disc_step(inputs_tr, targets_tr, lr_mult=lr_mult)
         gen_loss = self.gen_step(inputs_tr, lr_mult=lr_mult)
         return disc_loss, gen_loss, lr_mult
+
+    def cond_gen(self, inputs_tr):
+        gan = self.gan
+        noises = self.get_noise_batch()
+        inputs = tf.concat([inputs_tr, noises], axis=-1)
+        gen_evts = gan.generate(inputs)
+        return gen_evts

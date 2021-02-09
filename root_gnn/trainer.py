@@ -43,7 +43,10 @@ def read_dataset(filenames):
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    n_graphs = sum([1 for _ in dataset])
+    # took too much time..
+    # disabled
+    # n_graphs = sum([1 for _ in dataset])
+    n_graphs = 0
     return dataset, n_graphs
 
 
