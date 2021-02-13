@@ -20,17 +20,20 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "graph_nets>=1.1",
+        'tensorflow >= 2.4.0',
+        "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
         "networkx",
         "numpy",
         "scipy",
         "pandas",
+        "tables",
         "setuptools",
         "six",
         "matplotlib",
         "sklearn",
         'pyyaml>=5.1',
+        'tqdm',
     ],
     package_data = {
         "root_gnn": ["config/*.yaml"]
@@ -56,5 +59,9 @@ setup(
         'root_gnn/scripts/evaluate_top_reco',
         'root_gnn/scripts/calculate_topreco_metrics',
         'root_gnn/scripts/train_HI.py',
+        'root_gnn/scripts/train_gan.py',
+        'root_gnn/scripts/train_mlp_gan.py',
+        'root_gnn/scripts/train_rnn_mlp_gan.py',
+        'root_gnn/scripts/view_checkpoint',
     ],
 )

@@ -71,28 +71,3 @@ class FourTopPredictor(snt.Module):
             output_ops.append(output)
 
         return output_ops
-
-def loss_fcn(target_op, output_ops):
-    loss_ops = [ tf.nn.l2_loss((target_op.globals[:, :n_max_tops*4] - output_op.globals[:, :n_max_tops*4]))
-        for output_op in output_ops
-    ]
-    return tf.stack(loss_ops)
-class FourTopOptimizer(snt.Module):
-    def __init__(self, model,
-                batch_size=100,
-                num_epochs=100,
-                lr=0.001,
-                decay_lr_start_epoch=20,
-                decay_lr=True,
-                name=None):
-        super().__init__(name=name)
-        self.model = model
-        self.init_lr = lr
-        self.lr = tf.Variable(lr, trainable=False, name='lr', dtype=tf.float32)
-        self.opt = snt.optimizers.Adam(learning_rate=self.lr)
-        self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
-        self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
-        self.decay_lr = decay_lr
-    
-    def step(self, inputs_tr, targets_tr, first_batch):
-        pass

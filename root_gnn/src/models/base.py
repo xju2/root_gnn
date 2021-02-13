@@ -10,11 +10,14 @@ import tensorflow as tf
 from graph_nets import modules
 from graph_nets import utils_tf
 from graph_nets import blocks
+
 import sonnet as snt
+
+from root_gnn.src.types import ActivationFn
 
 NUM_LAYERS = 2    # Hard-code number of layers in the edge/node/global models.
 LATENT_SIZE = 64  # Hard-code latent layer sizes for demos.
-# DROPOUT_RATE = 0.2  # 0 means no dropout
+DROPOUT_RATE = 0.2  # 0 means no dropout
 
 def make_mlp_model():
   """Instantiates a new MLP, followed by LayerNorm.
@@ -36,10 +39,15 @@ def make_mlp_model():
       snt.LayerNorm(axis=-1, create_scale=True, create_offset=False)
   ])
 
-def make_mlp(latent_size=128, num_layers=2, dropout_rate=0.30,
-             activations=tf.nn.relu, activate_final=True, name='MLP', *args, **kwargs):
+def mlp_model_with_dropout(
+    latent_size: int = 128,
+    num_layers:int = 2, 
+    dropout_rate: float = 0.30,
+    activations: ActivationFn = tf.nn.relu,
+    activate_final: bool =True,
+    name: str = 'MLP', *args, **kwargs):
   create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
-  create_offset = False if not "create_offset" in kwargs else kwargs['create_offset']
+  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
   return snt.Sequential([
       snt.nets.MLP([latent_size]*num_layers,
                     activation=activations,
@@ -47,7 +55,7 @@ def make_mlp(latent_size=128, num_layers=2, dropout_rate=0.30,
                     dropout_rate=dropout_rate
         ),
       snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
-  ], name=name)  
+  ], name=name)
 
 class MLPGraphIndependent(snt.Module):
   """GraphIndependent with MLP edge, node, and global models."""
@@ -59,8 +67,16 @@ class MLPGraphIndependent(snt.Module):
         node_model_fn=make_mlp_model,
         global_model_fn=make_mlp_model)
 
-  def __call__(self, inputs):
-    return self._network(inputs)
+  def __call__(self, inputs,
+            edge_model_kwargs=None,
+            node_model_kwargs=None,
+            global_model_kwargs=None):
+    return self._network(
+      inputs,
+      edge_model_kwargs=edge_model_kwargs,
+      node_model_kwargs=node_model_kwargs,
+      global_model_kwargs=global_model_kwargs
+      )
 
 
 class MLPGraphNetwork(snt.Module):
@@ -73,8 +89,14 @@ class MLPGraphNetwork(snt.Module):
             global_model_fn=make_mlp_model
             )
 
-    def __call__(self, inputs):
-        return self._network(inputs)
+    def __call__(self, inputs,
+            edge_model_kwargs=None,
+            node_model_kwargs=None,
+            global_model_kwargs=None):
+        return self._network(inputs,
+                      edge_model_kwargs=edge_model_kwargs,
+                      node_model_kwargs=node_model_kwargs,
+                      global_model_kwargs=global_model_kwargs)
 
 
 
@@ -99,5 +121,9 @@ class InteractionNetwork(snt.Module):
         use_globals=False,
         received_edges_reducer=reducer)
 
-  def __call__(self, graph):
-    return self._edge_block(self._node_block(graph))
+  def __call__(self,
+    graph,
+    edge_model_kwargs=None,
+    node_model_kwargs=None
+  ):
+    return self._edge_block(self._node_block(graph, node_model_kwargs), edge_model_kwargs)

@@ -5,6 +5,7 @@ Training a GAN for modeling hadronic interactions
 from root_gnn.trainer import get_signature
 from root_gnn.trainer import loop_dataset
 from root_gnn.trainer import read_dataset
+
 from root_gnn.src.generative import sets_gan
 from scipy.sparse import coo_matrix
 import tensorflow as tf
@@ -39,6 +40,35 @@ logging.info("TF Version:{}".format(tf.__version__))
 MAX_NODES = 2
 OUT_DIM = 4
 
+node_mean = np.array([
+    [14.13, 0.05, -0.10, -0.04], 
+    [7.73, 0.02, -0.04, -0.08],
+    [6.41, 0.04, -0.06, 0.04]
+], dtype=np.float32)
+
+node_scales = np.array([
+    [13.29, 10.54, 10.57, 12.20], 
+    [8.62, 6.29, 6.35, 7.29],
+    [6.87, 5.12, 5.13, 5.90]
+], dtype=np.float32)
+
+node_min = np.array([
+    [0.75, -46.3, -46.0, -47.0],
+    [0.13, -40.5, -37.0, -39.5],
+    [0.14, -36.4, -35.5, -35.0]
+], dtype=np.float32)
+
+node_max = np.array([
+    [49.1, 47.7, 44.2, 46.6],
+    [46.2, 35.7, 41.0, 37.8],
+    [42.8, 36.3, 37.0, 35.5]
+], dtype=np.float32)
+
+node_abs_max = np.array([
+    [49.1, 47.7, 46.0, 47.0],
+    [46.2, 40.5, 41.0, 39.5],
+    [42.8, 36.4, 37.0, 35.5]
+], dtype=np.float32)
 
 def my_print(g, data=False):
     for field_name in graphs.ALL_FIELDS:
@@ -77,6 +107,7 @@ def scaled_hacky_sigmoid_l2(nodes):
 
 def train_and_evaluate(args):
     dist = init_workers(args.distributed)
+    batch_size = args.batch_size
 
     device = 'CPU'
     gpus = tf.config.experimental.list_physical_devices("GPU")
@@ -100,7 +131,7 @@ def train_and_evaluate(args):
 
     n_epochs = args.max_epochs
     logging.info("{} epochs with batch size {}".format(
-        n_epochs, args.batch_size))
+        n_epochs, batch_size))
     logging.info("I am in hvd rank: {} of  total {} ranks".format(
         dist.rank, dist.size))
 
@@ -132,161 +163,119 @@ def train_and_evaluate(args):
 
     AUTO = tf.data.experimental.AUTOTUNE
     training_dataset, ngraphs_train = read_dataset(train_files)
-    training_dataset = training_dataset.prefetch(AUTO)
+    training_dataset = training_dataset.repeat(n_epochs).prefetch(AUTO)
+    if args.shuffle_size > 0:
+        training_dataset = training_dataset.shuffle(
+                args.shuffle_size, seed=12345, reshuffle_each_iteration=False)
+
+
     logging.info("rank {} has {} training graphs".format(
         dist.rank, ngraphs_train))
 
     input_signature = get_signature(
-        training_dataset, args.batch_size, dynamic_num_nodes=False)
+        training_dataset, batch_size, dynamic_num_nodes=False)
 
-    learning_rate = args.learning_rate
-    optimizer_gen = snt.optimizers.Adam(learning_rate)
-    optimizer_disc = snt.optimizers.Adam(learning_rate)
 
-    model_gen = sets_gan.SetsGenerator(
-        input_dim=OUT_DIM+args.noise_dim, out_dim=OUT_DIM,
-        with_regulization=True, with_batch_norm=True)
-    model_disc = sets_gan.SetsDiscriminator()
+    gan = sets_gan.SetGAN(
+        noise_dim=args.noise_dim,
+        max_nodes=MAX_NODES,
+        num_iters=args.disc_num_iters,
+        batch_size=args.batch_size)
 
-    # regularization terms for discriminator
-    l2_reg = snt.regularizers.L2(0.01)
+    optimizer = sets_gan.SetGANOptimizer(
+                        gan,
+                        batch_size=batch_size,
+                        noise_dim=args.noise_dim,
+                        num_epcohs=n_epochs,
+                        disc_lr=args.disc_lr,
+                        gen_lr=args.gen_lr,
+                        )
+    
+    disc_step = optimizer.disc_step
+    step = optimizer.step
+    if not args.debug:
+        step = tf.function(step)
+        disc_step = tf.function(disc_step)
 
-    def generator_loss(fake_output):
-        loss_ops = [tf.compat.v1.losses.log_loss(tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals)
-                    for output_op in fake_output
-                    ]
-        return tf.stack(loss_ops)
+    
 
-    def discriminator_loss(real_output, fake_output):
-        loss_ops = [tf.compat.v1.losses.log_loss(
-            tf.ones_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=1-args.disc_alpha)
-            for output_op in real_output]
-        loss_ops += [tf.compat.v1.losses.log_loss(
-            tf.zeros_like(output_op.globals, dtype=tf.float32), output_op.globals, weights=args.disc_beta)
-            for output_op in fake_output]
-        return tf.stack(loss_ops)
+    training_data = loop_dataset(training_dataset, batch_size)
+    steps_per_epoch = ngraphs_train // batch_size
 
-    n_node = tf.constant([MAX_NODES]*args.batch_size, dtype=tf.int32)
-    n_edge = tf.constant([0]*args.batch_size, dtype=tf.int32)
-    # @functools.partial(tf.function, input_signature=input_signature)
-
-    def train_step(inputs_tr, targets_tr):
-        noise = tf.random.normal([args.batch_size, args.noise_dim])
-        incident_info = inputs_tr.nodes
-        input_op = tf.concat([inputs_tr.nodes, noise], axis=-1)
-        inputs_tr = inputs_tr.replace(nodes=input_op)
-
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            # generator
-            node_pred = model_gen(
-                inputs_tr, max_nodes=MAX_NODES, training=True)
-
-            # concatnate the incident particle 4-vector to the predicted 4 vectors
-            incident_info = tf.reshape(
-                incident_info, [args.batch_size, 1, OUT_DIM])
-            node_pred = tf.concat([incident_info, node_pred], axis=1)
-            node_pred = tf.reshape(node_pred, [-1, OUT_DIM])
-
-            pred_graph = graphs.GraphsTuple(
-                nodes=node_pred, edges=None, globals=tf.constant([0]*args.batch_size, dtype=tf.float32),
-                receivers=None, senders=None, n_node=n_node,
-                n_edge=n_edge
-            )
-            pred_graph = utils_tf.fully_connect_graph_static(
-                pred_graph, exclude_self_edges=True)
-            pred_graph = pred_graph.replace(edges=tf.zeros(
-                [pred_graph.senders.shape[0], 1], dtype=tf.float32))
-            my_print(pred_graph, data=False)
-            my_print(targets_tr, data=False)
-
-            # discriminator
-            # add noise to target nodes
-            # noise_target = tf.random.normal(targets_tr.nodes.shape)
-            noise_target = tf.ones_like(targets_tr.nodes, dtype=tf.float32) * tf.constant(0.001, dtype=tf.float32)
-            targets_tr = targets_tr.replace(
-                nodes=tf.math.add_n([targets_tr.nodes, noise_target]))
-
-            real_output = model_disc(targets_tr, args.disc_num_iters)
-            fake_output = model_disc(pred_graph, args.disc_num_iters)
-
-            gen_loss = generator_loss(fake_output)
-            disc_loss = discriminator_loss(real_output, fake_output)
-
-            gen_loss = tf.math.reduce_mean(
-                gen_loss) / tf.constant(args.disc_num_iters, dtype=tf.float32)
-            disc_loss = tf.math.reduce_mean(
-                disc_loss) / tf.constant(args.disc_num_iters, dtype=tf.float32)
-
-        gradients_of_generator = gen_tape.gradient(
-            gen_loss, model_gen.trainable_variables)
-        gradients_of_discriminator = disc_tape.gradient(
-            disc_loss, model_disc.trainable_variables)
-
-        optimizer_gen.apply(gradients_of_generator,
-                            model_gen.trainable_variables)
-        optimizer_disc.apply(gradients_of_discriminator,
-                             model_disc.trainable_variables)
-
-        return gen_loss, disc_loss
-        # return gen_loss, gen_loss
-
-    def train_epoch(dataset):
-        total_gen_loss = 0
-        total_disc_loss = 0
-        batch = 0
-        # max_batches = 100
-        for inputs in loop_dataset(dataset, args.batch_size):
-            inputs_tr, targets_tr = inputs
-            gen_loss, disc_loss = train_step(inputs_tr, targets_tr)
-            batch += 1
-            total_gen_loss += gen_loss.numpy()
-            total_disc_loss += disc_loss.numpy()
-            # if batch > max_batches:
-            #     break
-        return total_gen_loss/batch, total_disc_loss/batch, batch
 
     log_dir = os.path.join(output_dir, "logs/{}/train".format(time_stamp))
     train_summary_writer = tf.summary.create_file_writer(log_dir)
 
     ckpt_dir = os.path.join(output_dir, "checkpoints")
     checkpoint = tf.train.Checkpoint(
-        optimizer_gen=optimizer_gen,
-        optimizer_disc=optimizer_disc,
-        model_gen=model_gen, model_disc=model_disc)
-
+        optimizer=optimizer,
+        gan=gan)
     ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=ckpt_dir,
                                               max_to_keep=5, keep_checkpoint_every_n_hours=8)
     logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
     _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
 
-    start_time = time.time()
+    
+    if args.warm_up:
+        # train discriminator for certain batches
+        # to "warm up" the discriminator
+        print("start to warm up discriminator with {} batches".format(args.disc_batches))
+        for _ in range(args.disc_batches):
+            inputs_tr, targets_tr = next(training_data)
+            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
+            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
+            targets_tr = targets_tr.replace(nodes=target_nodes)
+            disc_step(inputs_tr, targets_tr)
+        print("finished the warm up")
+
+
+
     pre_gen_loss = pre_disc_loss = 0
-    with tqdm.trange(n_epochs) as t:
-        for epoch in t:
-            training_dataset = training_dataset.shuffle(
-                args.shuffle_size, seed=12345, reshuffle_each_iteration=True)
+    start_time = time.time()
 
-            gen_loss, disc_loss, batches = train_epoch(training_dataset)
-            this_epoch = time.time()
+    with tqdm.trange(n_epochs*steps_per_epoch) as t:
 
-            t.set_description(f'Epoch {epoch}')
-            t.set_postfix(
-                G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
-                D_loss=disc_loss, D_loss_change=disc_loss-pre_disc_loss,
-                batches=batches,)
-            pre_gen_loss = gen_loss
-            pre_disc_loss = disc_loss
-            # logging.info("{} epoch takes {:.2f} mins with generator loss {:.4f}, discriminator loss {:.4f} in {} batches".format(
-            #     epoch, (this_epoch-start_time)/60., gen_loss, disc_loss, batches))
+        for step_num in t:
+            epoch = tf.constant(int(step_num / steps_per_epoch), dtype=tf.int32)
+            inputs_tr, targets_tr = next(training_data)
 
-            ckpt_manager.save()
-            # log some metrics
-            with train_summary_writer.as_default():
-                tf.summary.scalar("generator loss", gen_loss, step=epoch)
-                tf.summary.scalar("discriminator loss", disc_loss, step=epoch)
-                tf.summary.scalar(
-                    "time", (this_epoch-start_time)/60., step=epoch)
+            # --------------------------------------------------------
+            # scale the inputs and outputs to norm distribution
+            # inputs_tr = inputs_tr.replace(nodes=(inputs_tr.nodes - node_mean[0]) / node_scales[0])
+            # target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            # target_nodes = np.reshape((target_nodes - node_mean) / node_scales, [-1, 4])
+            # targets_tr = targets_tr.replace(nodes=target_nodes)
+            # --------------------------------------------------------
+            # scale the inputs and outputs to [-1, 1]
+            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
+            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
+            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
+            targets_tr = targets_tr.replace(nodes=target_nodes)
+            # --------------------------------------------------------
 
+            disc_loss, gen_loss, lr_mult = step(inputs_tr, targets_tr, epoch)
+            disc_loss = disc_loss.numpy()
+            gen_loss = gen_loss.numpy()
+            if step_num and (step_num % 50 == 0):
+                t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
+                t.set_postfix(
+                    G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
+                    D_loss=disc_loss, D_loss_change=disc_loss-pre_disc_loss,
+                )                
+                ckpt_manager.save()
+                pre_gen_loss = gen_loss
+                pre_disc_loss = disc_loss
+
+                # log some metrics
+                this_epoch = time.time()
+                with train_summary_writer.as_default():
+                    # epoch = epoch.numpy()
+                    tf.summary.scalar("generator loss", gen_loss, step=step_num)
+                    tf.summary.scalar("discriminator loss", disc_loss, step=step_num)
+                    tf.summary.scalar(
+                        "time", (this_epoch-start_time)/60., step=step_num)
+                    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -298,12 +287,15 @@ if __name__ == "__main__":
     add_arg("--patterns", help='file patterns', default='*')
     add_arg('-d', '--distributed', action='store_true',
             help='data distributed training')
-    add_arg("--learning-rate", help='learing rate', default=0.0005, type=float)
+    add_arg("--disc-lr", help='learning rate for discriminator', default=2e-4, type=float)
+    add_arg("--gen-lr", help='learning rate for generator', default=5e-5, type=float)
     add_arg("--max-epochs", help='number of epochs', default=1, type=int)
     add_arg("--batch-size", type=int,
             help='training/evaluation batch size', default=500)
     add_arg("--shuffle-size", type=int,
             help="number of events for shuffling", default=650)
+    add_arg("--warm-up", action='store_true', help='warm up discriminator first')
+    add_arg("--disc-batches", help='number of batches training discriminator only', type=int, default=100)
 
     add_arg("--noise-dim", type=int, help='dimension of noises', default=8)
     add_arg("--disc-num-iters", type=int,
@@ -315,6 +307,7 @@ if __name__ == "__main__":
 
     add_arg("-v", "--verbose", help='verbosity', choices=['DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN'],
             default="INFO")
+    add_arg("--debug", help='in debug mode', action='store_true')
     args, _ = parser.parse_known_args()
     # print(args)
 

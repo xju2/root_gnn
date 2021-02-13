@@ -97,6 +97,7 @@ if __name__ == "__main__":
     with_batch_dim = False
     input_list = []
     target_list = []
+
     for dd in training_dataset.take(global_batch_size).as_numpy_iterator():
         input_list.append(dd[0])
         target_list.append(dd[1])
