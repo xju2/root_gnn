@@ -6,7 +6,7 @@ from root_gnn.trainer import get_signature
 from root_gnn.trainer import loop_dataset
 from root_gnn.trainer import read_dataset
 
-from root_gnn.src.generative import mlp_gan as toGan
+from root_gnn.src.generative import rnn_mlp_gan as toGan
 from scipy.sparse import coo_matrix
 import tensorflow as tf
 # import tensorflow.experimental.numpy as tnp
@@ -131,7 +131,7 @@ def train_and_evaluate(args):
     logging.info("rank {} has {:,} training events and {:,} validating events".format(
         dist.rank, ngraphs_train, ngraphs_val))
 
-    gan = toGan.GAN()
+    gan = toGan.GAN(max_nodes=2)
 
     optimizer = toGan.GANOptimizer(
                         gan,

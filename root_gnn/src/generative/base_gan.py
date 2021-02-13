@@ -8,69 +8,6 @@ from typing import Callable, Iterable, Optional, Text
 import tensorflow as tf
 import sonnet as snt
 
-
-class Generator(snt.Module):
-    def __init__(self, latent_size=512, num_layers=10,
-                activation: Callable[[tf.Tensor], tf.Tensor] = tf.nn.leaky_relu,
-                name="Generator"
-        ):
-        super().__init__(name=name)
-
-        self._core = snt.nets.MLP(
-            [latent_size]*num_layers+[8], activation=activation,
-            activate_final=False, dropout_rate=None,
-            name="core_generator")
-
-    def __call__(self,
-                input_op,
-                is_training: bool = True) -> tf.Tensor:
-        """
-        Args: 
-            input_op: 2D vector with dimensions [batch-size, features], 
-        Retruns:
-            predicted node featurs with dimension of [batch-size, out-features] 
-        """
-        return tf.nn.tanh(self._core(input_op))
-
-
-class Discriminator(snt.Module):
-    def __init__(self,
-                latent_size=512, num_layers=10,
-                activation: Callable[[tf.Tensor], tf.Tensor] = tf.nn.leaky_relu,
-                name="Discriminator"
-        ):
-        super().__init__(name=name)
-        self._core = snt.nets.MLP(
-            [latent_size]*num_layers+[1], activation=activation,
-            activate_final=False, dropout_rate=None,
-            name="core_discriminator"
-            )
-
-
-    def __call__(self, input_op, is_training=True):
-        return self._core(input_op)
-
-
-def sum_trainables(module):
-    return sum([tf.size(v) for v in module.trainable_variables])
-
-class GAN(snt.Module):
-
-    def __init__(self, name=None):
-        super().__init__(name=name)
-        self.generator = Generator()
-        self.discriminator = Discriminator()
-
-    def generate(self, inputs, is_training=True):
-        return self.generator(inputs, is_training)
-
-    def discriminate(self, inputs, is_training=True):
-        return self.discriminator(inputs, is_training)
-
-    def num_trainable_vars(self):
-        return sum_trainables(self.generator), sum_trainables(self.discriminator)
-
-
 def generator_loss(fake_output, alt_gen_loss=False):
     if alt_gen_loss:
         loss_ops = -tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.zeros_like(fake_output), logits=fake_output)
@@ -147,8 +84,6 @@ class GANOptimizer(snt.Module):
         self.gen_lr = tf.Variable(
             gen_lr, trainable=False, name='gen_lr', dtype=tf.float32)
         
-        # self.disc_opt = snt.optimizers.Adam(learning_rate=self.disc_lr, beta1=0.0)
-        # self.gen_opt = snt.optimizers.Adam(learning_rate=self.gen_lr, beta1=0.0)
         self.disc_opt = snt.optimizers.SGD(learning_rate=self.disc_lr)
         self.gen_opt = snt.optimizers.Adam(learning_rate=self.gen_lr)
 
