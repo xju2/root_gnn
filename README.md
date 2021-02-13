@@ -3,7 +3,7 @@ GNN classification for reconstructed HEP events stored in ROOT
 
 ## Install
 ```bash
-conda create --name gnnana python=3.7
+conda create --name gnnana python=3.8
 conda activate gnnana
 conda install -c conda-forge jupyterlab
 conda install -c conda-forge root
