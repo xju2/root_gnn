@@ -1,6 +1,0 @@
-{
-    "files.associations": {
-        "*.fhh": "cpp"
-    },
-    "python.pythonPath": "/global/homes/x/xju/.conda/envs/tf2.3/bin/python"
-}
