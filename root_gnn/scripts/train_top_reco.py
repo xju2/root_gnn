@@ -120,6 +120,13 @@ def train_and_evaluate(args):
         args.shuffle_size, seed=12345, reshuffle_each_iteration=False
     )
 
+    validating_dataset, ngraphs_val = read_dataset(eval_files)
+    validating_dataset = validating_dataset.repeat().prefetch(AUTO)
+    logging.info("rank {} has {:,} training events and {:,} validating events".format(
+        dist.rank, ngraphs_train, ngraphs_val))
+
+
+
     input_signature = get_signature(training_dataset, batch_size, with_bool=True)
 
 
@@ -208,6 +215,11 @@ def train_and_evaluate(args):
             new_target = (targets_tr.globals - target_mean) / target_scales
             targets_tr = targets_tr.replace(globals=new_target)
             loss =  train_step(inputs_tr, targets_tr, step_num==0).numpy()
+
+            if step_num == 0:
+                print(">>>{:,} trainable variables in the model<<<".format(
+                    sum([tf.size(v) for v in model.trainable_variables])
+                ))
 
             if step_num and (step_num % args.log_every_iter == 0):
                 t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
