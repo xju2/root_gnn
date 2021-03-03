@@ -3,7 +3,11 @@ This is to provide a simple interface to run Pythia generator and write out HepM
 
 We will compile the code with the docker image: `docexoty/mctuning:1.0.0`. In Cori, one can do the following
 ```bash
-shifterimg pull docexoty/mctuning:1.0.0
+shifter --image=docker:docexoty/mctuning:1.0.0 bash
+```
+In other system, one can do the following:
+```bash
+docker run -it -rm -v $PWD:$PWD -w $PWD docexoty/mctuning:1.0.0 bash
 ```
 
 Then to compile the code
