@@ -1,5 +1,5 @@
 # Introduction
-This is to provide a simple interface to run Pythia generator and write out HepMC data. One can use `Rivet` to further analyze the HepMC data.
+This is to provide a simple interface to run [Pythia8.302](http://home.thep.lu.se/~torbjorn/pythia83html/Welcome.html) generator and write out HepMC data. One can use `Rivet` to further analyze the HepMC data.
 
 We will compile the code with the docker image: `docexoty/mctuning:1.0.0`. In Cori, one can do the following
 ```bash
