@@ -320,13 +320,6 @@ class TrainerBase(object):
             writer.flush()
         self.epoch_count.assign_add(1)
 
-    def update_step(self, model=None, loss_fcn=None):
-        set_model_and_loss(model, loss_fcn)
-        self.setup_training_loop()
-        loss_tr, num_batches_tr = self.train_one_epoch()
-        loss_val, num_batches_val = self.validate_one_epoch()
-        return loss_tr / num_batches_tr, loss_val / num_batches_val
-
     # Trains the dataset. If train_data and val_data are specified, it uses those as the dataset.
     # Otherwise, it uses self.data_train and self.data_val attributes of the TrainerBase object.
     def train(self, train_data=None, val_data=None):
@@ -338,6 +331,15 @@ class TrainerBase(object):
                 self.update_metrics(predictions, truth_info, loss_val / num_batches_val)
             if self.early_stop_condition():
                 break
+
+    # Prediction
+    # --------------------  
+
+    def predict(self, test_data):
+        raise NotImplementedError
+
+    def score(self):
+        raise NotImplementedError
 
     def eval(self, model):
         raise NotImplementedError

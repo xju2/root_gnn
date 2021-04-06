@@ -36,12 +36,12 @@ if __name__ == "__main__":
     add_arg("--model-name", help="model name", choices=all_models, default="GlobalClassifierNoEdgeInfo")
     add_arg("--loss-name", help="loss function name", default="GlobalLoss")
     add_arg("--lr", type=float, help="optimizer learning rate", default=0.0005)
-    add_arg("--earlystop-metric", help="metric for early stop", default="auc_te")
-    add_arg("--acceptable-failure", help="maximum failure threshold", default=1)
-    # profiling
-    add_arg("--do-profiling", type=bool, help="whether to do profiling or not", default=False)
-    add_arg("--only-profiling", type=bool, help="only do profiling", default=False)
-    add_arg("--profiling-steps", type=int, help="number of steps for profiling", default=10)
+    add_arg("--early-stop", help="metric for early stop", default="auc")
+    add_arg("--max-attempts", help="maximum failure threshold", default=1)
+    # # profiling
+    # add_arg("--do-profiling", type=bool, help="whether to do profiling or not", default=False)
+    # add_arg("--only-profiling", type=bool, help="only do profiling", default=False)
+    # add_arg("--profiling-steps", type=int, help="number of steps for profiling", default=10)
     args = parser.parse_args()
 
     config = vars(args)
@@ -49,6 +49,9 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     config["output_dir"] = output_dir
     config["model"] = getattr(all_models, config["model_name"])()
+    loss_config = config["loss_name"].split(',')
+    loss_name = loss_config[0]
+    config["loss_fcn"] = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
     # Here, if the user wants, they can add/modify config arguments to be loaded into TrainerBase
     # e.g.
