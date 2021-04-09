@@ -102,6 +102,8 @@ def get_signature(
         
     return input_signature
 
+#TODO: be flexible so that user can provide model/loss after initializing
+#e.g. trainer_train()
 
 class TrainerBase(object):
 
@@ -121,6 +123,11 @@ class TrainerBase(object):
         self.output_dir = output_dir
         self.shuffle_size = shuffle_size
 
+        # model, loss_fcn, i/o dir are esseentials
+        # most others are hyperparams
+        # TODO 
+        self.hyperparams = {}
+
         self.num_iters = num_iters
         self.batch_size = batch_size
         self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
@@ -129,22 +136,13 @@ class TrainerBase(object):
 
         self.model = model
         self.loss_fcn = loss_fcn
+        # snt optimizer
         if optimizer:
             self.optimizer = optimizer(learning_rate=self.lr)
         else:
             self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
         
-        self.init_metrics(metric_mode)
-        if metric_mode = "clf":
-            if early_stop:
-                self.early_stop = early_stop
-            else:
-                self.early_stop = "auc"
-            self.max_attempts = max_attempts
-            self.attempts = 0
-            self.best_metric = 0.0
-        else:
-            print("Note: early stop metric currently only supported with metric_mode 'clf'")
+        self.init_metrics(metric_mode, early_stop, max_attempts)
 
         # self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
         # self.decay_lr = decay_lr # if use de
@@ -158,38 +156,49 @@ class TrainerBase(object):
     def get_arg_parser():
         parser = argparse.ArgumentParser()
         add_arg = parser.add_argument
-        add_arg("--train-dir", help="name of dir for training", default="tfrec/train_*.tfrec")
-        add_arg("--val-dir", help="name of dir for validation", default="tfrec/val_*.tfrec")
-        add_arg("--output-dir", help="name of dir for output", default="trained")
-        add_arg("--prod-name", help="inner dir for output", default="noedge_fullevts") # TODO: move to tensorboard
+        add_arg("--train-dir", help="name of dir for training", default="tfrec/train_*.tfrec") # TODO: required
+        add_arg("--val-dir", help="name of dir for validation", default="tfrec/val_*.tfrec") # TODO: required
+        #TODO: have one input directory: train/val/testing
+        add_arg("--output-dir", help="name of dir for output", default="trained") # TODO: required, everything else can be underhyperparams
+        add_arg("--prod-name", help="inner dir for output", default="noedge_fullevts") 
         add_arg("--batch-size", type=int, help="training/evaluation batch size", default=50)
         add_arg("--max-epochs", type=int, help="number of epochs", default=1)
         add_arg("--num-iters", type=int, help="level of message passing", default=10)
         add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
         return parser
 
-    def init_metrics(self, mode=None):
+    def init_metrics(self, mode=None, early_stop=None, max_attempts=1):
         if mode is None:
             self.metric_dict = {}
         elif mode == "clf":
             self.metric_dict = {
                 "auc": 0.0, "acc": 0.0, "prec": 0.0, "rec": 0.0, "loss": 0.0
             }
+            self.early_stop = early_stop if early_stop else "auc"
         elif mode == "rgr":
             self.metric_dict = {
                 "loss": 0.0, "pull": 0.0
             }
+            self.early_stop = early_stop if early_stop else "loss"
         else:
             raise ValueError("Unsupported metric mode: must either be 'clf', 'rgr', or None")
+        self.max_attempts = max_attempts
+        self.attempts = 0
+        if self.early_stop in ["loss", "pull"]:
+            self.should_max_metric = True
+            self.best_metric = float('inf')
+        else:
+            self.should_max_metric = False
+            self.best_metric = 0.0
         time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
         self.metric_writer = tf.summary.create_file_writer(os.path.join(self.output_dir, "logs/{}/metrics".format(time_stamp)))
     
-    # User can override
     def early_stop_condition(self):
         current_metric = self.metric_dict[self.early_stop]
-        if current_metric < self.best_metric:
-            print("Current metric {} {:.4f} is lower than best {:.4f}.".format(
-                self.early_stop, current_metric, self.best_metric))
+        if (self.should_max_metric and current_metric > self.best_metric) or 
+                (not self.should_max_metric and current_metric < self.best_metric):
+            print("Current metric {} {:.4f} is {} than best {:.4f}.".format(
+                self.early_stop, current_metric, "higher" if self.should_max_metric else "lower", self.best_metric))
             if self.attempts >= self.max_attempts:
                 print("Reached maximum failed attempts: {} attempts. Stopping training".format(self.max_attempts))
                 return True
@@ -255,11 +264,11 @@ class TrainerBase(object):
     def optimizer(self, lr):
         self.optimizer = snt.optimizers.Adam(lr)
 
-    def set_model_and_loss(self, model=None, loss_fcn=None):
-        if model:
-            self.model = model
-        if loss_fcn:
-            self.loss_fcn = loss_fcn
+    def set_model(self, model):
+        self.model = model
+
+    def set_loss(loss_fcn):
+        self.loss_fcn = loss_fcn
 
     # Training
     # --------------------        
@@ -277,29 +286,24 @@ class TrainerBase(object):
         total_loss = 0.
         num_batches = 0
         predictions, truth_info = [], []
-        inputs_list, target_list = [], []
         for data in loop_dataset(val_data):
             inputs, targets = data
-            inputs_list.append(inputs)
-            target_list.append(targets)
-            if len(input_list) == self.batch_size:
-                inputs = utils_tf.concat(inputs_list, axis=0)
-                targets = utils_tf.concat(target_list, axis=0)
-                outputs = self.model(inputs, self.num_iters)
-                total_loss += (tf.math.reduce_sum(
-                    self.loss_fcn(targets, outputs))/tf.constant(
-                        self.num_iters, dtype=tf.float32)).numpy()
-                if len(outputs) > 1:
-                    outputs = outputs[-1]
-                if self.loss_fcn == GlobalLoss:
-                    predictions.append(outputs.globals)
-                    truth_info.append(targets.globals)
-                else:
-                    predictions.append(outputs.edges)
-                    truth_info.append(targets.edges)
-                inputs_list, target_list = [], []
-                num_batches += 1
-        return total_loss, num_batches, np.array(predictions), np.array(truth_info)
+            outputs = self.model(inputs, self.num_iters)
+            total_loss += (tf.math.reduce_sum(
+                self.loss_fcn(targets, outputs))/tf.constant(
+                    self.num_iters, dtype=tf.float32)).numpy()
+            if len(outputs) > 1:
+                outputs = outputs[-1]
+            if self.loss_fcn == GlobalLoss:
+                predictions.append(outputs.globals)
+                truth_info.append(targets.globals)
+            else:
+                predictions.append(outputs.edges)
+                truth_info.append(targets.edges)
+            num_batches += 1
+        predictions = np.concatenate(predictions, axis=0)
+        truth_info = np.concatenate(truth_info, axis=0)
+        return total_loss, num_batches, predictions, truth_info
 
     def update_metrics(self, predictions, truth_info, loss, threshold=0.5):
         if self.metric_mode == "clf":
@@ -322,9 +326,11 @@ class TrainerBase(object):
 
     # Trains the dataset. If train_data and val_data are specified, it uses those as the dataset.
     # Otherwise, it uses self.data_train and self.data_val attributes of the TrainerBase object.
-    def train(self, train_data=None, val_data=None):
+    def train(self, train_data=None, val_data=None, num_epochs=None):
+        if num_epochs is None:
+            num_epochs = self.num_epochs
         self.setup_training_loop()
-        for epoch in range(self.num_epochs):
+        for epoch in range(num_epochs):
             loss_tr, num_batches_tr = self.train_one_epoch(train_data)
             loss_val, num_batches_val, predictions, truth_info = self.validate_one_epoch(val_data)
             if metric_mode:

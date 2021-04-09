@@ -63,7 +63,9 @@ if __name__ == "__main__":
 
     trainer.load_training_data(shuffle=True)
     trainer.load_validating_data(shuffle=True)
-    trainer.train()
+
+    trainer.train(model, loss_fcn, train_data)
+    # trainer.score(trainer.predict(val_data), truth_data, metric_fn)
 
     # # add ops to save and restore all the variables
     # output_dir = os.path.join(args.output_dir, args.prod_name)
@@ -276,17 +278,17 @@ if __name__ == "__main__":
         #         total_loss_te += (tf.math.reduce_sum(
         #             loss_fcn(targets_te, outputs_te))/tf.constant(
         #                 num_processing_steps_tr, dtype=tf.float32)).numpy()
-        #         if loss_name == "GlobalLoss":
-        #             predictions.append(outputs_te[-1].globals)
-        #             truth_info.append(targets_te.globals)
-        #         else:
-        #             predictions.append(outputs_te[-1].edges)
-        #             truth_info.append(targets_te.edges)
+                # if loss_name == "GlobalLoss":
+                #     predictions.append(outputs_te[-1].globals)
+                #     truth_info.append(targets_te.globals)
+                # else:
+                #     predictions.append(outputs_te[-1].edges)
+                #     truth_info.append(targets_te.edges)
         #         inputs_te_list = []
         #         target_te_list = []
         #         num_batches_te += 1
-
-        # loss_te = total_loss_te / num_batches_te
+        
+        # # loss_te = total_loss_te / num_batches_te
         # predictions = np.concatenate(predictions, axis=0)
         # truth_info = np.concatenate(truth_info, axis=0)
         # print(tf.math.reduce_sum(predictions).numpy(), tf.math.reduce_sum(truth_info).numpy())
