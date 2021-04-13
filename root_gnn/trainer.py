@@ -114,7 +114,7 @@ class TrainerBase(object):
     def __init__(self, train_dir=None, val_dir=None, output_dir=None, 
                 model=None, loss_fcn=None, loss_name="GlobalLoss", lr=0.0005,
                 optimizer=None,
-                batch_size=50, num_epochs=1, num_iters=10,
+                batch_size=50, num_epochs=5, num_iters=10,
                 metric_mode=None,
                 early_stop=None, max_attempts=1,
                 shuffle_size=1,
@@ -166,9 +166,9 @@ class TrainerBase(object):
         #TODO: have one input directory: train/val/testing
         add_arg("--output-dir", help="name of dir for output", default="trained") # TODO: required, everything else can be underhyperparams
         add_arg("--prod-name", help="inner dir for output", default="noedge_fullevts") 
-        add_arg("--batch-size", type=int, help="training/evaluation batch size", default=10)
-        add_arg("--max-epochs", type=int, help="number of epochs", default=1)
-        add_arg("--num-iters", type=int, help="level of message passing", default=5)
+        add_arg("--batch-size", type=int, help="training/evaluation batch size", default=50)
+        add_arg("--num-epochs", type=int, help="number of epochs", default=5)
+        add_arg("--num-iters", type=int, help="level of message passing", default=10)
         add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
         return parser
 
@@ -179,7 +179,7 @@ class TrainerBase(object):
             self.early_stop = None
         elif mode == "clf":
             self.metric_dict = {
-                "auc": 0.0, "acc": 0.0, "prec": 0.0, "rec": 0.0, "loss": 0.0
+                "auc": 0.0, "acc": 0.0, "pre": 0.0, "rec": 0.0, "loss": 0.0
             }
             self.early_stop = early_stop if early_stop else "auc"
         elif mode == "rgr":
@@ -229,7 +229,7 @@ class TrainerBase(object):
         if repeat > 1:
             self.data_train = self.data_train.repeat(repeat)
         self.data_train = self.data_train.prefetch(AUTO)
-        return self.ngraphs_train
+        return self.data_train, self.ngraphs_train
 
     def load_validating_data(self, filenames=None, shuffle=False, shuffle_size=None, repeat=1):
         if not filenames:
@@ -242,7 +242,7 @@ class TrainerBase(object):
         if repeat > 1:
             self.data_val = self.data_val.repeat(repeat)
         self.data_val = self.data_val.prefetch(AUTO)
-        return self.ngraphs_val
+        return self.data_val, self.ngraphs_val
 
     def load_testing_data(self, filenames, shuffle=False, shuffle_size=None, repeat=1):
         self.data_test, self.ngraphs_test = read_dataset(filenames)
@@ -253,9 +253,13 @@ class TrainerBase(object):
         if repeat > 1:
             self.data_test = self.data_test.repeat(repeat)
         self.data_test = self.data_test.prefetch(AUTO)
-        return self.ngraphs_test
+        return self.data_test, self.ngraphs_test
 
-    def setup_training_loop(self):
+    def setup_training_loop(self, model=None, loss_fcn=None):
+        if model:
+            self.model = model
+        if loss_fcn:
+            self.loss_fcn = loss_fcn
         input_signature = self.input_signature()
 
         def update_step(inputs, targets):
@@ -336,6 +340,7 @@ class TrainerBase(object):
         else:
             raise ValueError("currently " + self.metric_mode + " is not supported")
         self.metric_dict['loss'] = loss
+        print(self.metric_dict)
         with self.metric_writer.as_default():
             for key,val in self.metric_dict.items():
                 tf.summary.scalar(key, val, step=self.epoch_count)
@@ -344,17 +349,17 @@ class TrainerBase(object):
 
     # Trains the dataset. If train_data and val_data are specified, it uses those as the dataset.
     # Otherwise, it uses self.data_train and self.data_val attributes of the TrainerBase object.
-    def train(self, train_data=None, val_data=None, num_epochs=None):
+    def train(self, model=None, loss_fcn=None, train_data=None, val_data=None, num_epochs=None):
         if num_epochs is None:
             num_epochs = self.num_epochs
-        self.setup_training_loop()
+        self.setup_training_loop(model, loss_fcn)
         for epoch in range(num_epochs):
             loss_tr, num_batches_tr = self.train_one_epoch(train_data)
             loss_val, num_batches_val, predictions, truth_info = self.validate_one_epoch(val_data)
             if self.metric_mode:
                 self.update_metrics(predictions, truth_info, loss_val / num_batches_val)
             if self.early_stop_condition():
-                print("breaking after {} epochs".format(num_epochs))
+                print("breaking after {} epochs".format(epochs))
                 break
 
     # Prediction

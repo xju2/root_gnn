@@ -66,11 +66,11 @@ if __name__ == "__main__":
     print("Loading TrainerBase with the following configurations:", config)
     trnr = trainer.TrainerBase(**config)
 
-    trnr.load_training_data(shuffle=True)
-    trnr.load_validating_data(shuffle=True)
+    train_data, _ = trnr.load_training_data(shuffle=True)
+    val_data, _ = trnr.load_validating_data(shuffle=True)
 
-    #trnr.train(model, loss_fcn, train_data)
-    trnr.train()
+    trnr.train(config["model"], config["loss_fcn"], train_data)
+    #trnr.train()
     # trnr.score(trainer.predict(val_data), truth_data, metric_fn)
 
     # # add ops to save and restore all the variables
