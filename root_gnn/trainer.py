@@ -20,6 +20,8 @@ import argparse
 
 import numpy as np
 
+import sklearn.metrics
+
 from tensorflow.python.profiler import profiler_v2 as profiler
 
 from graph_nets import utils_tf
@@ -34,11 +36,13 @@ from root_gnn import losses
 verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
 printer = pprint.PrettyPrinter(indent=2)
 
+AUTO = tf.data.experimental.AUTOTUNE
+
 def read_dataset(filenames):
     """
     Read dataset...
     """
-    AUTO = tf.data.experimental.AUTOTUNE
+    #AUTO = tf.data.experimental.AUTOTUNE
     tr_filenames = tf.io.gfile.glob(filenames)
     n_files = len(tr_filenames)
 
@@ -108,7 +112,7 @@ def get_signature(
 class TrainerBase(object):
 
     def __init__(self, train_dir=None, val_dir=None, output_dir=None, 
-                model=None, loss_fcn=None, lr=0.0005,
+                model=None, loss_fcn=None, loss_name="GlobalLoss", lr=0.0005,
                 optimizer=None,
                 batch_size=50, num_epochs=1, num_iters=10,
                 metric_mode=None,
@@ -136,6 +140,7 @@ class TrainerBase(object):
 
         self.model = model
         self.loss_fcn = loss_fcn
+        self.loss_name = loss_name
         # snt optimizer
         if optimizer:
             self.optimizer = optimizer(learning_rate=self.lr)
@@ -147,29 +152,31 @@ class TrainerBase(object):
         # self.decay_lr_start_epoch = tf.constant(decay_lr_start_epoch, dtype=tf.int32)
         # self.decay_lr = decay_lr # if use de
         # perform distributed training
-        self.distributed = read_args.distributed
+        self.distributed = distributed
         self.extra_configs = extra_configs
 
     # Preprocessing
     # --------------------
     @staticmethod
     def get_arg_parser():
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(add_help=False)
         add_arg = parser.add_argument
         add_arg("--train-dir", help="name of dir for training", default="tfrec/train_*.tfrec") # TODO: required
         add_arg("--val-dir", help="name of dir for validation", default="tfrec/val_*.tfrec") # TODO: required
         #TODO: have one input directory: train/val/testing
         add_arg("--output-dir", help="name of dir for output", default="trained") # TODO: required, everything else can be underhyperparams
         add_arg("--prod-name", help="inner dir for output", default="noedge_fullevts") 
-        add_arg("--batch-size", type=int, help="training/evaluation batch size", default=50)
+        add_arg("--batch-size", type=int, help="training/evaluation batch size", default=10)
         add_arg("--max-epochs", type=int, help="number of epochs", default=1)
-        add_arg("--num-iters", type=int, help="level of message passing", default=10)
+        add_arg("--num-iters", type=int, help="level of message passing", default=5)
         add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
         return parser
 
     def init_metrics(self, mode=None, early_stop=None, max_attempts=1):
+        self.metric_mode = mode
         if mode is None:
             self.metric_dict = {}
+            self.early_stop = None
         elif mode == "clf":
             self.metric_dict = {
                 "auc": 0.0, "acc": 0.0, "prec": 0.0, "rec": 0.0, "loss": 0.0
@@ -195,7 +202,7 @@ class TrainerBase(object):
     
     def early_stop_condition(self):
         current_metric = self.metric_dict[self.early_stop]
-        if (self.should_max_metric and current_metric > self.best_metric) or 
+        if (self.should_max_metric and current_metric > self.best_metric) or\
                 (not self.should_max_metric and current_metric < self.best_metric):
             print("Current metric {} {:.4f} is {} than best {:.4f}.".format(
                 self.early_stop, current_metric, "higher" if self.should_max_metric else "lower", self.best_metric))
@@ -211,9 +218,11 @@ class TrainerBase(object):
         # default behavior for train_classifier.py, can override for other models
         return self.ngraphs_train if shuffle_size < 0 else shuffle_size
 
-    def load_training_data(self, filenames=None, shuffle=False, shuffle_size=self.shuffle_size, repeat=1):
+    def load_training_data(self, filenames=None, shuffle=False, shuffle_size=None, repeat=1):
         if not filenames:
             filenames = tf.io.gfile.glob(self.train_dir)
+        if shuffle_size is None:
+            shuffle_size = self.shuffle_size
         self.data_train, self.ngraphs_train = read_dataset(filenames)
         if shuffle:
             self.data_train = self.data_train.shuffle(self.get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
@@ -222,9 +231,11 @@ class TrainerBase(object):
         self.data_train = self.data_train.prefetch(AUTO)
         return self.ngraphs_train
 
-    def load_validating_data(self, filenames=None, shuffle=False, shuffle_size=self.shuffle_size, repeat=1):
+    def load_validating_data(self, filenames=None, shuffle=False, shuffle_size=None, repeat=1):
         if not filenames:
             filenames = tf.io.gfile.glob(self.val_dir)
+        if shuffle_size is None:
+            shuffle_size = self.shuffle_size
         self.data_val, self.ngraphs_val = read_dataset(filenames)
         if shuffle:
             self.data_val = self.data_val.shuffle(self.get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
@@ -233,8 +244,10 @@ class TrainerBase(object):
         self.data_val = self.data_val.prefetch(AUTO)
         return self.ngraphs_val
 
-    def load_testing_data(self, filenames, shuffle=False, shuffle_size=self.shuffle_size, repeat=1):
+    def load_testing_data(self, filenames, shuffle=False, shuffle_size=None, repeat=1):
         self.data_test, self.ngraphs_test = read_dataset(filenames)
+        if shuffle_size is None:
+            shuffle_size = self.shuffle_size
         if shuffle:
             self.data_test = self.data_test.shuffle(self.get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
         if repeat > 1:
@@ -259,7 +272,7 @@ class TrainerBase(object):
         self.training_step = tf.function(update_step, input_signature=input_signature)
 
     def input_signature(self):
-        return get_signature(self.data_train, self.train_batch_size)
+        return get_signature(self.data_train, self.batch_size)
 
     def optimizer(self, lr):
         self.optimizer = snt.optimizers.Adam(lr)
@@ -273,20 +286,24 @@ class TrainerBase(object):
     # Training
     # --------------------        
 
-    def train_one_epoch(self, train_data=self.data_train):
+    def train_one_epoch(self, train_data=None):
+        if train_data is None:
+            train_data = self.data_train
         num_batches = 0
         total_loss = 0.
-        for inputs in loop_dataset(train_data):
+        for inputs in loop_dataset(train_data, self.batch_size):
             inputs_tr, targets_tr = inputs
             total_loss += self.training_step(inputs_tr, targets_tr).numpy()
             num_batches += 1
         return total_loss, num_batches
 
-    def validate_one_epoch(self, val_data=self.data_val):
+    def validate_one_epoch(self, val_data=None):
+        if val_data is None:
+            val_data = self.data_val
         total_loss = 0.
         num_batches = 0
         predictions, truth_info = [], []
-        for data in loop_dataset(val_data):
+        for data in loop_dataset(val_data, self.batch_size):
             inputs, targets = data
             outputs = self.model(inputs, self.num_iters)
             total_loss += (tf.math.reduce_sum(
@@ -294,7 +311,7 @@ class TrainerBase(object):
                     self.num_iters, dtype=tf.float32)).numpy()
             if len(outputs) > 1:
                 outputs = outputs[-1]
-            if self.loss_fcn == GlobalLoss:
+            if self.loss_name == "GlobalLoss":
                 predictions.append(outputs.globals)
                 truth_info.append(targets.globals)
             else:
@@ -306,22 +323,23 @@ class TrainerBase(object):
         return total_loss, num_batches, predictions, truth_info
 
     def update_metrics(self, predictions, truth_info, loss, threshold=0.5):
+        
         if self.metric_mode == "clf":
             y_true, y_pred = (truth_info > threshold), (predictions > threshold)
             fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
-            metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
-            metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
-            metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
-            metric_dict['rec'] = sklearn.metrics.recall_score(y_true, y_pred)
+            self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
+            self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
+            self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
+            self.metric_dict['rec'] = sklearn.metrics.recall_score(y_true, y_pred)
         elif self.metric_mode == "rgr":
-            metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
+            self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
         else:
             raise ValueError("currently " + self.metric_mode + " is not supported")
-        metric_dict['loss'] = loss
+        self.metric_dict['loss'] = loss
         with self.metric_writer.as_default():
-            for key,val in metric_dict.items():
+            for key,val in self.metric_dict.items():
                 tf.summary.scalar(key, val, step=self.epoch_count)
-            writer.flush()
+            self.metric_writer.flush()
         self.epoch_count.assign_add(1)
 
     # Trains the dataset. If train_data and val_data are specified, it uses those as the dataset.
@@ -333,9 +351,10 @@ class TrainerBase(object):
         for epoch in range(num_epochs):
             loss_tr, num_batches_tr = self.train_one_epoch(train_data)
             loss_val, num_batches_val, predictions, truth_info = self.validate_one_epoch(val_data)
-            if metric_mode:
+            if self.metric_mode:
                 self.update_metrics(predictions, truth_info, loss_val / num_batches_val)
             if self.early_stop_condition():
+                print("breaking after {} epochs".format(num_epochs))
                 break
 
     # Prediction

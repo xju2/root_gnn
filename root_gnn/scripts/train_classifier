@@ -29,13 +29,17 @@ from root_gnn import losses
 from root_gnn.src.datasets import graph
 from root_gnn.utils import load_yaml
 
+from root_gnn import trainer 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train nx-graph with configurations', parents=[TrainerBase.get_arg_parser()])
+    
+    parser = argparse.ArgumentParser(description='Train nx-graph with configurations', parents=[trainer.TrainerBase.get_arg_parser()])
     add_arg = parser.add_argument
     # add_arg('config', help='configuration file')
-    add_arg("--model-name", help="model name", choices=all_models, default="GlobalClassifierNoEdgeInfo")
-    add_arg("--loss-name", help="loss function name", default="GlobalLoss")
-    add_arg("--lr", type=float, help="optimizer learning rate", default=0.0005)
+    add_arg("--model-name", help="model name", default="GlobalClassifierNoEdgeInfo")
+    add_arg("--loss-name", help="loss function name", default="GlobalLoss,1,1")
+    add_arg("--lr", type=float, help="optimizer learning rate", default=0.001)
+    add_arg("--metric-mode", default="clf")
     add_arg("--early-stop", help="metric for early stop", default="auc")
     add_arg("--max-attempts", help="maximum failure threshold", default=1)
     # # profiling
@@ -45,12 +49,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = vars(args)
+
     output_dir = os.path.join(config["output_dir"], config["prod_name"])
     os.makedirs(output_dir, exist_ok=True)
     config["output_dir"] = output_dir
     config["model"] = getattr(all_models, config["model_name"])()
     loss_config = config["loss_name"].split(',')
-    loss_name = loss_config[0]
+    config["loss_name"] = loss_config[0]
     config["loss_fcn"] = getattr(losses, loss_config[0])(*[float(x) for x in loss_config[1:]])
 
     # Here, if the user wants, they can add/modify config arguments to be loaded into TrainerBase
@@ -59,13 +64,14 @@ if __name__ == "__main__":
     config["random_seed"] = 42
     
     print("Loading TrainerBase with the following configurations:", config)
-    trainer = TrainerBase(**config)
+    trnr = trainer.TrainerBase(**config)
 
-    trainer.load_training_data(shuffle=True)
-    trainer.load_validating_data(shuffle=True)
+    trnr.load_training_data(shuffle=True)
+    trnr.load_validating_data(shuffle=True)
 
-    trainer.train(model, loss_fcn, train_data)
-    # trainer.score(trainer.predict(val_data), truth_data, metric_fn)
+    #trnr.train(model, loss_fcn, train_data)
+    trnr.train()
+    # trnr.score(trainer.predict(val_data), truth_data, metric_fn)
 
     # # add ops to save and restore all the variables
     # output_dir = os.path.join(args.output_dir, args.prod_name)
