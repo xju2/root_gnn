@@ -114,7 +114,7 @@ class DataSet(object):
         return ifailed, isaved
         
 
-    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite, **kwargs):
+    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         print("ENTERED PROCESS IN BASE.PY")
         now = time.time()
 
@@ -129,10 +129,13 @@ class DataSet(object):
 
         print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
         
-        #handle file overwrite
-#         pattern_to_delete = "{}_{}.tfrec".format(outname, ijob)
-#         if overwrite:
-#             for file_name in os.listdir():
+        #pattern_to_delete = "{}_{}.tfrec".format(outname, ijob)
+        if overwrite: #handles file overwrite if the "overwrite" user argument is True 
+            directory, header = outname.rsplit("/", 1)            
+            for file_name in os.listdir(directory):
+                if file_name.startswith(header) and file_name.endswith(".tfrec"):
+                    os.remove(os.path.join(directory, file_name))
+                    print("hit", os.path.join(directory, file_name))
         
         with Pool(num_workers) as p:
             process_fnc = partial(self.subprocess,
