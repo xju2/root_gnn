@@ -58,41 +58,22 @@ class DataSet(object):
             ievt += 1
             if ievt < start_entry:
                 continue
-            #gen_graphs = self.make_graph(event)
             gen_graphs = self.make_graph(event, debug)
             
             if gen_graphs[0][0] is None:
                 ifailed += 1
                 continue
 
-            #[] [input_graph, target_graph] [[input_graph, targeT_graph]]         [input_graph, target_graph]
             all_graphs += gen_graphs
-            #all_graphs.append(gen_graphs)
             if ievt == start_entry + n_evts_per_record - 1:
                 break
         
         isaved = len(all_graphs)
-#         for i in range(isaved):
-#             print("INDEX", i) 
-#             print(all_graphs[i])
-        #NEW 
-       # print("ALL GRAPHS 0", all_graphs[0])
-       # print("ALL GRAPHS 1", all_graphs[1])
-#         input_target_pair = [graph for graph in all_graphs[0]]
-#         print("INPUT TARGET PAIR", input_target_pair)
-#         ex_input = all_graphs[0]
-#         ex_target = all_graphs[1]
-#         print("EXAMPLE INPUT")
-#         print(ex_input)
-#         print("EXAMPLE TARGET")
-#         print(ex_target)
         ex_input, ex_target = all_graphs[0]
         input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
             ex_input, with_padding=self.with_padding)
         target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
             ex_target, with_padding=self.with_padding)
-        print("INPUT DTYPE", input_dtype)
-        print("INPUT SHAPE", input_shape) 
         def generator():
             for G in all_graphs:
                 yield (G[0], G[1])
@@ -102,20 +83,16 @@ class DataSet(object):
             output_types=(input_dtype, target_dtype),
             output_shapes=(input_shape, target_shape),
             args=None)
-        print("POST ERROR")
 
         writer = tf.io.TFRecordWriter(outname)
         for data in dataset:
-            print("DATA:", data)
             example = graph.serialize_graph(*data)
             writer.write(example)
         writer.close()
-        print("POST WRITINGGGG")
         return ifailed, isaved
         
 
     def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
-        print("ENTERED PROCESS IN BASE.PY")
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -124,8 +101,6 @@ class DataSet(object):
         n_files = all_evts // n_evts_per_record
         if all_evts%n_evts_per_record > 0:
             n_files += 1
-        print("NUM FILES: ")
-        print(n_files) 
 
         print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
         

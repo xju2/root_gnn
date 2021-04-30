@@ -10,6 +10,16 @@ from functools import partial
 from typing import Optional  
 
 def make_graph(feature_values_with_truth, debug: Optional[bool] = False):#, debug=False):
+    """Creates a GraphsTuple for an event
+    
+    Parameters:
+    feature_values_with_truth = contains the feature values for all the particles (node attributes) and global truth
+    
+    Returns:
+    Input_graph = Input GraphsTuple
+    Target_graph = Target GraphsTuple
+    """
+    
     #print("PROCESSING GRAPH") 
     truth = feature_values_with_truth[1]
     feature_values = feature_values_with_truth[0] 
@@ -43,6 +53,18 @@ def make_graph(feature_values_with_truth, debug: Optional[bool] = False):#, debu
     return [(input_graph, target_graph)]
 
 def branch_names_to_feature_values(event, branches, filterings, include_particle_type=False):  #default value for truth is float? 
+    """For a particular event, outputs the features for all particles as well as the global truth. 
+    Parameters:
+    event = current event (TTree row)
+    branches = dictionary of {particle-type-name : particle-type's branch names}
+    filterings = list of particle filtering queries to process
+    include_particle_type = True if particle type is included as a feature, False otherwise 
+    
+    Returns:
+    feature_values = list of all the features for each particle 
+    truth = the global truth (what you are trying to predict)
+    """
+    
     truth_attribute="TRUTH"
     filter_attribute="FILTER"
     def filter_func(event, particle_name, index):
@@ -79,6 +101,15 @@ def branch_names_to_feature_values(event, branches, filterings, include_particle
     return (feature_values, truth)
 
 def yaml_to_branch_names(tree, yaml_file):
+    """Reads the configuration yaml_file that specifies branches to read from. 
+    Parameters:
+    tree = TTree to read 
+    yaml_file = name of yaml file to read  
+    
+    Returns:
+    branches = dictionary of {particle-type-name : particle-type's branch names}
+    filters = list of filtering queries to be processed
+    """
     import yaml
     from collections import OrderedDict
     branches = OrderedDict() 
@@ -114,6 +145,7 @@ def yaml_to_branch_names(tree, yaml_file):
         return None
     branches[truth_attribute] = truth
         
+    #to filter preprocess filter requests into a boolean string that eval() can evaluate for each particle in an event
     filter_list = documents.get(filter_attribute)
     filters = OrderedDict() 
     special_filter_chars = '==>=<=+-**/'
@@ -122,25 +154,40 @@ def yaml_to_branch_names(tree, yaml_file):
             for particle, filterings in particle_filter.items():
                 filters[particle] = []
                 for filtering in filterings:
+                    #Split the filter request by blank space. For each word that's a branch name, replace it with getattr(...) - this is a form that can be easily evaluated by eval() 
                     entry_list = filtering.split() 
                     temp = [text if (text.isdigit() or (text in special_filter_chars)) else "getattr(event,'" + text + "')[index]" for text in entry_list]
                     filters[particle].append(" ".join(temp))
     return branches, filters
 
 def check_valid_truth(event, truth_branch_name, max_events = 1000): 
-    if len(truth_branch_name) == 1 and isinstance(truth_branch_name[0], str): 
+    """Checks if an inputted truth attribute is valid if the truth attribute is a branch name. 
+    If the branch elements are a list, checks that all branch elements have the same shape. 
+    If the branch elements are a number, checks that all branch elements are the same value. 
+    Parameters:
+    event = TTree to read from
+    truth_attribute = key name in the yaml file that corresponds to the truth 
+    max_events = maximum number of events to iterate through for truth validation
+    
+    Returns:
+    True if truth attribute is valid
+    False if truth attribute is not valid
+    """
+    #If truth_attribute is a branch name, check if branch is a list OR a single value. 
+    #If it's a single number then it needs to have same value for all events! 
+    if len(truth_branch_name) == 1 and isinstance(truth_branch_name[0], str): #truth_attribute is a branch name
         truth_value = getattr(event, truth_branch_name[0]) 
         num_events = min(max_events, event.GetEntries())
         event.GetEntry(0)
-        if not isinstance(truth_value, (int, float, complex)):
+        if not isinstance(truth_value, (int, float, complex)): #check all lists have same shape
             size = len(truth_value)
             for i in range(1, num_events):
                 event.GetEntry(i)
                 if len(truth_value) != size:
                     return False 
             return True 
-        initial_entry = truth_value
-        for i in range(1, num_events):
+        initial_entry = truth_value #otherwise... check all numbers have same value 
+        for i in range(1, num_events):  
             event.GetEntry(i)
             if truth_value != initial_entry:
                 return False 
