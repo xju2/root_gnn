@@ -3,5 +3,8 @@
 *.ipynb_checkpoints
 *.egg*
 */_*ipynb
+*/*.pdf
+*/*.png
+*/*.eps
 trained_results
 backup

@@ -6,7 +6,7 @@ from root_gnn.trainer import get_signature
 from root_gnn.trainer import loop_dataset
 from root_gnn.trainer import read_dataset
 
-from root_gnn.src.generative import sets_gan
+from root_gnn.src.generative import rnn_mlp_gan as toGan
 from scipy.sparse import coo_matrix
 import tensorflow as tf
 # import tensorflow.experimental.numpy as tnp
@@ -26,19 +26,12 @@ import sklearn.metrics
 import tqdm
 
 
-from graph_nets import utils_tf
-from graph_nets import utils_np
-from graph_nets import graphs
 import sonnet as snt
 
 from types import SimpleNamespace
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.info("TF Version:{}".format(tf.__version__))
-
-
-MAX_NODES = 2
-OUT_DIM = 4
 
 node_mean = np.array([
     [14.13, 0.05, -0.10, -0.04], 
@@ -52,17 +45,6 @@ node_scales = np.array([
     [6.87, 5.12, 5.13, 5.90]
 ], dtype=np.float32)
 
-node_min = np.array([
-    [0.75, -46.3, -46.0, -47.0],
-    [0.13, -40.5, -37.0, -39.5],
-    [0.14, -36.4, -35.5, -35.0]
-], dtype=np.float32)
-
-node_max = np.array([
-    [49.1, 47.7, 44.2, 46.6],
-    [46.2, 35.7, 41.0, 37.8],
-    [42.8, 36.3, 37.0, 35.5]
-], dtype=np.float32)
 
 node_abs_max = np.array([
     [49.1, 47.7, 46.0, 47.0],
@@ -70,39 +52,9 @@ node_abs_max = np.array([
     [42.8, 36.4, 37.0, 35.5]
 ], dtype=np.float32)
 
-def my_print(g, data=False):
-    for field_name in graphs.ALL_FIELDS:
-        per_replica_sample = getattr(g, field_name)
-        if per_replica_sample is None:
-            print(field_name, "EMPTY")
-        else:
-            print(field_name, ":", per_replica_sample.shape)
-            if data and field_name != "edges":
-                print(per_replica_sample)
-
 
 def init_workers(distributed=False):
     return SimpleNamespace(rank=0, size=1, local_rank=0, local_size=1, comm=None)
-
-
-def hacky_sigmoid_l2(nodes):
-    r = tf.reduce_sum(tf.square(nodes), 1)
-    r = tf.reshape(r, [-1, 1])
-    D = r - 2 * tf.matmul(nodes, nodes, transpose_b=True) + tf.transpose(r)
-    # TODO: make tunable param
-    r = 10
-    return tf.math.sigmoid(r * (1 - D))
-
-
-def scaled_hacky_sigmoid_l2(nodes):
-    dim = tf.shape(nodes)[1]
-    r = tf.reduce_sum(tf.square(nodes), 1)
-    r = tf.reshape(r, [-1, 1])
-    D = r - 2 * tf.matmul(nodes, nodes, transpose_b=True) + tf.transpose(r)
-    # TODO: make tunable param
-    D /= tf.sqrt(tf.dtypes.cast(dim, tf.float32))
-    r = 10
-    return tf.math.sigmoid(r * (1 - D))
 
 
 def train_and_evaluate(args):
@@ -158,6 +110,10 @@ def train_and_evaluate(args):
         train_files = train_files[0]
         eval_files = eval_files[0]
 
+    if args.debug:
+        train_files = train_files[0:1]
+        eval_files = eval_files[0:1]
+
     logging.info("rank {} has {} training files and {} evaluation files".format(
         dist.rank, len(train_files), len(eval_files)))
 
@@ -168,27 +124,24 @@ def train_and_evaluate(args):
         training_dataset = training_dataset.shuffle(
                 args.shuffle_size, seed=12345, reshuffle_each_iteration=False)
 
-
-    logging.info("rank {} has {} training graphs".format(
-        dist.rank, ngraphs_train))
-
-    input_signature = get_signature(
-        training_dataset, batch_size, dynamic_num_nodes=False)
+    validating_dataset, ngraphs_val = read_dataset(eval_files)
+    validating_dataset = validating_dataset.repeat().prefetch(AUTO)
 
 
-    gan = sets_gan.SetGAN(
-        noise_dim=args.noise_dim,
-        max_nodes=MAX_NODES,
-        num_iters=args.disc_num_iters,
-        batch_size=args.batch_size)
+    logging.info("rank {} has {:,} training events and {:,} validating events".format(
+        dist.rank, ngraphs_train, ngraphs_val))
 
-    optimizer = sets_gan.SetGANOptimizer(
+    gan = toGan.GAN(max_nodes=2)
+
+    optimizer = toGan.GANOptimizer(
                         gan,
                         batch_size=batch_size,
                         noise_dim=args.noise_dim,
                         num_epcohs=n_epochs,
                         disc_lr=args.disc_lr,
                         gen_lr=args.gen_lr,
+                        with_disc_reg=args.with_disc_reg, 
+                        gamma_reg=args.gamma_reg
                         )
     
     disc_step = optimizer.disc_step
@@ -197,9 +150,9 @@ def train_and_evaluate(args):
         step = tf.function(step)
         disc_step = tf.function(disc_step)
 
-    
 
     training_data = loop_dataset(training_dataset, batch_size)
+    validating_data = loop_dataset(validating_dataset, batch_size)
     steps_per_epoch = ngraphs_train // batch_size
 
 
@@ -216,19 +169,23 @@ def train_and_evaluate(args):
     _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
 
     
+    def normalize(inputs, targets):
+        input_nodes = (inputs.nodes - node_mean[0])/node_scales[0]
+        target_nodes = np.reshape(targets.nodes, [batch_size, -1, 4])
+        target_nodes = np.reshape(target_nodes/node_abs_max, [batch_size, -1])
+        return input_nodes, target_nodes
+
     if args.warm_up:
         # train discriminator for certain batches
         # to "warm up" the discriminator
         print("start to warm up discriminator with {} batches".format(args.disc_batches))
         for _ in range(args.disc_batches):
             inputs_tr, targets_tr = next(training_data)
-            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
-            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
-            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
-            targets_tr = targets_tr.replace(nodes=target_nodes)
-            disc_step(inputs_tr, targets_tr)
+            input_nodes, target_nodes = normalize(inputs_tr, targets_tr)
+            input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
+            target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
+            disc_step(input_nodes, target_nodes)
         print("finished the warm up")
-
 
 
     pre_gen_loss = pre_disc_loss = 0
@@ -248,16 +205,26 @@ def train_and_evaluate(args):
             # targets_tr = targets_tr.replace(nodes=target_nodes)
             # --------------------------------------------------------
             # scale the inputs and outputs to [-1, 1]
-            inputs_tr = inputs_tr.replace(nodes=inputs_tr.nodes/node_abs_max[0])
-            target_nodes = np.reshape(targets_tr.nodes, [batch_size, -1, 4])
-            target_nodes = np.reshape(target_nodes/node_abs_max, [-1, 4])
-            targets_tr = targets_tr.replace(nodes=target_nodes)
+            input_nodes, target_nodes = normalize(inputs_tr, targets_tr)
+            input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
+            target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
             # --------------------------------------------------------
+            # if args.debug:
+            #     print(input_nodes.shape, target_nodes.shape)
+            disc_loss, gen_loss, lr_mult = step(input_nodes, target_nodes, epoch)
+            if args.with_disc_reg:
+                disc_loss, disc_reg, grad_D_true_logits_norm, grad_D_gen_logits_norm, reg_true, reg_gen = disc_loss
+            else:
+                disc_loss, = disc_loss
 
-            disc_loss, gen_loss, lr_mult = step(inputs_tr, targets_tr, epoch)
+            if step_num == 0:
+                print(">>>{:,} trainable variables in Generator; {:,} trainable variables in Discriminator<<<".format(
+                    *optimizer.gan.num_trainable_vars()
+                ))
+
             disc_loss = disc_loss.numpy()
             gen_loss = gen_loss.numpy()
-            if step_num and (step_num % 50 == 0):
+            if step_num and (step_num % args.log_freq == 0):
                 t.set_description('Epoch {}/{}'.format(epoch.numpy(), n_epochs))
                 t.set_postfix(
                     G_loss=gen_loss, G_loss_change=gen_loss-pre_gen_loss,
@@ -267,15 +234,37 @@ def train_and_evaluate(args):
                 pre_gen_loss = gen_loss
                 pre_disc_loss = disc_loss
 
+                # adding testing results
+                predict_4vec = []
+                truth_4vec = []
+                for ib in range(args.val_batches):
+                    inputs_val, targets_val = normalize(* (next(validating_data)))
+                    gen_evts_val = optimizer.cond_gen(inputs_val)
+                    predict_4vec.append(tf.reshape(gen_evts_val, [batch_size, -1, 4]))
+                    truth_4vec.append(tf.reshape(targets_val, [batch_size, -1, 4])[:, 1:, :])
+        
+                predict_4vec = tf.concat(predict_4vec, axis=0)
+                truth_4vec = tf.concat(truth_4vec, axis=0)
+
                 # log some metrics
                 this_epoch = time.time()
                 with train_summary_writer.as_default():
+                    tf.summary.experimental.set_step(step_num)
                     # epoch = epoch.numpy()
-                    tf.summary.scalar("generator loss", gen_loss, step=step_num)
-                    tf.summary.scalar("discriminator loss", disc_loss, step=step_num)
-                    tf.summary.scalar(
-                        "time", (this_epoch-start_time)/60., step=step_num)
-                    
+                    tf.summary.scalar("gen_loss", gen_loss, description='generator loss')
+                    tf.summary.scalar("discr_loss", disc_loss, description="discriminator loss")
+                    tf.summary.scalar("time", (this_epoch-start_time)/60.)
+                    if args.with_disc_reg:
+                        tf.summary.scalar("discr_reg", disc_reg.numpy().mean(), description='discriminator regularization')
+                        tf.summary.scalar("reg_gen", reg_gen.numpy().mean(), description='regularization on generated events')
+                        tf.summary.scalar("reg_true", reg_true.numpy().mean(), description='regularization on truth events')
+                        tf.summary.scalar("grad_D1_logits_norm", grad_D_true_logits_norm.numpy().mean(),
+                                    description="gradients of true logits")
+                        tf.summary.scalar("grad_D2_logits_norm", grad_D_gen_logits_norm.numpy().mean(),
+                                    description="gradients of generated logits")
+                    tf.summary.histogram("predict_4vec", predict_4vec)
+                    tf.summary.histogram("truth_4vec", truth_4vec)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -304,11 +293,16 @@ if __name__ == "__main__":
             help='inversely scale true dataset in the loss calculation', default=0.1)
     add_arg("--disc-beta", type=float,
             help='scales generated dataset in the loss calculation', default=0.8)
+    add_arg("--with-disc-reg", action='store_true', help='with discriminator regularizer')
+    add_arg("--gamma-reg", type=float, help="scale the regularization term", default=1e-3)
+    add_arg("--log-freq", type=int, help='log per number of steps', default=50)
+    add_arg("--val-batches", type=int, default=1, help='number of batches for validation')
 
     add_arg("-v", "--verbose", help='verbosity', choices=['DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN'],
             default="INFO")
     add_arg("--debug", help='in debug mode', action='store_true')
-    args, _ = parser.parse_known_args()
+    # args, _ = parser.parse_known_args()
+    args = parser.parse_args()
     # print(args)
 
     # Set python level verbosity
