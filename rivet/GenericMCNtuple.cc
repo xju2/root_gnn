@@ -243,10 +243,93 @@ namespace Rivet {
       br_recoJetIsBtagged.clear();
     }
 
+    
+    void printParticle(const Particle& p){
+      printf("%d %d %d %.2f %.2f %.2f\n", p.pid(), p.parents().size(), p.genParticle()->status(),
+        p.pt()/GeV, p.eta(), p.phi());
+    }
+
+    void dumpGenEvent(const Event& event){
+      const GenEvent* genEvent = event.genEvent();
+
+      const auto& all_particles = event.allParticles();
+      printf("total %d particles\n", (int)all_particles.size());
+      printf("index pid num_parents status pT eta phi \n");
+      for(int ip=0; ip < (int) all_particles.size(); ip++){
+        auto& p = all_particles[ip];
+        this->printParticle(p);
+      }
+      Particles tops = this->findTopQuarkDecays(event);
+      printf("Find %d top quarks\n", tops.size()/3);
+      for(auto& p: tops) {
+        this->printParticle(p);
+      }
+    }
+
+    Particle findParticleWithStatus(const Particle& p, int status) {
+      PdgId pid(p.abspid());
+      if(p.genParticle()->status() == status){
+        return p;
+      }
+      for(auto& p_child: p.children()){
+        if(p_child.abspid() == pid){
+          return findParticleWithStatus(p_child, status);
+        }
+      }
+      return Particle();
+    }
+
+    Particles findTopQuarkDecays(const Event& event){
+      // Top quarks with status=22 are intermediate particles,
+      // which can be thought of particles just produced,
+      // then it will go through ISR and FSR and beam primordial corrections
+      // then it will decay to W boson and b quark.
+      // We look for top quark with status=62
+
+      // For the b quark, it will go through FSR and be cooled down to partipate
+      // the hadronization process.
+      // We look for b-quark with status=71
+
+      // For the W boson, it will go through FSR and then decay. 
+      // We look for W boson with status of 52.
+
+      // The above description should be valid for Pythia8 generator.
+      const auto& all_particles = event.allParticles();
+      Particles rtn;
+      for(int ip=0; ip < (int) all_particles.size(); ip++){
+        auto& p = all_particles[ip];
+        // http://home.thep.lu.se/~torbjorn/pythia81html/ParticleProperties.html
+        // status=62, "outgoing subprocesses particle with primordial kT included"
+        // Top is after ISR and FSR
+        if (p.abspid() == 6 && p.genParticle()->status() == 62){
+          rtn += p;
+          // check top quark children
+          auto children = p.children();
+          if (children.size() > 0) {
+            for(int ichild=0; ichild < (int) children.size(); ichild++){
+              auto& p_child = children[ichild];
+              // if it is W-boson, record its decay products...
+              if (p_child.abspid() == 24) {
+                rtn += this->findParticleWithStatus(p_child, 52);
+              }
+              if (p_child.abspid() == 5) {
+                rtn += this->findParticleWithStatus(p_child, 71);
+              }
+            }
+          }
+        }
+      }
+      return rtn;
+    }
+
     /// Perform the per-event analysis
     void analyze(const Event& event) {
       clearBranch();
       // const double PHV = -999999.; // place holder value
+      // this->dumpGenEvent(event);
+
+      // Jet with any electrons/photons within deltaR of jet_ol_ele_ph_cut will be removed
+      // const double jet_ol_ele_ph_cut = 0.2;
 
       // Truth studies
       // ---------------------
@@ -255,11 +338,13 @@ namespace Rivet {
       
       const Particles truthEle = apply<IdentifiedFinalState>(event, "TruthElectron").particlesByPt();
       const Particles truthMuon = apply<IdentifiedFinalState>(event, "TruthMuon").particlesByPt();
+      const Particles truthPhoton = apply<IdentifiedFinalState>(event, "TruthPhoton").particlesByPt();
       
-      // Discard jets very close to electrons (dR < 0.2), 
+      // Discard jets very close to electrons or photons (dR < 0.2), 
       // or with low track multiplicity and close to muons (dR < 0.4)
       const Jets isoTruthJet = filter_discard(truthJets, [&](const Jet& j){
           if (any(truthEle, deltaRLess(j, 0.2))) return true;
+          if (any(truthPhoton, deltaRLess(j, 0.2))) return true;
  				  if (j.particles(Cuts::abscharge > 0 && Cuts::pT > 0.4*GeV).size() <= 3 && \
 					  any(truthMuon, deltaRLess(j, 0.4))) return true;
 				  return false;
@@ -309,7 +394,6 @@ namespace Rivet {
       br_nTruthLepton = br_nTruthEle + br_nTruthMuon;
 
       // Photons
-      const Particles truthPhoton = apply<IdentifiedFinalState>(event, "TruthPhoton").particlesByPt();
       br_nTruthPhoton = (int) truthPhoton.size();
       for(const Particle& ph: truthPhoton){
         const FourMomentum tlv = ph.momentum();
@@ -350,11 +434,13 @@ namespace Rivet {
       
       const Particles recoEle = apply<ParticleFinder>(event, "RecoElectron").particlesByPt();
       const Particles recoMuon = apply<ParticleFinder>(event, "RecoMuon").particlesByPt();
+      const Particles recoPhoton = apply<ParticleFinder>(event, "RecoPhoton").particlesByPt();
       
       // Discard jets very close to electrons (dR < 0.2), 
       // or with low track multiplicity and close to muons (dR < 0.4)
       const Jets isoRecoJet = filter_discard(recoJets, [&](const Jet& j){
           if (any(recoEle, deltaRLess(j, 0.2))) return true;
+          if (any(recoPhoton, deltaRLess(j, 0.2))) return true;
  				  if (j.particles(Cuts::abscharge > 0 && Cuts::pT > 0.4*GeV).size() <= 3 && \
 					  any(recoMuon, deltaRLess(j, 0.4))) return true;
 				  return false;
@@ -404,7 +490,6 @@ namespace Rivet {
       br_nRecoLepton = br_nRecoEle + br_nRecoMuon;
 
       // reco photons
-      const Particles recoPhoton = apply<ParticleFinder>(event, "RecoPhoton").particlesByPt();
       for(const Particle& ph: recoPhoton){
         const FourMomentum tlv = ph.momentum();
         br_recoPhotonPt.push_back(tlv.pt()/GeV);
