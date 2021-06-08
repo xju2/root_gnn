@@ -7,6 +7,8 @@ from root_gnn.trainer import loop_dataset
 from root_gnn.trainer import read_dataset
 
 from root_gnn.src.generative import rnn_mlp_gan as toGan
+# from root_gnn.src.datasets import herwig_hadrons as data_handle
+from root_gnn.src.datasets import hadronic as data_handle
 from scipy.sparse import coo_matrix
 import tensorflow as tf
 # import tensorflow.experimental.numpy as tnp
@@ -32,25 +34,6 @@ from types import SimpleNamespace
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.info("TF Version:{}".format(tf.__version__))
-
-node_mean = np.array([
-    [14.13, 0.05, -0.10, -0.04], 
-    [7.73, 0.02, -0.04, -0.08],
-    [6.41, 0.04, -0.06, 0.04]
-], dtype=np.float32)
-
-node_scales = np.array([
-    [13.29, 10.54, 10.57, 12.20], 
-    [8.62, 6.29, 6.35, 7.29],
-    [6.87, 5.12, 5.13, 5.90]
-], dtype=np.float32)
-
-
-node_abs_max = np.array([
-    [49.1, 47.7, 46.0, 47.0],
-    [46.2, 40.5, 41.0, 39.5],
-    [42.8, 36.4, 37.0, 35.5]
-], dtype=np.float32)
 
 
 def init_workers(distributed=False):
@@ -131,7 +114,7 @@ def train_and_evaluate(args):
     logging.info("rank {} has {:,} training events and {:,} validating events".format(
         dist.rank, ngraphs_train, ngraphs_val))
 
-    gan = toGan.GAN(max_nodes=2)
+    gan = toGan.GAN(max_nodes=data_handle.n_max_nodes)
 
     optimizer = toGan.GANOptimizer(
                         gan,
@@ -168,12 +151,6 @@ def train_and_evaluate(args):
     logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
     _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
 
-    
-    def normalize(inputs, targets):
-        input_nodes = (inputs.nodes - node_mean[0])/node_scales[0]
-        target_nodes = np.reshape(targets.nodes, [batch_size, -1, 4])
-        target_nodes = np.reshape(target_nodes/node_abs_max, [batch_size, -1])
-        return input_nodes, target_nodes
 
     if args.warm_up:
         # train discriminator for certain batches
@@ -181,9 +158,9 @@ def train_and_evaluate(args):
         print("start to warm up discriminator with {} batches".format(args.disc_batches))
         for _ in range(args.disc_batches):
             inputs_tr, targets_tr = next(training_data)
-            input_nodes, target_nodes = normalize(inputs_tr, targets_tr)
-            input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
-            target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
+            input_nodes, target_nodes = data_handle.normalize(inputs_tr, targets_tr, batch_size)
+            # print("Input shape:", input_nodes.shape)
+            # print("Target shape:", target_nodes.shape)
             disc_step(input_nodes, target_nodes)
         print("finished the warm up")
 
@@ -205,9 +182,7 @@ def train_and_evaluate(args):
             # targets_tr = targets_tr.replace(nodes=target_nodes)
             # --------------------------------------------------------
             # scale the inputs and outputs to [-1, 1]
-            input_nodes, target_nodes = normalize(inputs_tr, targets_tr)
-            input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
-            target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
+            input_nodes, target_nodes = data_handle.normalize(inputs_tr, targets_tr, batch_size)
             # --------------------------------------------------------
             # if args.debug:
             #     print(input_nodes.shape, target_nodes.shape)
@@ -238,7 +213,7 @@ def train_and_evaluate(args):
                 predict_4vec = []
                 truth_4vec = []
                 for ib in range(args.val_batches):
-                    inputs_val, targets_val = normalize(* (next(validating_data)))
+                    inputs_val, targets_val = data_handle.normalize(* (next(validating_data)), batch_size)
                     gen_evts_val = optimizer.cond_gen(inputs_val)
                     predict_4vec.append(tf.reshape(gen_evts_val, [batch_size, -1, 4]))
                     truth_4vec.append(tf.reshape(targets_val, [batch_size, -1, 4])[:, 1:, :])

@@ -1,10 +1,22 @@
+"""
+Class to read hadrnoic interaction data from g4
+"""
 import numpy as np
 import itertools
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 n_input_particle_features = 5
-n_max_nodes = 18 # maximum number of out-going particles
+n_max_nodes = 20 # maximum number of out-going particles
+
+import tensorflow as tf
+def normalize(inputs, targets, batch_size, to_tensor=True):
+    input_nodes = inputs.nodes
+    target_nodes = tf.reshape(targets.nodes, [batch_size, -1])
+    if to_tensor:
+        input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
+        target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
+    return (input_nodes, target_nodes)
 
 def num_particles(event):
     return len(event) // n_input_particle_features
@@ -33,14 +45,15 @@ def make_graph(event, debug=False):
     ] for inode in range(n_particles)]
 
     nodes = np.array(nodes, dtype=np.float32) * scale
-    n_nodes = nodes.shape[0] - 1 
+
+    n_nodes = nodes.shape[0] - 1
     if n_nodes > n_max_nodes:
         print("ERROR, {} nodes larger than maximum nodes {}.".format(n_nodes, n_max_nodes))
         return [(None, None)]
 
     if n_nodes < n_max_nodes:
         nodes = np.concatenate([nodes, np.zeros([n_max_nodes-n_nodes, nodes.shape[1]], dtype=np.float32)], axis=0)
-    
+
     n_nodes = nodes.shape[0]
     # all input nodes connecting to each other
     all_edges = list(itertools.combinations(range(n_nodes), 2))

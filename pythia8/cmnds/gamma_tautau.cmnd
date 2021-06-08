@@ -1,0 +1,21 @@
+Beams:idA = 2212                   ! first beam, p = 2212, pbar = -2212
+Beams:idB = 2212                   ! second beam, p = 2212, pbar = -2212
+Beams:eCM = 13000.                 ! CM energy of collision
+
+Main:numberOfEvents = 5000
+
+WeakSingleBoson:ffbar2gmZ = on		! pp -> gamma*/Z^0 -> ff
+WeakZ0:gmZmode = 1					! only gamma*
+
+23:onMode    = off                  ! turn off all decay modes
+23:onIfAny    = 15                	! turn on tau decay mode
+15:offIfAny = 12 14				! turn off leptonic tau decays 
+-15:offIfAny = 12 14			! turn off leptonic tau decays 
+PhaseSpace:mHatMin = 60.		! lower invariant mass
+PhaseSpace:mHatMax = 7000.		! upper invariant mass
+
+
+Tune:ee = 7                         ! use Monash 2013 Tune by Peter Skands
+Tune:pp = 21                        ! use A14 Tune with NNPDF2.3LO
+
+PDF:pSet = 13             ! NNPDF2.3 QCD+QED LO alpha_s(M_Z) = 0.130. Will be used everywhere 

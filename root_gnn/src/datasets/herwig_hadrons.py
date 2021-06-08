@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 import itertools
 import re
@@ -6,6 +7,25 @@ from root_gnn.src.datasets.base import DataSet
 
 n_node_features = 6
 n_max_nodes = 2 # maximum number of out-going particles
+
+node_mean = np.array([14.13, 0.05, -0.10, -0.04])
+node_scales = np.array([13.29, 10.54, 10.57, 12.20])
+
+node_abs_max = np.array([
+    [49.1, 47.7, 46.0, 47.0],
+    [46.2, 40.5, 41.0, 39.5],
+    [42.8, 36.4, 37.0, 35.5]
+], dtype=np.float32)
+
+def normalize(inputs, targets, batch_size, to_tensor=True):
+    input_nodes = (inputs.nodes - node_mean)/node_scales
+    target_nodes = np.reshape(targets.nodes, [batch_size, -1, 4])
+    target_nodes = np.reshape(target_nodes/node_abs_max, [batch_size, -1])
+    if to_tensor:
+        input_nodes = tf.convert_to_tensor(input_nodes, dtype=tf.float32)
+        target_nodes = tf.convert_to_tensor(target_nodes, dtype=tf.float32)
+    return input_nodes, target_nodes
+
 
 def make_graph(event, debug=False):
     

@@ -6,6 +6,7 @@
 #include "Rivet/Projections/MissingMomentum.hh"
 #include "Rivet/Projections/PromptFinalState.hh"
 #include "Rivet/Projections/VetoedFinalState.hh"
+#include "Rivet/Projections/UnstableParticles.hh"
 
 #include "Rivet/Projections/SmearedParticles.hh"
 #include "Rivet/Projections/SmearedJets.hh"
@@ -52,6 +53,8 @@ namespace Rivet {
       const Cut electron_cuts = Cuts::abseta < 2.47 && Cuts::pT > 20*GeV;
       const Cut muon_cuts = Cuts::abseta < 2.5 && Cuts::pT > 20*GeV;
       const Cut ph_cuts = Cuts::abseta < 2.47 && Cuts::pT > 20*GeV;
+	  // unstable particles --> tau
+	  declare(UnstableParticles(), "UFS");
 
       // All final state particles
       FinalState fs(eta_full);
@@ -153,6 +156,14 @@ namespace Rivet {
       
       tree->Branch("nTruthLepton", &br_nTruthLepton, "nTruthLepton/I");
 
+	  tree->Branch("nTruthTau", &br_nTruthTau, "nTruthTau/I");
+      tree->Branch("truthTauPt", &br_truthTauPt);
+      tree->Branch("truthTauEta", &br_truthTauEta);
+      tree->Branch("truthTauPhi", &br_truthTauPhi);
+      tree->Branch("truthTauE", &br_truthTauE);
+      tree->Branch("truthTauCharge", &br_truthTauCharge);
+
+
       tree->Branch("truthMETPt", &br_truthMETPt);
       tree->Branch("truthMETPhi", &br_truthMETPhi);
 
@@ -189,7 +200,7 @@ namespace Rivet {
       tree->Branch("recoMETPhi", &br_recoMETPhi);
     }
 
-    void clearBranch(){
+    void clearBranch() {
       br_truthElePt.clear();
       br_truthEleEta.clear();
       br_truthElePhi.clear();
@@ -219,6 +230,13 @@ namespace Rivet {
       br_truthJetE.clear();
       br_truthJetIsBtagged.clear();
 
+      br_truthTauPt.clear();
+      br_truthTauEta.clear();
+      br_truthTauPhi.clear();
+      br_truthTauE.clear();
+      br_truthTauCharge.clear();
+
+
       br_recoElePt.clear();
       br_recoEleEta.clear();
       br_recoElePhi.clear();
@@ -247,13 +265,44 @@ namespace Rivet {
     void analyze(const Event& event) {
       clearBranch();
       // const double PHV = -999999.; // place holder value
+	  // Find taus^-1
+	  // hadronic decays:
+	  // * pi-, nu (10.83%); k-,nu (0.7%) 
+	  // * pi-, pi0, nu (25.52%)
+	  // * pi0, pi0, nu (10.52%)
+	  // * pi0, pi0, pi0, nu (1.19%)
+	  // * pi-, pi+, pi-, nu (9.31%)
+	  // * pi-, pi+, pi-, pi0, nu (4.62%)
+	  // leptonic decays:
+	  // * e, nu_e, nu (17.8%)
+	  // * mu, nu_mu, nu (17.4%)
+	 
+	  br_nTruthTau = 0;
+	  for(const Particle& p : apply<UnstableParticles>(e, "UFS").particles(Cuts::pid==PID::TAU))
+	  {
+		  Particles pip, pim, Kp, Km;
+		  unsigned int nstable = 0;
+		  // Find the decay products we want
+		  findDecayProducts(p, nstable, pip, pim, Kp, Km);
+		  if (p.pid() < 0) {
+			  swap(pip, pim);
+			  swap(Kp, Km );
+		  }
+		  br_nTruthTau ++ ;
+		  // Save true tau information
+		  br_truthTauPt.push_back(p.pt()/GeV);
+		  br_truthTauEta.push_back(p.eta());
+		  br_truthTauPhi.push_back(p.phi(MINUSPI_PLUSPI));
+		  br_truthTauE.push_back(p.E()/GeV);
+		  br_truthTauCharge.push_back((int) p.charge());
+	  }
 
-      // Truth studies
-      // ---------------------
-      const Jets truthJets  = apply<JetAlg>(event, "TruthJet").jetsByPt(
-        Cuts::pT > truthJetPTCut*GeV && Cuts::abseta < 2.8);
-      
-      const Particles truthEle = apply<IdentifiedFinalState>(event, "TruthElectron").particlesByPt();
+	  // Truth studies
+	  // ---------------------
+	  const Jets truthJets  = apply<JetAlg>(event, "TruthJet").jetsByPt(
+			  Cuts::pT > truthJetPTCut*GeV && Cuts::abseta < 2.8);
+
+	  const Particles truthEle = apply<IdentifiedFinalState>(event, "TruthElectron").particlesByPt();
       const Particles truthMuon = apply<IdentifiedFinalState>(event, "TruthMuon").particlesByPt();
       
       // Discard jets very close to electrons (dR < 0.2), 
@@ -483,6 +532,14 @@ namespace Rivet {
     vector<double> br_truthJetE;
     vector<int> br_truthJetIsBtagged;
 
+	int br_nTruthTau;
+	vector<double> br_truthTauPt;
+	vector<double> br_truthTauEta;
+	vector<double> br_truthTauPhi;
+	vector<double> br_truthTauE;
+    vector<int>    br_truthTauCharge;
+	vector<unsigned int> br_truthTauChildren;
+
     double br_truthMETPt;
     double br_truthMETPhi;
     int br_nTruthLepton;
@@ -518,6 +575,39 @@ namespace Rivet {
 
     double br_recoMETPt;
     double br_recoMETPhi;
+	void findDecayProducts(const Particle &mother,
+			unsigned int & nstable,
+			Particles& pip, Particles& pim,
+			Particles& Kp, Particles& Km) 
+	{
+		for (const Particle &p : mother.children()) {
+			long id = p.pid();
+			if (id == PID::PI0 )
+				++nstable;
+			else if (id == PID::K0S)
+				++nstable;
+			else if (id == PID::PIPLUS) {
+				pip.push_back(p);
+				++nstable;
+			}
+			else if (id == PID::PIMINUS) {
+				pim.push_back(p);
+				++nstable;
+			}
+			else if (id == PID::KPLUS) {
+				Kp.push_back(p);
+				++nstable;
+			}
+			else if (id == PID::KMINUS) {
+				Km.push_back(p);
+				++nstable;
+			}
+			else if (!p.children().empty()) {
+				findDecayProducts(p, nstable, pip, pim, Kp, Km);
+			}
+			else  ++nstable;
+		}
+	}
 
   };
 
