@@ -16,6 +16,7 @@
 
 #include <vector>
 #include <TFile.h>
+#include <TString.h>
 #include <TTree.h>
 #include <TRandom.h>
 #include <unistd.h>
@@ -24,7 +25,47 @@
 using namespace std;
 
 namespace Rivet {
+  // class ParticlesBranch {
+  // public:
+  //   ParticleBranch(string name_):name(name_)
+  //   {
+  //     nTot = 0;
+  //     m_Pt = vector<double>();
+  //     m_Eta = vector<double>();
+  //     m_Phi = vector<double>();
+  //     m_E = vector<double>();
+  //     m_Charge = vector<int>();
+  //   }
 
+  //   void clear(){
+  //     nTot = 0;
+  //     Pt.clear();
+  //     Eta.clear();
+  //     Phi.clear();
+  //     E.clear();
+  //     Chrage.clear();
+  //   }
+
+  //   void attachToTree(TTree* tree){
+  //     tree->Branch(Form("n%s", name.c_str()), &nTot, Form("n%s/I", name.c_str()));
+  //     tree->Branch(Form("%sPt", name.c_str()), &Pt);
+  //     tree->Branch(Form("%sEta", name.c_str()), &Eta);
+  //     tree->Branch(Form("%sPhi", name.c_str()), &Phi);
+  //     tree->Branch(Form("%sE", name.c_str()), &E);
+  //     if(name.find("Jet") != string::npos){
+  //       tree->Branch(Form("%sIsBtagged", name.c_str()), &Charge);
+  //     }
+  //   }
+
+  // private:
+  //   string name;
+  //   int nTot;
+  //   vector<double> Pt;
+  //   vector<double> Eta;
+  //   vector<double> Phi;
+  //   vector<double> E;
+  //   vector<int> Charge; // for jets, it is b-tagging
+  // };
 
   /// @brief This analysis applies pre-selections on electrons, muons and jets,
   /// then save four-memotum information for each object.
@@ -118,6 +159,25 @@ namespace Rivet {
       bookBranch();
     }
     void bookBranch(){
+      tree->Branch("nTops", &br_nTops, "nTops/I");
+      tree->Branch("truthTopPt", &br_truthTopPt);
+      tree->Branch("truthTopEta", &br_truthTopEta);
+      tree->Branch("truthTopPhi", &br_truthTopPhi);
+      tree->Branch("truthTopE", &br_truthTopE);
+
+      tree->Branch("truthTop_BQuark_Pt", &br_truthTop_BQuark_Pt);
+      tree->Branch("truthTop_BQuark_Eta", &br_truthTop_BQuark_Eta);
+      tree->Branch("truthTop_BQuark_Phi", &br_truthTop_BQuark_Phi);
+      tree->Branch("truthTop_BQuark_E", &br_truthTop_BQuark_E);
+
+      tree->Branch("truthTop_WBoson_D0_Pt", &br_truthTop_WBoson_D0_Pt);
+      tree->Branch("truthTop_WBoson_D0_Eta", &br_truthTop_WBoson_D0_Eta);
+      tree->Branch("truthTop_WBoson_D0_Phi", &br_truthTop_WBoson_D0_Phi);
+      tree->Branch("truthTop_WBoson_D0_E", &br_truthTop_WBoson_D0_E);
+      tree->Branch("truthTop_WBoson_D1_Pt", &br_truthTop_WBoson_D1_Pt);
+      tree->Branch("truthTop_WBoson_D1_Eta", &br_truthTop_WBoson_D1_Eta);
+      tree->Branch("truthTop_WBoson_D1_Phi", &br_truthTop_WBoson_D1_Phi);
+      tree->Branch("truthTop_WBoson_D1_E", &br_truthTop_WBoson_D1_E);
       
       tree->Branch("nTruthJet", &br_nTruthJet, "nTruthJet/I");
       tree->Branch("nTruthBJet", &br_nTruthBJet, "nTruthBJet/I");
@@ -200,7 +260,30 @@ namespace Rivet {
       tree->Branch("recoMETPhi", &br_recoMETPhi);
     }
 
-    void clearBranch() {
+    void clearBranch(){
+      br_truthTopPt.clear();
+      br_truthTopEta.clear();
+      br_truthTopPhi.clear();
+      br_truthTopE.clear();
+
+      br_truthTop_BQuark_Pt.clear();
+      br_truthTop_BQuark_Eta.clear();
+      br_truthTop_BQuark_Phi.clear();
+      br_truthTop_BQuark_E.clear();
+
+
+      br_truthTop_WBoson_D0_Pt.clear();
+      br_truthTop_WBoson_D0_Eta.clear();
+      br_truthTop_WBoson_D0_Phi.clear();
+      br_truthTop_WBoson_D0_E.clear();
+
+
+      br_truthTop_WBoson_D1_Pt.clear();
+      br_truthTop_WBoson_D1_Eta.clear();
+      br_truthTop_WBoson_D1_Phi.clear();
+      br_truthTop_WBoson_D1_E.clear();
+//------------------------------------
+
       br_truthElePt.clear();
       br_truthEleEta.clear();
       br_truthElePhi.clear();
@@ -261,6 +344,165 @@ namespace Rivet {
       br_recoJetIsBtagged.clear();
     }
 
+    
+    void printParticle(const Particle& p){
+      printf("%d %d %d %.2f %.2f %.2f\n", p.pid(), p.parents().size(), p.genParticle()->status(),
+        p.pt()/GeV, p.eta(), p.phi());
+    }
+
+    void fillTopQuarkInfo(const Event& event){
+      // const GenEvent* genEvent = event.genEvent();
+      bool debug = false;
+      if(debug) {
+        const auto& all_particles = event.allParticles();
+        printf("total %d particles\n", (int)all_particles.size());
+        printf("index pid num_parents status pT eta phi \n");
+        for(int ip=0; ip < (int) all_particles.size(); ip++){
+          auto& p = all_particles[ip];
+          this->printParticle(p);
+        }
+        printf("------------------------------\n");
+      }
+
+      Particles tops = this->findTopQuarkDecays(event);
+      if(debug){
+        for(auto& pp: tops){
+          this->printParticle(pp);
+        }
+      }
+      // printf("Find %d top quarks\n", tops.size()/4);
+      br_nTops = (int) tops.size() / 4;
+      if (br_nTops > 0) {
+        for(int idx=0; idx < br_nTops; idx++) {
+          const auto& tlv = tops[idx].momentum();
+          br_truthTopPt.push_back(tlv.pt()/GeV);
+          br_truthTopE.push_back(tlv.E()/GeV);
+          br_truthTopEta.push_back(tlv.eta());
+          br_truthTopPhi.push_back(tlv.phi(MINUSPI_PLUSPI));
+
+          const auto& tlv2 = tops[idx+1].momentum();
+          br_truthTop_BQuark_Pt.push_back(tlv2.pt()/GeV);
+          br_truthTop_BQuark_E.push_back(tlv2.E()/GeV);
+          br_truthTop_BQuark_Eta.push_back(tlv2.eta());
+          br_truthTop_BQuark_Phi.push_back(tlv2.phi(MINUSPI_PLUSPI));
+
+          const auto& tlv3 = tops[idx+2].momentum();
+          br_truthTop_WBoson_D0_Pt.push_back(tlv3.pt()/GeV);
+          br_truthTop_WBoson_D0_E.push_back(tlv3.E()/GeV);
+          br_truthTop_WBoson_D0_Eta.push_back(tlv3.eta());
+          br_truthTop_WBoson_D0_Phi.push_back(tlv3.phi(MINUSPI_PLUSPI));          
+
+          const auto& tlv4 = tops[idx+3].momentum();
+          br_truthTop_WBoson_D1_Pt.push_back(tlv4.pt()/GeV);
+          br_truthTop_WBoson_D1_E.push_back(tlv4.E()/GeV);
+          br_truthTop_WBoson_D1_Eta.push_back(tlv4.eta());
+          br_truthTop_WBoson_D1_Phi.push_back(tlv4.phi(MINUSPI_PLUSPI));
+        }
+      }
+
+      // for(auto& p: tops) {
+      //   this->printParticle(p);
+      // }
+    }
+
+    Particle findParticleWithStatus(const Particle& p, int status) {
+      PdgId pid(p.abspid());
+      if(p.genParticle()->status() == status){
+        return p;
+      }
+      for(auto& p_child: p.children()){
+        if(p_child.abspid() == pid){
+          return findParticleWithStatus(p_child, status);
+        }
+      }
+      return Particle();
+    }
+
+    Particle findParticleLastEvolved(const Particle& p) {
+      PdgId pid(p.abspid());
+      if (p.genParticle() == nullptr){
+        return Particle();
+      }
+      Particle rtn(p);
+      bool found_self = true;
+      while(found_self){
+        found_self = false;
+        for(auto& p_child: rtn.children()){
+          if(p_child.abspid() == pid){
+            rtn = p_child;
+            found_self = true;
+            break;
+          }
+        }
+      }
+      return rtn;
+    }
+
+    Particles findChildrenWithStatus(const Particle& p, int status){
+      Particle pp = this->findParticleWithStatus(p, status);
+      if (pp.genParticle() == nullptr) {
+        return Particles();
+      }
+      return pp.children();
+
+      // Particles rtn = pp.children();
+      // for(auto& p: rtn){
+      //   this->printParticle(p);
+      // }
+      // return rtn;
+    }
+
+    Particles findTopQuarkDecays(const Event& event) {
+      // Top quarks with status=22 are intermediate particles,
+      // which can be thought of particles just produced,
+      // then it will go through ISR and FSR and beam primordial corrections
+      // then it will decay to W boson and b quark.
+      // We look for top quark with status=62
+
+      // For the b quark, it will go through FSR and be cooled down to partipate
+      // the hadronization process.
+      // We look for b-quark with status=71
+
+      // For the W boson, it will go through FSR and then decay. 
+      // We look for W boson with status of 52 (not always true!)
+
+      // The above description are not always true, instead, 
+      // I loop over all children with the same pid to find "stable" itself.
+      const auto& all_particles = event.allParticles();
+      Particles rtn;
+      for(int ip=0; ip < (int) all_particles.size(); ip++){
+        auto& p = all_particles[ip];
+        // http://home.thep.lu.se/~torbjorn/pythia81html/ParticleProperties.html
+        // status=62, "outgoing subprocesses particle with primordial kT included"
+        // The status requirement may not work well...
+        if (p.abspid() == 6 && p.genParticle()->status() == 62)
+        {
+          rtn += p;
+          // check top quark children
+          auto children = p.children();
+          if (children.size() > 0) {
+            for(int ichild=0; ichild < (int) children.size(); ichild++){
+              auto& pp_child = children[ichild];
+              auto p_child = this->findParticleLastEvolved(pp_child);
+              // printf("###"); this->printParticle(p_child);
+              // if it is W-boson, record its decay products...
+              if (p_child.abspid() == 24) {
+                // to Find the W boson children
+                for(auto& pWchild: p_child.children()){
+                  // printf("***"); this->printParticle(pWchild);
+                  rtn += this->findParticleLastEvolved(pWchild);
+                }
+              }
+              if (p_child.abspid() == 5) {
+                rtn += p_child;
+              }
+            }
+          }
+        }
+      }
+      return rtn;
+    }
+
     /// Perform the per-event analysis
     void analyze(const Event& event) {
       clearBranch();
@@ -303,15 +545,29 @@ namespace Rivet {
 			  Cuts::pT > truthJetPTCut*GeV && Cuts::abseta < 2.8);
 
 	  const Particles truthEle = apply<IdentifiedFinalState>(event, "TruthElectron").particlesByPt();
-      const Particles truthMuon = apply<IdentifiedFinalState>(event, "TruthMuon").particlesByPt();
+      // this->dumpGenEvent(event);
+      this->fillTopQuarkInfo(event);
+
+      // Jet with any electrons/photons within deltaR of jet_ol_ele_ph_cut will be removed
+      // const double jet_ol_ele_ph_cut = 0.2;
+
+      // Truth studies
+      // ---------------------
+      const Jets truthJets  = apply<JetAlg>(event, "TruthJet").jetsByPt(
+        Cuts::pT > truthJetPTCut*GeV && Cuts::abseta < 2.8);
       
-      // Discard jets very close to electrons (dR < 0.2), 
+      const Particles truthEle = apply<IdentifiedFinalState>(event, "TruthElectron").particlesByPt();
+      const Particles truthMuon = apply<IdentifiedFinalState>(event, "TruthMuon").particlesByPt();
+      const Particles truthPhoton = apply<IdentifiedFinalState>(event, "TruthPhoton").particlesByPt();
+      
+      // Discard jets very close to electrons or photons (dR < 0.2), 
       // or with low track multiplicity and close to muons (dR < 0.4)
       const Jets isoTruthJet = filter_discard(truthJets, [&](const Jet& j){
           if (any(truthEle, deltaRLess(j, 0.2))) return true;
- 				  if (j.particles(Cuts::abscharge > 0 && Cuts::pT > 0.4*GeV).size() <= 3 && \
-					  any(truthMuon, deltaRLess(j, 0.4))) return true;
-				  return false;
+          // if (any(truthPhoton, deltaRLess(j, 0.2))) return true;
+	  if (j.particles(Cuts::abscharge > 0 && Cuts::pT > 0.4*GeV).size() <= 3 && \
+			  any(truthMuon, deltaRLess(j, 0.4))) return true;
+	  return false;
         }
       );
       br_nTruthJet = (int) isoTruthJet.size();
@@ -358,7 +614,6 @@ namespace Rivet {
       br_nTruthLepton = br_nTruthEle + br_nTruthMuon;
 
       // Photons
-      const Particles truthPhoton = apply<IdentifiedFinalState>(event, "TruthPhoton").particlesByPt();
       br_nTruthPhoton = (int) truthPhoton.size();
       for(const Particle& ph: truthPhoton){
         const FourMomentum tlv = ph.momentum();
@@ -399,11 +654,13 @@ namespace Rivet {
       
       const Particles recoEle = apply<ParticleFinder>(event, "RecoElectron").particlesByPt();
       const Particles recoMuon = apply<ParticleFinder>(event, "RecoMuon").particlesByPt();
+      const Particles recoPhoton = apply<ParticleFinder>(event, "RecoPhoton").particlesByPt();
       
       // Discard jets very close to electrons (dR < 0.2), 
       // or with low track multiplicity and close to muons (dR < 0.4)
       const Jets isoRecoJet = filter_discard(recoJets, [&](const Jet& j){
           if (any(recoEle, deltaRLess(j, 0.2))) return true;
+          if (any(recoPhoton, deltaRLess(j, 0.2))) return true;
  				  if (j.particles(Cuts::abscharge > 0 && Cuts::pT > 0.4*GeV).size() <= 3 && \
 					  any(recoMuon, deltaRLess(j, 0.4))) return true;
 				  return false;
@@ -453,7 +710,6 @@ namespace Rivet {
       br_nRecoLepton = br_nRecoEle + br_nRecoMuon;
 
       // reco photons
-      const Particles recoPhoton = apply<ParticleFinder>(event, "RecoPhoton").particlesByPt();
       for(const Particle& ph: recoPhoton){
         const FourMomentum tlv = ph.momentum();
         br_recoPhotonPt.push_back(tlv.pt()/GeV);
@@ -493,6 +749,27 @@ namespace Rivet {
 
     // variables saved in the ntuple
     // event level information
+
+    // true Top Quark info
+    // and its decay products
+    int br_nTops;
+    vector<double> br_truthTopPt;
+    vector<double> br_truthTopEta;
+    vector<double> br_truthTopPhi;
+    vector<double> br_truthTopE;
+    vector<double> br_truthTop_BQuark_Pt;
+    vector<double> br_truthTop_BQuark_Eta;
+    vector<double> br_truthTop_BQuark_Phi;
+    vector<double> br_truthTop_BQuark_E;
+    vector<double> br_truthTop_WBoson_D0_Pt;
+    vector<double> br_truthTop_WBoson_D0_Eta;
+    vector<double> br_truthTop_WBoson_D0_Phi;
+    vector<double> br_truthTop_WBoson_D0_E;
+    vector<double> br_truthTop_WBoson_D1_Pt;
+    vector<double> br_truthTop_WBoson_D1_Eta;
+    vector<double> br_truthTop_WBoson_D1_Phi;
+    vector<double> br_truthTop_WBoson_D1_E;
+    
 
 
     // truth objects
