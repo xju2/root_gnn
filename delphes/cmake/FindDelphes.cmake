@@ -5,15 +5,17 @@
 include(FindPackageHandleStandardArgs)
 
 find_library(Delphes_LIBRARY
-  NAMES libDelphes.so libDelphesDisplay.so
-  HINTS ENV Delphes_DIR Delphes
+  NAMES Delphes DelphesDisplay
+  HINTS ${Delphes_DIR}
   PATHS /opt/Delphes /usr/local
+  PATH_SUFFIXES lib lib64
   DOC "The Delphes library")
 
 find_path(Delphes_INCLUDE_DIR
   NAMES classes/DelphesClasses.h 
-  HINTS ENV Delphes_DIR Delphes
+  HINTS ${Delphes_DIR}
   PATHS /opt/Delphes /usr/local
+  PATH_SUFFIXES include
   DOC "The Delphes include directory")
 
 find_package_handle_standard_args(Delphes
