@@ -46,7 +46,7 @@ find_package(Delphes)
 # 	${Delphes_INCLUDE_DIR}
 # )
 
-add_executable(delphesAna delphesAna.cxx)
+add_executable(delphesAna delphesAna.cxx DelphesNtuple.cxx)
 set_target_properties(delphesAna PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(delphesAna PUBLIC ${ROOT_INCLUDE_DIRS} ${Delphes_INCLUDE_DIR})
-target_link_libraries(delphesAna Delphes ROOT::Core ROOT::Tree ROOT::TreePlayer)
+target_link_libraries(delphesAna Delphes ROOT::Core ROOT::Tree ROOT::TreePlayer ROOT::Physics)
