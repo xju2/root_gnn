@@ -26,27 +26,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 add_compile_options(-Wfatal-errors)
 add_compile_options(-Wno-deprecated)
-# add_compile_options(-std=c++11)
 add_compile_options(-DGZIPSUPPORT)
 
-# include_directories(${HEPMC_DIR}/include)
-# link_directories   (${HEPMC_DIR}/lib)
 
 if (NOT DEFINED Delphes_DIR)
     set(Delphes_DIR /global/cfs/cdirs/atlas/xju/software/DelphesInstall)
 endif()
 
-find_package(ROOT 6.18 REQUIRED COMPONENTS Core Hist Tree TreePlayer)
-find_package(Delphes)
+add_subdirectory(libDelphesUtils)
 
-# add executables
-# message(INFO, ${ROOT_INCLUDE_DIRS})
-# include_directories(
-# 	${ROOT_INCLUDE_DIRS}
-# 	${Delphes_INCLUDE_DIR}
-# )
-
-add_executable(delphesAna delphesAna.cxx DelphesNtuple.cxx)
+add_executable(delphesAna delphesAna.cxx)
 set_target_properties(delphesAna PROPERTIES LINKER_LANGUAGE CXX)
-target_include_directories(delphesAna PUBLIC ${ROOT_INCLUDE_DIRS} ${Delphes_INCLUDE_DIR})
-target_link_libraries(delphesAna Delphes ROOT::Core ROOT::Tree ROOT::TreePlayer ROOT::Physics)
+target_link_libraries(delphesAna DelphesUtils)

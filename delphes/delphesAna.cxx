@@ -8,18 +8,24 @@
 #include <unistd.h>
 #include <iostream>
 
-#include "DelphesNtuple.hpp"
+#include "DelphesUtils/DelphesNtuple.hpp"
 
 using namespace std;
 
 void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool debug=false) {
+  // TODO: 
+  // 1) add 4 vector of the generated tau
+  // 2) label gen jets produced with tau
+  // 3) match tracks to jets
+  // TODO
+  // TODO: add di-tau
   TClonesArray *branchParticle = treeReader->UseBranch("Particle");
   TClonesArray *branchElectron = treeReader->UseBranch("Electron");
   TClonesArray *branchPhoton = treeReader->UseBranch("Photon");
   TClonesArray *branchMuon = treeReader->UseBranch("Muon");
   
-  // TClonesArray *branchTrack = treeReader->UseBranch("Track");
-  // TClonesArray *branchTower = treeReader->UseBranch("Tower");
+  TClonesArray *branchTrack = treeReader->UseBranch("Track");
+  TClonesArray *branchTower = treeReader->UseBranch("Tower");
 
   TClonesArray *branchEFlowTrack = treeReader->UseBranch("EFlowTrack");
   TClonesArray *branchEFlowPhoton = treeReader->UseBranch("EFlowPhoton");
@@ -42,16 +48,18 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
 
   Int_t i, j, pdgCode;
   bool myevt = false;
-  for(entry = 0; entry < allEntries; ++entry) {
+  for(entry = 39; entry < allEntries; ++entry) {
     treeReader->ReadEntry(entry);
     ntuple->Clear();
     if (branchGenJet->GetEntriesFast() < 1) continue;
     if (debug) {
-      cout << "Electrons: " << branchElectron->GetEntriesFast() \
-           << "Muons: " << branchMuon->GetEntriesFast() \
-           << "Photons: " << branchPhoton->GetEntriesFast() \
-           << "Jets: " << branchJet->GetEntriesFast() \
-           << "Gen Jets:" << branchGenJet->GetEntriesFast()
+      cout << "Event " << entry << ", Electrons: " << branchElectron->GetEntriesFast() \
+           << ", Muons: " << branchMuon->GetEntriesFast() \
+           << ", Photons: " << branchPhoton->GetEntriesFast() \
+           << ", Jets: " << branchJet->GetEntriesFast() \
+           << ", Gen Jets:" << branchGenJet->GetEntriesFast() \
+           << ", Tracks: " << branchTrack->GetEntriesFast() \
+           << ", Towers: " << branchTower->GetEntriesFast() \
            << endl;
     }
     // cout << "HERE1, " << branchGenJet->GetEntriesFast() << ", " << branchJet->GetEntriesFast() <<  endl;
@@ -65,31 +73,29 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
       if(jet->TauTag) n_taujets ++;
       // constituents
       momentum.SetPxPyPzE(0.0, 0.0, 0.0, 0.0);
-      printf("Truth Jet: %d, %d, %d\n", i, jet->Constituents.GetEntriesFast(), jet->Particles.GetEntriesFast());
+      if (debug) printf("Truth Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
       for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
         object = jet->Constituents.At(j);
         if(object == 0) continue;
-        cout << object->IsA() << endl;
         if(object->IsA() == GenParticle::Class())
         {
           particle = (GenParticle*) object;
-          cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
-            << particle->Phi << ", ID: " << particle->PID << endl;
           momentum += particle->P4();
           GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
-          cout << "M1: " << m1->PID << endl;
+          if(debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
+            << particle->Phi << ", ID: " << particle->PID << ", M1: " << m1->PID << endl;
 
         }
         else if(object->IsA() == Track::Class())
         {
           track = (Track*) object;
-          cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
+          if(debug) cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
           momentum += track->P4();
         }
         else if(object->IsA() == Tower::Class())
         {
           tower = (Tower*) object;
-          cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
+          if(debug) cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
           momentum += tower->P4();
         }
 
@@ -106,7 +112,7 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
       n_jets ++;
       if(jet->BTag) n_bjets ++;
       if(jet->TauTag) n_taujets ++;
-      cout <<"Reco Jet: " << i << " " << jet->Constituents.GetEntriesFast() << endl;
+      if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
       // constituents
       momentum.SetPxPyPzE(0.0, 0.0, 0.0, 0.0);
       for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
@@ -116,7 +122,7 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
         if(object->IsA() == GenParticle::Class())
         {
           particle = (GenParticle*) object;
-          cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
+          if (debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
             << particle->Phi << ", ID: " << particle->PID << ", M1: " << particle->M1 << endl;
           momentum += particle->P4();
           // GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
@@ -125,22 +131,24 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
         else if(object->IsA() == Track::Class())
         {
           track = (Track*) object;
-          cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
+          if(debug) cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
           momentum += track->P4();
-                    myevt = true;
+          myevt = true;
         }
         else if(object->IsA() == Tower::Class())
         {
           tower = (Tower*) object;
-          cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
+          if (debug) cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
           momentum += tower->P4();
+
         }
       }
     }
     ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
 
     ntuple->Fill();
-    if (myevt) break;
+    if (myevt) { fprintf(stderr, "Found tracks in reco jets %lld\n", entry); break; }
+    // break;
   }
 }
 
