@@ -194,7 +194,8 @@ int main(int argc, char** argv)
 
   auto ntuple = new DelphesNtuple(outname);
   ntuple->BookGenJets();
-  ntuple->BookRecoJets();
+  bool withTowers = true;
+  ntuple->BookRecoJets(withTowers);
   ntuple->BookTracks();
   ntuple->BookTowers();
 

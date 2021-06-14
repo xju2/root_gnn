@@ -23,7 +23,7 @@ class DelphesNtuple: public DelphesNtupleBase{
   void FillGenJetsCnt(int njets, int nbjets, int ntaujets);
 
   // Reco Jets
-  void BookRecoJets();
+  void BookRecoJets(bool withTowers=false);
   void FillRecoJet(Jet* jet);  // Reco Jets
   void FillRecoJetCnt(int njets, int nbjets, int ntaujets);
 
