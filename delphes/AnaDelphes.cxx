@@ -17,7 +17,6 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
   // 1) add 4 vector of the generated tau
   // 2) label gen jets produced with tau
   // 3) match tracks to jets
-  // TODO
   // TODO: add di-tau
   TClonesArray *branchParticle = treeReader->UseBranch("Particle");
   TClonesArray *branchElectron = treeReader->UseBranch("Electron");
@@ -40,7 +39,6 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
   Long64_t entry;
   Jet* jet;
   TObject *object;
-  TLorentzVector momentum;
 
   GenParticle *particle;
   Track *track;
@@ -48,10 +46,13 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
 
   Int_t i, j, pdgCode;
   bool myevt = false;
-  for(entry = 39; entry < allEntries; ++entry) {
+  for(entry = 0; entry < allEntries; ++entry) {
     treeReader->ReadEntry(entry);
     ntuple->Clear();
+
+    // at least one truth jet in the event
     if (branchGenJet->GetEntriesFast() < 1) continue;
+
     if (debug) {
       cout << "Event " << entry << ", Electrons: " << branchElectron->GetEntriesFast() \
            << ", Muons: " << branchMuon->GetEntriesFast() \
@@ -62,45 +63,50 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
            << ", Towers: " << branchTower->GetEntriesFast() \
            << endl;
     }
-    // cout << "HERE1, " << branchGenJet->GetEntriesFast() << ", " << branchJet->GetEntriesFast() <<  endl;
+
+    // save tracks
+    for(i = 0; i < branchTrack->GetEntriesFast(); ++i ) {
+      track = (Track*) branchTrack->At(i);
+      ntuple->FillTrack(track);
+    }
+
+    // save towers
+    for(i = 0; i < branchTower->GetEntriesFast(); ++i) {
+      tower = (Tower*) branchTower->At(i);
+      ntuple->FillTower(tower);
+    }
+    
     // Loop over all truth jets in event
     int n_jets=0, n_bjets=0, n_taujets=0;
     for(i = 0; i < branchGenJet->GetEntriesFast(); ++i) {
       jet = (Jet*) branchGenJet->At(i);
-      ntuple->FillGenJet(jet);
       n_jets ++;
-      if(jet->BTag) n_bjets ++;
-      if(jet->TauTag) n_taujets ++;
-      // constituents
-      momentum.SetPxPyPzE(0.0, 0.0, 0.0, 0.0);
+      // if(jet->BTag) n_bjets ++;
+      // if(jet->TauTag) n_taujets ++;
+
       if (debug) printf("Truth Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
+      bool hasTau = false;
+      bool hasB = false;
       for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
         object = jet->Constituents.At(j);
         if(object == 0) continue;
         if(object->IsA() == GenParticle::Class())
         {
           particle = (GenParticle*) object;
-          momentum += particle->P4();
           GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
           if(debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
             << particle->Phi << ", ID: " << particle->PID << ", M1: " << m1->PID << endl;
-
+          if(m1 && abs(m1->PID) == 15) hasTau = true;
+          if(m1 && abs(m1->PID) == 5) hasB = true;
         }
-        else if(object->IsA() == Track::Class())
-        {
-          track = (Track*) object;
-          if(debug) cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
-          momentum += track->P4();
-        }
-        else if(object->IsA() == Tower::Class())
-        {
-          tower = (Tower*) object;
-          if(debug) cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
-          momentum += tower->P4();
-        }
-
       }
-
+      if (hasTau) {
+        n_taujets ++; jet->TauTag = 1;
+      }
+      if (hasB) {
+        n_bjets ++; jet->BTag = 1;
+      }
+      ntuple->FillGenJet(jet);
     }
     ntuple->FillGenJetsCnt(n_jets, n_bjets, n_taujets);
 
@@ -114,7 +120,6 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
       if(jet->TauTag) n_taujets ++;
       if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
       // constituents
-      momentum.SetPxPyPzE(0.0, 0.0, 0.0, 0.0);
       for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
 
         object = jet->Constituents.At(j);
@@ -124,7 +129,6 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
           particle = (GenParticle*) object;
           if (debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
             << particle->Phi << ", ID: " << particle->PID << ", M1: " << particle->M1 << endl;
-          momentum += particle->P4();
           // GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
           // cout << "M1: " << m1->PID << endl;
         }
@@ -132,14 +136,12 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
         {
           track = (Track*) object;
           if(debug) cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
-          momentum += track->P4();
           myevt = true;
         }
         else if(object->IsA() == Tower::Class())
         {
           tower = (Tower*) object;
           if (debug) cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
-          momentum += tower->P4();
 
         }
       }
@@ -147,7 +149,7 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
     ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
 
     ntuple->Fill();
-    if (myevt) { fprintf(stderr, "Found tracks in reco jets %lld\n", entry); break; }
+    // if (myevt) { fprintf(stderr, "Found tracks in reco jets %lld\n", entry); break; }
     // break;
   }
 }
@@ -189,6 +191,8 @@ int main(int argc, char** argv)
   auto ntuple = new DelphesNtuple(outname);
   ntuple->BookGenJets();
   ntuple->BookRecoJets();
+  ntuple->BookTracks();
+  ntuple->BookTowers();
 
   ExRootTreeReader *treeReader = new ExRootTreeReader(chain);
 

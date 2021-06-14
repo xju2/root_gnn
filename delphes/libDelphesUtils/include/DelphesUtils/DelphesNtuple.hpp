@@ -5,6 +5,8 @@
 #include <vector>
 
 class Jet;
+class Track;
+class Tower;
 
 using namespace std;
 class DelphesNtuple: public DelphesNtupleBase{
@@ -15,13 +17,23 @@ class DelphesNtuple: public DelphesNtupleBase{
   void Clear();
   void Fill();
 
+  // Truth jets
   void BookGenJets();
-  void FillGenJet(Jet* jet); // Truth Jets
+  void FillGenJet(Jet* jet);
   void FillGenJetsCnt(int njets, int nbjets, int ntaujets);
 
+  // Reco Jets
   void BookRecoJets();
   void FillRecoJet(Jet* jet);  // Reco Jets
   void FillRecoJetCnt(int njets, int nbjets, int ntaujets);
+
+  // Tracks
+  void BookTracks();
+  void FillTrack(Track* track);
+  
+  // Towers
+  void BookTowers();
+  void FillTower(Tower* tower);
 
   protected:
   // Truth Jet variables
@@ -29,10 +41,10 @@ class DelphesNtuple: public DelphesNtupleBase{
   int br_nTruthJets;
   int br_nTruthBJets;
   int br_nTruthTauJets;
-  vector<double> br_truthJetPt;
-  vector<double> br_truthJetEta;
-  vector<double> br_truthJetPhi;
-  vector<double> br_truthJetE;
+  vector<float> br_truthJetPt;
+  vector<float> br_truthJetEta;
+  vector<float> br_truthJetPhi;
+  vector<float> br_truthJetE;
   vector<int> br_truthJetIsBtagged;
   vector<int> br_truthJetIsTautagged;
   void ClearGenJets();
@@ -42,13 +54,39 @@ class DelphesNtuple: public DelphesNtupleBase{
   int br_nRecoJets;
   int br_nRecoBJets;
   int br_nRecoTauJets;
-  vector<double> br_recoJetPt;
-  vector<double> br_recoJetEta;
-  vector<double> br_recoJetPhi;
-  vector<double> br_recoJetE;
+  vector<float> br_recoJetPt;
+  vector<float> br_recoJetEta;
+  vector<float> br_recoJetPhi;
+  vector<float> br_recoJetE;
   vector<int> br_recoJetIsBtagged;
   vector<int> br_recoJetIsTautagged;
   void ClearRecoJets();
+
+
+  // Tracks
+  bool useTracks;
+  int br_nTracks;
+  vector<int> br_trackPID;
+  vector<int> br_trackCharge;
+  vector<float> br_trackEtaOut;
+  vector<float> br_trackPhiOut;
+  vector<float> br_trackPt;
+  vector<float> br_trackEta;
+  vector<float> br_trackPhi;
+  vector<float> br_trackD0;
+  vector<float> br_trackZ0;
+  void ClearTracks();
+
+  // Towers
+  bool useTowers;
+  int br_nTowers;
+  vector<float> br_towerEt;
+  vector<float> br_towerEta;
+  vector<float> br_towerPhi;
+  vector<float> br_towerE;
+  vector<float> br_towerEem;
+  vector<float> br_towerEhad;
+  void ClearTowers();
 
 };
 

@@ -35,6 +35,6 @@ endif()
 
 add_subdirectory(libDelphesUtils)
 
-add_executable(delphesAna delphesAna.cxx)
-set_target_properties(delphesAna PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(delphesAna DelphesUtils)
+add_executable(AnaDelphes AnaDelphes.cxx)
+set_target_properties(AnaDelphes PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(AnaDelphes DelphesUtils)

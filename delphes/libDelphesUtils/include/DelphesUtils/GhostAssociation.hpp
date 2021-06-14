@@ -4,7 +4,7 @@
 #include <vector>
 
 class PseudoJet;
-class TCloneArray;
+class TClonesArray;
 
 using namespace std;
 
@@ -13,7 +13,7 @@ class GhostAssociation {
   GhostAssociation(double dR);
   ~GhostAssociation();
 
-  vector<PseudoJet> Associate(TClonesArray* jets, TClonesArray* tracks);
+  // vector<PseudoJet> Associate(TClonesArray* jets, TClonesArray* tracks);
 
   private:
   double radius;
