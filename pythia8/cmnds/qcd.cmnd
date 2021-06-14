@@ -6,8 +6,7 @@ Main:numberOfEvents = 5000
 
 HardQCD:all = on		! all hard QCD 2->2 processes,
 
-PhaseSpace:mHatMin = 60.		! lower invariant mass
-PhaseSpace:mHatMax = 7000.		! upper invariant mass
+PhaseSpace:pTHatMin = 20.		! lower pT
 
 Tune:ee = 7                         ! use Monash 2013 Tune by Peter Skands
 Tune:pp = 21                        ! use A14 Tune with NNPDF2.3LO

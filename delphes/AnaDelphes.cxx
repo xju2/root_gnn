@@ -50,8 +50,8 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
     treeReader->ReadEntry(entry);
     ntuple->Clear();
 
-    // at least one truth jet in the event
-    if (branchGenJet->GetEntriesFast() < 1) continue;
+    // at least one reco jet in the event
+    if (branchJet->GetEntriesFast() < 1) continue;
 
     if (debug) {
       cout << "Event " << entry << ", Electrons: " << branchElectron->GetEntriesFast() \
@@ -64,25 +64,29 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
            << endl;
     }
 
-    // save tracks
-    for(i = 0; i < branchTrack->GetEntriesFast(); ++i ) {
-      track = (Track*) branchTrack->At(i);
-      ntuple->FillTrack(track);
-    }
+    
+    // Loop over all reco jets in event
+    int n_jets, n_bjets, n_taujets;
 
-    // save towers
-    for(i = 0; i < branchTower->GetEntriesFast(); ++i) {
-      tower = (Tower*) branchTower->At(i);
-      ntuple->FillTower(tower);
+    n_jets=0, n_bjets=0, n_taujets=0;
+    for(i = 0; i < branchJet->GetEntriesFast(); ++i) {
+      jet = (Jet*) branchJet->At(i);
+      if (jet->PT < 25 || abs(jet->Eta) > 2.5) continue;
+
+      ntuple->FillRecoJet(jet);
+      n_jets ++;
+      if(jet->BTag) n_bjets ++;
+      if(jet->TauTag) n_taujets ++;
+      if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
     }
+    ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
+    if (n_jets < 0) continue;
     
     // Loop over all truth jets in event
-    int n_jets=0, n_bjets=0, n_taujets=0;
+    n_jets=0, n_bjets=0, n_taujets=0;
     for(i = 0; i < branchGenJet->GetEntriesFast(); ++i) {
       jet = (Jet*) branchGenJet->At(i);
       n_jets ++;
-      // if(jet->BTag) n_bjets ++;
-      // if(jet->TauTag) n_taujets ++;
 
       if (debug) printf("Truth Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
       bool hasTau = false;
@@ -110,43 +114,18 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
     }
     ntuple->FillGenJetsCnt(n_jets, n_bjets, n_taujets);
 
-    // Loop over all reco jets in event
-    n_jets=0, n_bjets=0, n_taujets=0;
-    for(i = 0; i < branchJet->GetEntriesFast(); ++i) {
-      jet = (Jet*) branchJet->At(i);
-      ntuple->FillRecoJet(jet);
-      n_jets ++;
-      if(jet->BTag) n_bjets ++;
-      if(jet->TauTag) n_taujets ++;
-      if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
-      // constituents
-      for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
 
-        object = jet->Constituents.At(j);
-        if(object == 0) continue;
-        if(object->IsA() == GenParticle::Class())
-        {
-          particle = (GenParticle*) object;
-          if (debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
-            << particle->Phi << ", ID: " << particle->PID << ", M1: " << particle->M1 << endl;
-          // GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
-          // cout << "M1: " << m1->PID << endl;
-        }
-        else if(object->IsA() == Track::Class())
-        {
-          track = (Track*) object;
-          if(debug) cout << "    Track pt: " << track->PT << ", eta: " << track->Eta << ", phi: " << track->Phi << endl;
-          myevt = true;
-        }
-        else if(object->IsA() == Tower::Class())
-        {
-          tower = (Tower*) object;
-          if (debug) cout << "    Tower pt: " << tower->ET << ", eta: " << tower->Eta << ", phi: " << tower->Phi << endl;
-
-        }
-      }
+    // save tracks
+    for(i = 0; i < branchTrack->GetEntriesFast(); ++i ) {
+      track = (Track*) branchTrack->At(i);
+      ntuple->FillTrack(track);
     }
-    ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
+
+    // save towers
+    for(i = 0; i < branchTower->GetEntriesFast(); ++i) {
+      tower = (Tower*) branchTower->At(i);
+      ntuple->FillTower(tower);
+    }
 
     ntuple->Fill();
     // if (myevt) { fprintf(stderr, "Found tracks in reco jets %lld\n", entry); break; }
