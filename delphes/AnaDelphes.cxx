@@ -177,10 +177,14 @@ int main(int argc, char** argv)
     case 'h':
       help = true;
     default:
-      fprintf(stderr, "Usage: %s [-f FILENAME]\n", argv[0]);
+      fprintf(stderr, "Usage: %s [-f FILE] [-o OUTNAME] [-h] [-d]\n", argv[0]);
       if (help) {
         printf("   -f FILE : read input file\n");
+        printf("   -o OUTNAME: output anme\n");
+        printf("   -h HELP: help message\n");
+        printf("   -d DEBUG: print debug messages\n");
       }
+      exit(1);
     }
   }
 
