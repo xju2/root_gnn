@@ -7,6 +7,7 @@ DelphesNtuple::DelphesNtuple(std::string& filename):
   DelphesNtupleBase(filename){
   useTruthJets = false;
   useRecoJets = false;
+  useJetTowers = false;
   useTracks = false;
   useTowers = false;
 }
@@ -65,6 +66,8 @@ void DelphesNtuple::BookRecoJets() {
   tree->Branch("JetE", &br_recoJetE);
   tree->Branch("JetIsBtagged", &br_recoJetIsBtagged);
   tree->Branch("JetIsTautagged", &br_recoJetIsTautagged);
+  tree->Branch("JetTowersN", &br_recoJetNTowers);
+  tree->Branch("JetTracksN", &br_recoJetNTracks);
 }
 
 void DelphesNtuple::FillRecoJet(Jet* jet) {
@@ -75,6 +78,26 @@ void DelphesNtuple::FillRecoJet(Jet* jet) {
   br_recoJetE.push_back(jet->PT);
   br_recoJetIsBtagged.push_back(jet->BTag);
   br_recoJetIsTautagged.push_back(jet->TauTag);
+  // number of towers associated with the jet
+  int jetTowerN = 0;
+  int jetTracksN = 0;
+  Int_t j;
+  TObject *object;
+  Tower* tower;
+  Track* track;
+  for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
+    object = jet->Constituents.At(j);
+    if (object == 0) continue;
+    if (object->IsA() == Tower::Class()){
+      jetTowerN ++;
+      tower = (Tower*) object;
+      if(useJetTowers) FillJetTower(tower);
+    } else if (object->IsA() == Track::Class()) {
+      jetTracksN ++;
+    } else {}
+  }
+  br_recoJetNTowers.push_back(jetTowerN);
+  br_recoJetNTracks.push_back(jetTracksN);
 }
 
 void DelphesNtuple::FillRecoJetCnt(int njets, int nbjets, int ntaujets){
@@ -92,6 +115,38 @@ void DelphesNtuple::ClearRecoJets() {
   br_recoJetE.clear();
   br_recoJetIsBtagged.clear();
   br_recoJetIsTautagged.clear();
+  br_recoJetNTowers.clear();
+  br_recoJetNTracks.clear();
+}
+
+void DelphesNtuple::BookJetTowers() {
+  useJetTowers = true;
+  tree->Branch("JetTowerEt",   &br_jetTowerEt);
+  tree->Branch("JetTowerEta",  &br_jetTowerEta);
+  tree->Branch("JetTowerPhi",  &br_jetTowerPhi);
+  tree->Branch("JetTowerE",    &br_jetTowerE);
+  tree->Branch("JetTowerEem",  &br_jetTowerEem);
+  tree->Branch("JetTowerEhad", &br_jetTowerEhad);
+}
+
+void DelphesNtuple::FillJetTower(Tower* tower) {
+  if(!useJetTowers) BookJetTowers();
+  br_jetTowerEt.push_back(tower->ET);
+  br_jetTowerEta.push_back(tower->Eta);
+  br_jetTowerPhi.push_back(tower->Phi);
+  br_jetTowerE.push_back(tower->E);
+  br_jetTowerEem.push_back(tower->Eem);
+  br_jetTowerEhad.push_back(tower->Ehad);  
+}
+
+void DelphesNtuple::ClearJetTower() {
+  if(!useJetTowers) BookJetTowers();
+  br_jetTowerEt.clear();
+  br_jetTowerEta.clear();
+  br_jetTowerPhi.clear();
+  br_jetTowerE.clear();
+  br_jetTowerEem.clear();
+  br_jetTowerEhad.clear();  
 }
 
 void DelphesNtuple::BookTracks() {
@@ -167,6 +222,7 @@ void DelphesNtuple::ClearTowers() {
 void DelphesNtuple::Clear(){
   if(useTruthJets)  ClearGenJets();
   if(useRecoJets)   ClearRecoJets();
+  if(useJetTowers)  ClearJetTower();
   if(useTracks)     ClearTracks();
   if(useTowers)     ClearTowers();
 }
