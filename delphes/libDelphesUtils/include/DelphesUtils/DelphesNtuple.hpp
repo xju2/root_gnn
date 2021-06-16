@@ -26,6 +26,7 @@ class DelphesNtuple: public DelphesNtupleBase{
   void BookRecoJets(bool withTowers=false);
   void FillRecoJet(Jet* jet);  // Reco Jets
   void FillRecoJetCnt(int njets, int nbjets, int ntaujets);
+  void FillRecoJetGhostTracks(vector<int>& trackIdx);
 
   // Towers associated with Reco jets
   void BookJetTowers();
@@ -66,6 +67,7 @@ class DelphesNtuple: public DelphesNtupleBase{
   vector<int> br_recoJetIsTautagged;
   vector<int> br_recoJetNTowers;
   vector<int> br_recoJetNTracks;
+  vector<int> br_recoJetGhostTracksN;
   void ClearRecoJets();
 
   // Towers associated with Jets
@@ -77,6 +79,12 @@ class DelphesNtuple: public DelphesNtupleBase{
   vector<float> br_jetTowerEem;
   vector<float> br_jetTowerEhad;
   void ClearJetTower();
+
+  // Tracks associated with Jets with ghost matching
+  bool useJetGhostTracks;
+  vector<int> br_jetGhostTrackIdx;
+  void BookGhostTracks();
+  void ClearGhostTracks();
 
   // Tracks
   bool useTracks;

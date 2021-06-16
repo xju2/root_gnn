@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "DelphesUtils/DelphesNtuple.hpp"
+#include "DelphesUtils/GhostAssociation.hpp"
 
 using namespace std;
 
@@ -26,9 +27,9 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
   TClonesArray *branchTrack = treeReader->UseBranch("Track");
   TClonesArray *branchTower = treeReader->UseBranch("Tower");
 
-  TClonesArray *branchEFlowTrack = treeReader->UseBranch("EFlowTrack");
-  TClonesArray *branchEFlowPhoton = treeReader->UseBranch("EFlowPhoton");
-  TClonesArray *branchEFlowNeutralHadron = treeReader->UseBranch("EFlowNeutralHadron");
+  // TClonesArray *branchEFlowTrack = treeReader->UseBranch("EFlowTrack");
+  // TClonesArray *branchEFlowPhoton = treeReader->UseBranch("EFlowPhoton");
+  // TClonesArray *branchEFlowNeutralHadron = treeReader->UseBranch("EFlowNeutralHadron");
 
   TClonesArray *branchJet = treeReader->UseBranch("Jet");
   TClonesArray *branchGenJet = treeReader->UseBranch("GenJet");
@@ -45,13 +46,48 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
   Tower *tower;
 
   Int_t i, j, pdgCode;
-  bool myevt = false;
-  for(entry = 0; entry < allEntries; ++entry) {
+  unsigned k;
+  float jetRadius, jetPtmin;
+  jetRadius = 0.4, jetPtmin = 20.0;
+  GhostAssociation::Config jetConfig = {jetRadius, jetPtmin, fastjet::antikt_algorithm};
+
+  for(entry = 39; entry < allEntries; ++entry) {
     treeReader->ReadEntry(entry);
     ntuple->Clear();
 
     // at least one reco jet in the event
     if (branchJet->GetEntriesFast() < 1) continue;
+    
+    // save tracks
+    // tracks will be matched to reco jets via ghost matching.
+    vector<Track*> trackContainer;
+    for(i = 0; i < branchTrack->GetEntriesFast(); ++i ) {
+      track = (Track*) branchTrack->At(i);
+      ntuple->FillTrack(track);
+      trackContainer.push_back(track);
+    }
+
+    // Loop over all reco jets in event
+    int n_jets, n_bjets, n_taujets;
+
+    vector<Jet*> jetContainer;
+    n_jets=0, n_bjets=0, n_taujets=0;
+    for(i = 0; i < branchJet->GetEntriesFast(); ++i) {
+      jet = (Jet*) branchJet->At(i);
+      if (jet->PT < 25 || abs(jet->Eta) > 2.5) continue;
+
+      ntuple->FillRecoJet(jet);
+      n_jets ++;
+      if(jet->BTag) n_bjets ++;
+      if(jet->TauTag) n_taujets ++;
+      if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
+
+      // see which tracks are matched to this jet
+      vector<int> trackIdx = GhostAssociation::Associate(jet, trackContainer, jetConfig);
+      ntuple->FillRecoJetGhostTracks(trackIdx);
+    }
+    ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
+    if (n_jets < 1) continue;
 
     if (debug) {
       cout << "Event " << entry << ", Electrons: " << branchElectron->GetEntriesFast() \
@@ -63,24 +99,6 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
            << ", Towers: " << branchTower->GetEntriesFast() \
            << endl;
     }
-
-    
-    // Loop over all reco jets in event
-    int n_jets, n_bjets, n_taujets;
-
-    n_jets=0, n_bjets=0, n_taujets=0;
-    for(i = 0; i < branchJet->GetEntriesFast(); ++i) {
-      jet = (Jet*) branchJet->At(i);
-      if (jet->PT < 25 || abs(jet->Eta) > 2.5) continue;
-
-      ntuple->FillRecoJet(jet);
-      n_jets ++;
-      if(jet->BTag) n_bjets ++;
-      if(jet->TauTag) n_taujets ++;
-      if(debug) printf("Reco Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
-    }
-    ntuple->FillRecoJetCnt(n_jets, n_bjets, n_taujets);
-    if (n_jets < 0) continue;
     
     // Loop over all truth jets in event
     n_jets=0, n_bjets=0, n_taujets=0;
@@ -89,8 +107,9 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
       n_jets ++;
 
       if (debug) printf("Truth Jet: %d, %d, %.2f %.2f %.2f\n", i, jet->Constituents.GetEntriesFast(), jet->PT, jet->Eta, jet->Phi);
-      bool hasTau = false;
       bool hasB = false;
+      bool hasTau = false;
+      int n_prongs = 0;
       for(j = 0; j < jet->Constituents.GetEntriesFast(); ++j) {
         object = jet->Constituents.At(j);
         if(object == 0) continue;
@@ -100,13 +119,17 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
           GenParticle* m1 = (GenParticle*) branchParticle->At(particle->M1);
           if(debug) cout << "    GenPart pt: " << particle->PT << ", eta: " << particle->Eta << ", phi: " \
             << particle->Phi << ", ID: " << particle->PID << ", M1: " << m1->PID << endl;
-          if(m1 && abs(m1->PID) == 15) hasTau = true;
+          if(m1 && abs(m1->PID) == 15) {
+            hasTau = true;
+            n_prongs ++;
+          } 
           if(m1 && abs(m1->PID) == 5) hasB = true;
         }
       }
       if (hasTau) {
-        n_taujets ++; jet->TauTag = 1;
-      }
+        n_taujets ++; jet->TauTag = n_prongs;
+      } else jet->TauTag = 0;
+
       if (hasB) {
         n_bjets ++; jet->BTag = 1;
       }
@@ -114,22 +137,19 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
     }
     ntuple->FillGenJetsCnt(n_jets, n_bjets, n_taujets);
 
-
-    // save tracks
-    for(i = 0; i < branchTrack->GetEntriesFast(); ++i ) {
-      track = (Track*) branchTrack->At(i);
-      ntuple->FillTrack(track);
-    }
-
     // save towers
+    vector<Tower*> towerContainer;
     for(i = 0; i < branchTower->GetEntriesFast(); ++i) {
       tower = (Tower*) branchTower->At(i);
       ntuple->FillTower(tower);
+      towerContainer.push_back(tower);
     }
 
+    if (debug) printf("Jet container size: %ld, track container size: %ld, tower container size: %ld",
+      jetContainer.size(), trackContainer.size(), towerContainer.size());
+
     ntuple->Fill();
-    // if (myevt) { fprintf(stderr, "Found tracks in reco jets %lld\n", entry); break; }
-    // break;
+    if(debug) break;
   }
 }
 

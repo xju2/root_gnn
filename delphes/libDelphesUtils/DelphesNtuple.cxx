@@ -10,6 +10,7 @@ DelphesNtuple::DelphesNtuple(std::string& filename):
   useJetTowers = false;
   useTracks = false;
   useTowers = false;
+  useJetGhostTracks = false;
 }
 
 DelphesNtuple::~DelphesNtuple(){
@@ -108,6 +109,35 @@ void DelphesNtuple::FillRecoJetCnt(int njets, int nbjets, int ntaujets){
   br_nRecoBJets = nbjets;
   br_nRecoTauJets = ntaujets;
 }
+
+void DelphesNtuple::BookGhostTracks() {
+  useJetGhostTracks = true;
+  tree->Branch("JetGhostTrackN", &br_recoJetGhostTracksN);
+  tree->Branch("JetGhostTrackIdx", &br_jetGhostTrackIdx);
+}
+
+void DelphesNtuple::ClearGhostTracks() {
+  br_recoJetGhostTracksN.clear();
+  br_jetGhostTrackIdx.clear();
+}
+
+void DelphesNtuple::FillRecoJetGhostTracks(vector<int>& trackIdx){
+  if(!useJetGhostTracks) BookGhostTracks();
+
+  if (trackIdx.size() < 1) {
+    br_recoJetGhostTracksN.push_back(0);
+    return;
+  }
+
+  int cnt = 0;
+  for(auto idx: trackIdx) {
+    if(idx < 0) continue;
+    cnt ++;
+    br_jetGhostTrackIdx.push_back(idx);
+  }
+  br_recoJetGhostTracksN.push_back(cnt);
+}
+
 
 void DelphesNtuple::ClearRecoJets() {
   if(!useRecoJets) BookRecoJets();
@@ -227,6 +257,7 @@ void DelphesNtuple::Clear(){
   if(useJetTowers)  ClearJetTower();
   if(useTracks)     ClearTracks();
   if(useTowers)     ClearTowers();
+  if(useJetGhostTracks) ClearGhostTracks();
 }
 
 void DelphesNtuple::Fill() {

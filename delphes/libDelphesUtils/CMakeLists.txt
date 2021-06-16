@@ -1,12 +1,13 @@
 find_package(ROOT 6.18 REQUIRED COMPONENTS Core Hist Tree TreePlayer)
 find_package(Delphes)
+find_package(fastjet)
 
 include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/include )
 
 file(GLOB SrcFiles *.cxx)
 add_library(DelphesUtils SHARED ${SrcFiles})
 target_include_directories(DelphesUtils 
-    PUBLIC ${ROOT_INCLUDE_DIRS} ${Delphes_INCLUDE_DIR}
+    PUBLIC ${ROOT_INCLUDE_DIRS} ${Delphes_INCLUDE_DIR} ${fastjet_INCLUDE_DIR}
     INTERFACE 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

@@ -16,6 +16,35 @@ PhaseSpace:mHatMax = 7000.		! upper invariant mass
 
 
 Tune:ee = 7                         ! use Monash 2013 Tune by Peter Skands
-Tune:pp = 21                        ! use A14 Tune with NNPDF2.3LO
 
 PDF:pSet = 13             ! NNPDF2.3 QCD+QED LO alpha_s(M_Z) = 0.130. Will be used everywhere 
+
+
+ColourReconnection:range = 1.71
+ParticleDecays:limitTau0 = on
+StandardModel:sin2thetaW = 0.23113
+StandardModel:sin2thetaWbar = 0.23146
+
+SpaceShower:pTmaxMatch = 1
+SpaceShower:pTmaxFudge = 1
+SpaceShower:MEcorrections = off
+TimeShower:pTmaxMatch = 1
+TimeShower:pTmaxFudge = 1
+TimeShower:MEcorrections = off
+TimeShower:globalRecoil = on
+TimeShower:limitPTmaxGlobal = on
+TimeShower:nMaxGlobalRecoil = 1
+TimeShower:globalRecoilMode = 2
+TimeShower:nMaxGlobalBranch = 1.
+TimeShower:weightGluonToQuark=1.
+Check:epTolErr = 1e-2
+SpaceShower:rapidityOrder = on
+SigmaProcess:alphaSvalue = 0.140
+SpaceShower:pT0Ref = 1.56
+#SpaceShower:pTmaxFudge = 0.91
+SpaceShower:pTdampFudge = 1.05
+SpaceShower:alphaSvalue = 0.127
+TimeShower:alphaSvalue = 0.127
+BeamRemnants:primordialKThard = 1.88
+MultipartonInteractions:pT0Ref = 2.09
+MultipartonInteractions:alphaSvalue = 0.126
