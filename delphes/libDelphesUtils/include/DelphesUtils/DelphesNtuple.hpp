@@ -7,6 +7,7 @@
 class Jet;
 class Track;
 class Tower;
+class GenParticle;
 
 using namespace std;
 class DelphesNtuple: public DelphesNtupleBase{
@@ -39,6 +40,10 @@ class DelphesNtuple: public DelphesNtupleBase{
   // Towers
   void BookTowers();
   void FillTower(Tower* tower);
+
+  // Truth Taus
+  void BookTaus();
+  void FillTau(GenParticle* particle);
 
   protected:
   // Truth Jet variables
@@ -111,6 +116,16 @@ class DelphesNtuple: public DelphesNtupleBase{
   vector<float> br_towerEhad;
   void ClearTowers();
 
+
+  // Truth Taus
+  bool useTruthTaus;
+  int br_nTruthTaus;
+  vector<float> br_truthTauEt;
+  vector<float> br_truthTauEta;
+  vector<float> br_truthTauPhi;
+  vector<float> br_truthTauE;
+  vector<int>   br_truthTauCharge;
+  void ClearTruthTaus();
 };
 
 #endif

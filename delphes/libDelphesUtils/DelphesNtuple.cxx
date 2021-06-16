@@ -251,6 +251,33 @@ void DelphesNtuple::ClearTowers() {
   br_towerEhad.clear();
 }
 
+void DelphesNtuple::BookTaus() {
+  useTruthTaus = true;
+  tree->Branch("truthTauN", &br_nTruthTaus, "truthTauN/I");
+  tree->Branch("truthTauEt",   &br_truthTauEt);
+  tree->Branch("truthTauEta",  &br_truthTauEta);
+  tree->Branch("truthTauPhi",  &br_truthTauPhi);
+  tree->Branch("truthTauE",    &br_truthTauE);
+  tree->Branch("truthTauCharge",    &br_truthTauCharge);
+}
+
+void DelphesNtuple::FillTau(GenParticle* particle) {
+  if(!useTruthTaus) BookTaus();
+  br_truthTauEt.push_back(particle->PT);
+  br_truthTauEta.push_back(particle->Eta);
+  br_truthTauPhi.push_back(particle->Phi);
+  br_truthTauE.push_back(particle->E);
+  br_truthTauCharge.push_back(particle->Charge);
+}
+
+void DelphesNtuple::ClearTruthTaus() {
+  br_truthTauEt.clear();
+  br_truthTauEta.clear();
+  br_truthTauPhi.clear();
+  br_truthTauE.clear();  
+  br_truthTauCharge.clear();
+}
+
 void DelphesNtuple::Clear(){
   if(useTruthJets)  ClearGenJets();
   if(useRecoJets)   ClearRecoJets();
@@ -258,12 +285,14 @@ void DelphesNtuple::Clear(){
   if(useTracks)     ClearTracks();
   if(useTowers)     ClearTowers();
   if(useJetGhostTracks) ClearGhostTracks();
+  if(useTruthTaus)  ClearTruthTaus();
 }
 
 void DelphesNtuple::Fill() {
   if(tree) {
     if(useTracks) br_nTracks = (int) br_trackEta.size();
     if(useTowers) br_nTowers = (int) br_towerEta.size();
+    if(useTruthTaus)  br_nTruthTaus = (int) br_truthTauEta.size();
     tree->Fill();
   }
 }

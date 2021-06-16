@@ -145,6 +145,15 @@ void AnalysisEvents(ExRootTreeReader* treeReader, DelphesNtuple* ntuple, bool de
       towerContainer.push_back(tower);
     }
 
+    // loop over gen particles to find tau lepton
+    for(i = 0; i < branchParticle->GetEntriesFast(); ++i) {
+      particle = (GenParticle*) branchParticle->At(i);
+      if(abs(particle->PID) == 15) {
+        ntuple->FillTau(particle);
+        if(debug) printf("GenParticle %d %d", particle->Status, particle->Charge);
+      }
+    }
+
     if (debug) printf("Jet container size: %ld, track container size: %ld, tower container size: %ld",
       jetContainer.size(), trackContainer.size(), towerContainer.size());
 
