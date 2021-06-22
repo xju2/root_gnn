@@ -61,8 +61,7 @@ def read(filename):
     chain = TChain(tree_name,tree_name)
     chain.Add(filename)
     n_entries = chain.GetEntries()
-
-    chain.Scan("*")
+    
     JetPhi = std.vector('float')()
     JetEta = std.vector('float')()
 
@@ -104,6 +103,7 @@ def read(filename):
 
     chain.SetBranchAddress("JetGhostTrackN",JetGhostTrackN)
     chain.SetBranchAddress("JetGhostTrackIdx",JetGhostTrackIdx)
+    print("Entries",n_entries,len(nJets),len(nTruthJets))
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
@@ -131,15 +131,15 @@ def read(filename):
                     min_index = ijet
             # Change label if reconstructed jet with index min_index is unused
             if nJets[0] > 0 and not used_buffer[min_index]:
-                is_tau_jet[min_index] = TruthJetIsTautagged[min_index]
+                is_tau_jet[min_index] = TruthJetIsTautagged[itruth]
                 used_buffer[min_index] = True
-
         #################################################
         # Retrieve the track and tower information for
         # each reconstructed jet and yield the information
         # needed to build the jet's graph representation
         #################################################
         for ijet in range(nJets[0]):
+            nodes = []
             for itower in range(JetTowerN[ijet]):
                 nodes.append([JetTowerEt[tower_idx],JetTowerEta[tower_idx],JetTowerPhi[tower_idx]])
                 tower_idx += 1
@@ -150,7 +150,14 @@ def read(filename):
                 nodes.append([TrackPt[ghost_track_idx],TrackEta[ghost_track_idx],TrackPhi[ghost_track_idx]])
                 track_idx+=1
 
-            yield JetInfo(isTau,nodes,len(nodes))
+            yield JetInfo(is_tau_jet[ijet],nodes,len(nodes))
+
+        # Print debug info
+        #if nTruthJets[0] > 0 and nJets[0] > nTruthJets[0]:
+        if 1:
+            chain.Scan("nJets:nTruthJets:JetTowerN:JetTowerEt:JetTowerEta:JetTowerPhi:JetGhostTrackN:JetGhostTrackIdx:TrackPt:TrackEta:TrackPhi","","",50,ientry)
+            chain.Scan("nJets:nTruthJets:TruthJetIsTautagged:TruthJetEta:TruthJetPhi:JetEta:JetPhi:JetTowerN:JetGhostTrackN","","",50,ientry)
+            input()
 
 class TauIdentificationDataSet(DataSet):
     def __init__(self,*args,**kwargs):
@@ -179,6 +186,10 @@ def print_graphs_tuple(g, data=True):
                 print(per_replica_sample)
 
 for y in t.read("~/tauid_gnn/root_gnn/root_gnn/src/datasets/v0/Ntuple_ditau_processed.root"):
-    g = make_graph(y,False)[0][0] 
-    print_graphs_tuple(g,data=True)
+    gin, gtarget = make_graph(y,False)[0]
+    print("Input")
+    print_graphs_tuple(gin,data=True)
+    print("Target")
+    print_graphs_tuple(gtarget,data=True)
+    #Pause execution for user to read debug info
     input()
