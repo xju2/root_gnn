@@ -48,7 +48,7 @@ def make_graph(event, debug=False):
     return [(input_graph, target_graph)]
 
 class JetInfo:
-    def __init__(self, is_tau_jet: bool, nodes: list[list[float]], n_nodes: int):
+    def __init__(self, is_tau_jet: bool, nodes, n_nodes: int):
         self.is_tau_jet = is_tau_jet
         self.n_nodes = n_nodes
         self.nodes = nodes
@@ -62,7 +62,7 @@ def read(filename):
     chain.Add(filename)
     n_entries = chain.GetEntries()
 
-#    chain.Scan("*")
+    chain.Scan("*")
     JetPhi = std.vector('float')()
     JetEta = std.vector('float')()
 
@@ -105,42 +105,50 @@ def read(filename):
     chain.SetBranchAddress("JetGhostTrackN",JetGhostTrackN)
     chain.SetBranchAddress("JetGhostTrackIdx",JetGhostTrackIdx)
 
-    isTau = 0
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
         track_idx = 0
         tower_idx = 0
-        #print(nJets[0],nTruthJets[0],len(JetPhi),len(TruthJetPhi))
-        for ijet in range(nJets[0]):
-            # Match jet to truth jet that minimizes angular distance
-            nodes = []
-            min_index = 0
-            if nTruthJets[0] > 0:
-                min_dR2 = (JetPhi[ijet]-TruthJetPhi[0])**2 + (JetEta[ijet]-TruthJetEta[0])**2
-            for itruth in range(nTruthJets[0]):
-                dR2 = (JetPhi[ijet]-TruthJetPhi[itruth])**2 + (JetEta[ijet]-TruthJetEta[itruth])**2
-                if dR2 < min_dR2:
-                    min_dR2 = dR2
-                    min_index = itruth
-            if nTruthJets[0] > 0:
-                isTau = TruthJetIsTautagged[min_index]
-            else:
-                isTau = 0 
+        print(nJets[0],nTruthJets[0],len(JetPhi),len(TruthJetPhi))
 
-            # find minimum angular distance between recon and truth jets
-            # for each jet
-            # check which index to use for jet
-            # find the label and nodes from tracks and towers
-            # yield a JetInfo object
+        #################################################
+        # Match truth jets to the closest (in terms of angular distance)
+        # reconstructed jet while ensuring each reconstructed jet is
+        # matched only once
+        #################################################
+        used_buffer = [ False for x in range(nJets[0]) ]
+        # Initialize jet labels to mean false. Iterate over truth jets to find
+        # which ones need to be overriden with true labels
+        is_tau_jet = [ 0 for x in range(nJets[0]) ]
+        for itruth in range(nTruthJets[0]):
+            min_index = 0
+            if nJets[0] > 0:
+                min_dR2 = (JetPhi[0]-TruthJetPhi[itruth])**2 + (JetEta[0]-TruthJetEta[itruth])**2
+            for ijet in range(nJets[0]):
+                dR2 = (JetPhi[ijet]-TruthJetPhi[itruth])**2 + (JetEta[ijet]-TruthJetEta[itruth])**2
+                if dR2 < min_dR2 and not used_buffer[ijet]:
+                    min_dR2 = dR2
+                    min_index = ijet
+            # Change label if reconstructed jet with index min_index is unused
+            if nJets[0] > 0 and not used_buffer[min_index]:
+                is_tau_jet[min_index] = TruthJetIsTautagged[min_index]
+                used_buffer[min_index] = True
+
+        #################################################
+        # Retrieve the track and tower information for
+        # each reconstructed jet and yield the information
+        # needed to build the jet's graph representation
+        #################################################
+        for ijet in range(nJets[0]):
             for itower in range(JetTowerN[ijet]):
                 nodes.append([JetTowerEt[tower_idx],JetTowerEta[tower_idx],JetTowerPhi[tower_idx]])
                 tower_idx += 1
                 #generate tower list
-       
-            for itrack in range(JetGhostTrackN[ijet]):
+
+            for itrack in range(JetGhostTrackN[ijet]): # towers associated with this jet
                 ghost_track_idx = JetGhostTrackIdx[track_idx]
-                track_idx+=1
                 nodes.append([TrackPt[ghost_track_idx],TrackEta[ghost_track_idx],TrackPhi[ghost_track_idx]])
+                track_idx+=1
 
             yield JetInfo(isTau,nodes,len(nodes))
 
