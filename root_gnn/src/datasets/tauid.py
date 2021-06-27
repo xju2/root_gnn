@@ -63,76 +63,34 @@ def read(filename):
     chain.Add(filename)
     n_entries = chain.GetEntries()
 
-    JetPhi = std.vector('float')()
-    JetEta = std.vector('float')()
-
-    nTruthJets = array('i',[0])
-    nJets = array('i',[0])
-    TruthJetIsTautagged = std.vector('int')()
-    TruthJetEta = std.vector('float')()
-    TruthJetPhi = std.vector('float')()
-
-    JetTowerN = std.vector('int')()
-    JetTowerEt = std.vector('float')()
-    JetTowerEta = std.vector('float')()
-    JetTowerPhi = std.vector('float')()
-
-    TrackPt = std.vector('float')()
-    TrackEta = std.vector('float')()
-    TrackPhi = std.vector('float')()
-
-    JetGhostTrackN = std.vector('int')()
-    JetGhostTrackIdx = std.vector('int')()
-
-    chain.SetBranchAddress("JetPhi",JetPhi)
-    chain.SetBranchAddress("JetEta",JetEta)
-
-    chain.SetBranchAddress("nTruthJets",nTruthJets)
-    chain.SetBranchAddress("nJets",nJets)
-    chain.SetBranchAddress("TruthJetIsTautagged",TruthJetIsTautagged)
-    chain.SetBranchAddress("TruthJetEta",TruthJetEta)
-    chain.SetBranchAddress("TruthJetPhi",TruthJetPhi)
-
-    chain.SetBranchAddress("JetTowerN",JetTowerN)
-    chain.SetBranchAddress("JetTowerEt",JetTowerEt)
-    chain.SetBranchAddress("JetTowerEta",JetTowerEta)
-    chain.SetBranchAddress("JetTowerPhi",JetTowerPhi)
-
-    chain.SetBranchAddress("TrackPt",TrackPt)
-    chain.SetBranchAddress("TrackEta",TrackEta)
-    chain.SetBranchAddress("TrackPhi",TrackPhi)
-
-    chain.SetBranchAddress("JetGhostTrackN",JetGhostTrackN)
-    chain.SetBranchAddress("JetGhostTrackIdx",JetGhostTrackIdx)
-
     isTau = 0
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
         track_idx = 0
         tower_idx = 0
-        for ijet in range(nJets[0]):
+        for ijet in range(chain.nJets):
             # Match jet to truth jet that minimizes angular distance
             nodes = []
             min_index = 0
-            if nTruthJets[0] > 0:
-                min_dR = math.sqrt((JetPhi[ijet]-TruthJetPhi[0])**2 + (JetEta[ijet]-TruthJetEta[0])**2)
-            for itruth in range(nTruthJets[0]):
-                dR = math.sqrt((JetPhi[ijet]-TruthJetPhi[itruth])**2 + (JetEta[ijet]-TruthJetEta[itruth])**2)
+            if chain.nTruthJets > 0:
+                min_dR = math.sqrt((chain.JetPhi[ijet]-chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
+            for itruth in range(chain.nTruthJets):
+                dR = math.sqrt((chain.JetPhi[ijet]-chain.TruthJetPhi[itruth])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
                 if dR < min_dR:
                     min_dR = dR
                     min_index = itruth
-            if nTruthJets[0] > 0 and min_dR < 0.4:
-                isTau = TruthJetIsTautagged[min_index]
+            if chain.nTruthJets > 0 and min_dR < 0.4:
+                isTau = chain.TruthJetIsTautagged[min_index]
             else:
                 isTau = 0
 
-            for itower in range(JetTowerN[ijet]):
-                nodes.append([JetTowerEt[tower_idx],JetTowerEta[tower_idx],JetTowerPhi[tower_idx]])
+            for itower in range(chain.JetTowerN[ijet]):
+                nodes.append([chain.JetTowerEt[tower_idx],chain.JetTowerEta[tower_idx],chain.JetTowerPhi[tower_idx]])
                 tower_idx += 1
 
-            for itrack in range(JetGhostTrackN[ijet]):
-                ghost_track_idx = JetGhostTrackIdx[track_idx]
-                nodes.append([TrackPt[ghost_track_idx],TrackEta[ghost_track_idx],TrackPhi[ghost_track_idx]])
+            for itrack in range(chain.JetGhostTrackN[ijet]):
+                ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
+                nodes.append([chain.TrackPt[ghost_track_idx],chain.TrackEta[ghost_track_idx],chain.TrackPhi[ghost_track_idx]])
                 track_idx+=1
 
             yield JetInfo(isTau,nodes,len(nodes))
