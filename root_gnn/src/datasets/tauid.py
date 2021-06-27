@@ -132,13 +132,12 @@ def read(filename):
 
             for itrack in range(JetGhostTrackN[ijet]):
                 ghost_track_idx = JetGhostTrackIdx[track_idx]
-               
-                track_idx+=1
                 nodes.append([TrackPt[ghost_track_idx],TrackEta[ghost_track_idx],TrackPhi[ghost_track_idx]])
+                track_idx+=1
 
             yield JetInfo(isTau,nodes,len(nodes))
 
-class TauIdentificationDataSet(DataSet):
+class TauIdentificationDataset(DataSet):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.read = read

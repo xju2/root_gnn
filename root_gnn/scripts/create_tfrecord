@@ -18,6 +18,7 @@ if __name__ == "__main__":
                      'TopReco',
                      'HiggsYYGen',
                      'HadronicInteraction',
+                     'TauIdentificationDataset',
                      ])
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
