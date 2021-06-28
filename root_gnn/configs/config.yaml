@@ -8,6 +8,6 @@ parameters:
     batch_size: 50
     n_iters: 10
     learning_rate: 0.0005
-    epochs: 5
+    epochs: 1
     earlystop_metric: "auc_te" # acc_te, pre_te, rec_te
     acceptable_failure: 1
