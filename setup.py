@@ -20,7 +20,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        'tensorflow >= 2.4.0',
         "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
         "networkx",
