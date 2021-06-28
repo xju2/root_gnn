@@ -10,7 +10,7 @@ description="Use Graph Network to perform analysis"
 
 setup(
     name="root_gnn",
-    version="1.0.0",
+    version="2.0.0",
     description="Library for using Graph Nural Networks in HEP analysis",
     long_description=description,
     author="Xiangyang Ju",
