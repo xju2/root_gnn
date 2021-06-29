@@ -22,8 +22,6 @@ import numpy as np
 
 import sklearn.metrics
 
-from tensorflow.python.profiler import profiler_v2 as profiler
-
 from graph_nets import utils_tf
 from graph_nets import utils_np
 import sonnet as snt

@@ -251,7 +251,6 @@ def plot_ratio(tot, sel, label_tot, label_sel,
     ax1.set_ylabel('ratio')
     plt.savefig(outname)
 
-
 def norm_weights(array):
     return np.ones(len(array))/len(array)
 

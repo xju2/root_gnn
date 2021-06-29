@@ -1,13 +1,15 @@
 import numpy as np
 import itertools
+import yaml
+from collections import OrderedDict
 
 from graph_nets import utils_tf
 from graph_nets import utils_np
 from graph_nets import graphs
 from root_gnn.src.datasets.base import DataSet
-import ROOT
+
 from functools import partial 
-from typing import Optional  
+from typing import Optional
 
 def make_graph(feature_values_with_truth, debug: Optional[bool] = False):#, debug=False):
     """Creates a GraphsTuple for an event
@@ -52,7 +54,10 @@ def make_graph(feature_values_with_truth, debug: Optional[bool] = False):#, debu
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     return [(input_graph, target_graph)]
 
-def branch_names_to_feature_values(event, branches, filterings, include_particle_type=False):  #default value for truth is float? 
+def branch_names_to_feature_values(
+        event, branches, filterings, 
+        include_particle_type=False
+    ):  #default value for truth is float? 
     """For a particular event, outputs the features for all particles as well as the global truth. 
     Parameters:
     event = current event (TTree row)
@@ -100,13 +105,14 @@ def branch_names_to_feature_values(event, branches, filterings, include_particle
             feature_values += particle_features
     return (feature_values, truth)
 
-def yaml_to_branch_names(tree, yaml_file):
+def read_config(yaml_file):
     """Reads the configuration yaml_file that specifies branches to read from. 
     Parameters:
     tree = TTree to read 
     yaml_file = name of yaml file to read  
     
     Returns:
+    treename = tree name
     branches = dictionary of {particle-type-name : particle-type's branch names}
     filters = list of filtering queries to be processed
     """
@@ -116,36 +122,30 @@ def yaml_to_branch_names(tree, yaml_file):
     truth_attribute = "TRUTH"
     ordering_attribute = "NODE_ORDERS"
     filter_attribute = "FILTER"
+    treename_attr = "TREENAME"
+
     foundTruth = False
     with open(yaml_file, "r") as file:
         documents = yaml.full_load(file)    
         order = documents.get(ordering_attribute)
-        if order is None:
-            print("ERROR: NODE ORDER NOT SPECIFIED")
-            return 
+        assert order is not None, f"{ordering_attribute} is needed."
         
         for particle in order:
             if documents[particle] is None:
-                print("ERROR: Particle specified in NODE_ORDERS does not exist in yaml_file")
-                return None, None
+                print("ERROR: {} specified in NODE_ORDERS does not exist in yaml_file".format(
+                    documents[particle]))
+                return None, None, None
             branches[particle] = documents[particle]
-            for branch_name in documents[particle]:
-                try:
-                    branch = getattr(tree, branch_name) 
-                except: 
-                    print("ERROR: BRANCH NAME", branch_name, "DOES NOT EXIST")
-                    return  
 
     truth = documents.get(truth_attribute)
-    if truth is None:
-        print("ERROR: TRUTH NOT SPECIFIED")
-        return None 
-    if not check_valid_truth(tree, truth):
-        print("ERROR: TRUTH INPUT HAS INCONSISTENT VALUE")
-        return None
+    assert truth is not None, f"{truth_attribute} needed."
+
     branches[truth_attribute] = truth
+    treename = documents.get(treename_attr)
+    assert treename is not None, f"{treename_attr} is needed"
         
-    #to filter preprocess filter requests into a boolean string that eval() can evaluate for each particle in an event
+    # to filter preprocess filter requests into a boolean string 
+    # that eval() can evaluate for each particle in an event
     filter_list = documents.get(filter_attribute)
     filters = OrderedDict() 
     special_filter_chars = '==>=<=+-**/'
@@ -158,7 +158,12 @@ def yaml_to_branch_names(tree, yaml_file):
                     entry_list = filtering.split() 
                     temp = [text if (text.isdigit() or (text in special_filter_chars)) else "getattr(event,'" + text + "')[index]" for text in entry_list]
                     filters[particle].append(" ".join(temp))
-    return branches, filters
+    return treename, branches, filters
+
+
+def validity_check(tree, branches):
+    pass
+
 
 def check_valid_truth(event, truth_branch_name, max_events = 1000): 
     """Checks if an inputted truth attribute is valid if the truth attribute is a branch name. 
@@ -195,12 +200,15 @@ def check_valid_truth(event, truth_branch_name, max_events = 1000):
     return True 
 
 def read(filename, yaml_filename): #add tree_name argument here? 
-    print("ROOT DATASET READ TRIGGERED")
-    rfile = ROOT.TFile.Open(filename, 'READ')
-    tree = rfile.Get('nominal_Loose')
-    n_entries = tree.GetEntries() 
-    tree.GetEntry(0) 
-    branches, filters = yaml_to_branch_names(tree, yaml_filename)  
+    import ROOT
+    treename, branches, filters = read_config(yaml_filename)
+    chain = ROOT.TChain(treename, treename)
+    tree = chain.Add(filename)
+
+    n_entries = tree.GetEntries()
+    tree.GetEntry(0)
+    validity_check(tree, branches)
+    
     #Check the truth here before the for loop (run it for 1000 events max) 
     for ientry in range(n_entries):
         tree.GetEntry(ientry)
@@ -222,6 +230,7 @@ class RootDataset(DataSet):
         self.branch_names_to_feature_values = partial(branch_names_to_feature_values, include_particle_type=include_particle_type)
     
     def _num_evts(self, filename):
+        import ROOT
         rfile = ROOT.TFile.Open(filename, 'READ')
         tree = rfile.Get('nominal_Loose')
         num_entries = tree.GetEntries() 

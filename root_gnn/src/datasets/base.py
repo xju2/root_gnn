@@ -11,8 +11,6 @@ import tensorflow as tf
 from graph_nets import utils_tf
 from root_gnn.src.datasets import graph
 
-
-
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
         self.input_dtype = None

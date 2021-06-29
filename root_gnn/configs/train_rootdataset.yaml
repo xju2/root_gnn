@@ -1,3 +1,5 @@
+TREENAME: nominal_Loose
+
 electrons:
   - el_pt
   - el_eta
@@ -23,8 +25,7 @@ TRUTH:
 FILTER:
   - electrons:
     - el_pt > 20
-    - el_eta > 0 
-    - el_pt + el_eta > 0 
+    - el_eta > 0
   - muons:
     - mu_e > 0
 
