@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import yaml
 import os
 
-
-
 def read_log(file_name):
     time_format = '%d %b %Y %H:%M:%S'
     get2nd = lambda x: x.split()[1]
