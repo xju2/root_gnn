@@ -14,17 +14,28 @@ if __name__ == "__main__":
                      'FourTopDataset', 'WTaggerFilteredDataset',
                      'WTaggerLeadingJetDataset',
                      'HerwigHadrons',
-                     'ToppairDataSet',
+                     'ToppairDataset',
                      'TopReco',
                      'HiggsYYGen',
                      'HadronicInteraction',
+                     'RootDataset' #what should this be called? 
                      ])
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
-    add_arg("--model-config", help='configuration file for training', default=None)
+    add_arg("--config", help='configuration file for training OR for configuring the dataset', default=None)
     add_arg("--num-workers", help='number of threads', default=1, type=int)
-
+    
+    #I add an additional argument here? How does this get converted from argument to variable? 
+    add_arg("--include-particle-type", action='store_true', help='whether to create an additional feature storing particle type for root_dataset')
+    #add_arg("--config-yaml-file", default=None, help="yaml file used for root_dataset")
+    #Add an argument for proper truth attribute name: Ex: input "TRUTH" 
+    
+    #TODO: add overwrite option to write over the existing tfrec files  
+    #if they say overwrite, first delete everything that fits the pattern (outname) (ex: *.tfrec) train_x.tfrec in the folder! 
+    #the pattern follows the outname argument (this refers to what the user inputs in the command line)
+    #Let's say they input test_output/train then you would delete files that are like test_output/train_*.tfrec (with or without _)
+    add_arg("--overwrite", action='store_true', help='specifies whether to overwrite existing files with same outname pattern')
 
     args = parser.parse_args()
     n_evts_per_record = args.evts_per_record
@@ -45,23 +56,35 @@ if __name__ == "__main__":
         exit(1)
         
     from root_gnn import prepare # the main program to produce the graph
+
     data = getattr(prepare, args.type)()
     if args.type == "WTaggerFilteredDataset":
-        if args.model_config is None:
-            print("WTaggerFilteredDataset requires model config, --model-config")
+        if args.config is None:
+            print("WTaggerFilteredDataset requires model config, --config")
             exit(1)
         else:
-            data.set_gnn_config(args.model_config)
+            data.set_gnn_config(args.config)
 
     if args.type in ["FourTopDataset", "WTaggerLeadingJetDataset", "WTaggerFilteredDataset"]:
         if args.signal:
             data.signal()
 
+    if args.type == "RootDataset":
+        if args.config is None:
+            print("RootDataset requires model yaml config, --config")
+            exit(1)
+        #call data.set_config_file here to get the yaml file before doing branch reading
+        else:
+            data.set_config_file(args.config)
+        
+        data.set_include_particle_type(args.include_particle_type)
+
     now = time.time()
 
+    print("GOING TO PROCESS NOW") 
     data.process(filename=args.input_file, outname=outname,\
         n_evts_per_record=n_evts_per_record, debug=args.debug,
-        max_evts=args.max_evts, num_workers=args.num_workers)
+        max_evts=args.max_evts, num_workers=args.num_workers, overwrite = args.overwrite)
     
     read_time = time.time() - now
     print("{} finished in {:.1f} mins".format(data.__class__.__name__, read_time/60.))

@@ -44,6 +44,7 @@ class DataSet(object):
         raise NotImplementedError
 
     def subprocess(self, ijob, n_evts_per_record, filename, outname, debug):
+        #put into consideration the overwrite option here?         
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname):
             print(outname,"is there. skip...")
@@ -57,8 +58,8 @@ class DataSet(object):
             ievt += 1
             if ievt < start_entry:
                 continue
-            
             gen_graphs = self.make_graph(event, debug)
+            
             if gen_graphs[0][0] is None:
                 ifailed += 1
                 continue
@@ -91,7 +92,7 @@ class DataSet(object):
         return ifailed, isaved
         
 
-    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, **kwargs):
+    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -102,6 +103,15 @@ class DataSet(object):
             n_files += 1
 
         print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        
+        #pattern_to_delete = "{}_{}.tfrec".format(outname, ijob)
+        if overwrite: #handles file overwrite if the "overwrite" user argument is True 
+            directory, header = outname.rsplit("/", 1)            
+            for file_name in os.listdir(directory):
+                if file_name.startswith(header) and file_name.endswith(".tfrec"):
+                    os.remove(os.path.join(directory, file_name))
+                    print("hit", os.path.join(directory, file_name))
+        
         with Pool(num_workers) as p:
             process_fnc = partial(self.subprocess,
                         n_evts_per_record=n_evts_per_record,
