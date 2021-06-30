@@ -13,15 +13,14 @@ from root_gnn.src.models.base import make_mlp_model
 
 LATENT_SIZE = 128
 
-class FourTopPredictor(snt.Module):
+class GlobalPredictor(snt.Module):
     """
     The mdoel predicts 7 parameters for each node with only the
     leading 4 nodes are used since they are the ghost nodes serving
     as the top quark candidates.
     """
-    def __init__(self, name="FourTopPredictor"):
-        super(FourTopPredictor, self).__init__(name=name)
-
+    def __init__(self, name="GlobalPredictor"):
+        super(GlobalPredictor, self).__init__(name=name)
 
         self._edge_block = blocks.EdgeBlock(
             edge_model_fn=make_mlp_model,
