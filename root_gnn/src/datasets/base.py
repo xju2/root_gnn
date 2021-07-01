@@ -41,10 +41,10 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, filename, outname, debug):
-        #put into consideration the overwrite option here?         
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug):
+       
         outname = "{}_{}.tfrec".format(outname, ijob)
-        if os.path.exists(outname):
+        if os.path.exists(outname) and not overwrite:
             print(outname,"is there. skip...")
             return 0, n_evts_per_record
 
@@ -100,26 +100,24 @@ class DataSet(object):
         if all_evts%n_evts_per_record > 0:
             n_files += 1
 
-        print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        print("Total {:,} events are requested to be written to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        out_dir = os.path.abspath(os.path.dirname(outname))
+        os.makedirs(out_dir, exist_ok=True)
         
-        #pattern_to_delete = "{}_{}.tfrec".format(outname, ijob)
-        if overwrite: #handles file overwrite if the "overwrite" user argument is True 
-            directory, header = outname.rsplit("/", 1)            
-            for file_name in os.listdir(directory):
-                if file_name.startswith(header) and file_name.endswith(".tfrec"):
-                    os.remove(os.path.join(directory, file_name))
-                    print("hit", os.path.join(directory, file_name))
-        
-        with Pool(num_workers) as p:
-            process_fnc = partial(self.subprocess,
-                        n_evts_per_record=n_evts_per_record,
-                        filename=filename,
-                        outname=outname,
-                        debug=debug)
-            res = p.map(process_fnc, list(range(n_files)))
+        if num_workers == 1:
+            ifailed, isaved = self.subprocess(0, n_evts_per_record, filename, outname, overwrite, debug)
+        else:
+            with Pool(num_workers) as p:
+                process_fnc = partial(self.subprocess,
+                            n_evts_per_record=n_evts_per_record,
+                            filename=filename,
+                            outname=outname,
+                            overwrite=overwrite,
+                            debug=debug)
+                res = p.map(process_fnc, list(range(n_files)))
 
-        ifailed = sum([x[0] for x in res])
-        isaved = sum([x[1] for x in res])
+            ifailed = sum([x[0] for x in res])
+            isaved = sum([x[1] for x in res])
             
         read_time = time.time() - now
         print("{} added {:,} events, in {:.1f} mins".format(self.__class__.__name__,
