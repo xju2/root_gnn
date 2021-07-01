@@ -127,4 +127,4 @@ class EdgeRegression(EdgeLearnerBase):
         super().__init__(edge_fn, with_edge_inputs=with_edge_inputs,
             with_node_inputs=with_node_inputs,
             encoder_size=encoder_size,
-            core_size=core_size, name=name, **kwargs)    
+            core_size=core_size, name=name, **kwargs)
