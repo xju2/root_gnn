@@ -83,4 +83,48 @@ class EdgeLearnerBase(snt.Module):
         return output_ops
 
 
-# class EdgeClassifier
+class EdgeClassifier(EdgeLearnerBase):
+    def __init__(self,
+        with_edge_inputs=False, with_node_inputs=True,
+        encoder_size: list=None, core_size: list=None,
+        decoder_size: list=None,
+        name="EdgeClassifier", **kwargs):
+
+        edge_output_size = 1
+        if decoder_size is not None:
+            decoder_size += [edge_output_size]
+        else:
+            decoder_size = [edge_output_size]
+        edge_fn =lambda: snt.Sequential([
+            snt.nets.MLP(decoder_size,
+                        activation=tf.nn.relu, # default is relu
+                        name='edge_classifier_output'),
+            tf.sigmoid])
+        super().__init__(edge_fn, with_edge_inputs=with_edge_inputs,
+            with_node_inputs=with_node_inputs,
+            encoder_size=encoder_size,
+            core_size=core_size, name=name, **kwargs)
+
+
+
+class EdgeRegression(EdgeLearnerBase):
+    def __init__(self,
+        edge_output_size,
+        with_edge_inputs=False, with_node_inputs=True,
+        encoder_size: list=None, core_size: list=None,
+        decoder_size: list=None,
+        name="EdgeRegression", **kwargs):
+
+        if decoder_size is not None:
+            decoder_size += [edge_output_size]
+        else:
+            decoder_size = [edge_output_size]
+        edge_fn =lambda: snt.Sequential([
+            snt.nets.MLP(decoder_size,
+                        activation=tf.nn.relu, # default is relu
+                        name='edge_regresssion_output'),
+            tf.sigmoid])
+        super().__init__(edge_fn, with_edge_inputs=with_edge_inputs,
+            with_node_inputs=with_node_inputs,
+            encoder_size=encoder_size,
+            core_size=core_size, name=name, **kwargs)    
