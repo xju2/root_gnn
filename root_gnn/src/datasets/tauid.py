@@ -9,10 +9,10 @@ from root_gnn.src.datasets.base import DataSet
 def make_graph(event, debug=False):
     # n_max_nodes = 60
 
-    scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi])
+    scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
 
     n_nodes = event.n_nodes
-    nodes = np.array(event.nodes)*scale_factors
+    nodes = np.array(event.nodes,dtype=np.float32)*scale_factors
     if debug:
         print(nodes.shape)
         print(n_nodes)
