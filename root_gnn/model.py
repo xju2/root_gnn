@@ -6,18 +6,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from root_gnn.src.models.general_classifier import GeneralClassifier
-from root_gnn.src.models.edge_classifier import EdgeClassifier
-from root_gnn.src.models.edge_global_classifier import EdgeGlobalClassifier
-from root_gnn.src.models.global_classifier import GlobalClassifierNoEdgeInfo
-from root_gnn.src.models.node_edge_classifier import NodeEdgeClassifier
-from root_gnn.src.models.node_predictor import FourTopPredictor
+from root_gnn.src.models.edge_learner import EdgeClassifier
+from root_gnn.src.models.edge_learner import EdgeRegression
+from root_gnn.src.models.global_learner import GlobalClassifier
+from root_gnn.src.models.global_learner import GlobalRegression
 
 __all__ = (
-    "GeneralClassifier",
     "EdgeClassifier",
-    "EdgeGlobalClassifier",
-    "GlobalClassifierNoEdgeInfo",
-    "NodeEdgeClassifier",
-    'FourTopPredictor',
+    "EdgeRegression",
+    "GlobalClassifier",
+    "GlobalRegression"
 )

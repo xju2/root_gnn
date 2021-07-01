@@ -32,5 +32,5 @@ __all__ = (
     "TopReco",
     "HiggsYYGen",
     "HadronicInteraction",
-    "RootDataset" #CUSTOM 
+    "RootDataset"
 )

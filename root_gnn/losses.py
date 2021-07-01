@@ -21,6 +21,7 @@ class NodeEdgeLoss:
         ]
         return tf.stack(loss_ops)
 
+
 class GlobalLoss:
     def __init__(self, real_global_weight, fake_global_weight):
         self.w_global_real = real_global_weight
