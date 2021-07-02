@@ -96,7 +96,7 @@ def specs_from_graphs_tuple(
                 or (dynamic_num_edges \
                     and field_name in edge_dim_fields)): shape[0] = None
 
-        print(field_name, shape, dtype)
+        # print(field_name, shape, dtype)
         graphs_tuple_description_fields[field_name] = description_fn(
             shape=shape, dtype=dtype)
 

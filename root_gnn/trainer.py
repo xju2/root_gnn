@@ -1,3 +1,4 @@
+from operator import is_
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.set_verbosity("INFO")
@@ -17,6 +18,7 @@ import pprint
 import time
 import functools
 import argparse
+import tqdm
 
 import numpy as np
 
@@ -28,7 +30,6 @@ import sonnet as snt
 
 from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
-from root_gnn import model as all_models
 from root_gnn import losses
 
 verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
@@ -36,7 +37,7 @@ printer = pprint.PrettyPrinter(indent=2)
 
 AUTO = tf.data.experimental.AUTOTUNE
 
-def read_dataset(filenames):
+def read_dataset(filenames, nEvtsPerFile=5000):
     """
     Read dataset...
     """
@@ -45,7 +46,8 @@ def read_dataset(filenames):
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
     dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    n_graphs = sum([1 for _ in dataset])
+    # n_graphs = sum([1 for _ in dataset]) # this is computational expensive.
+    n_graphs = n_files * nEvtsPerFile
     return dataset, n_graphs
 
 
@@ -69,23 +71,16 @@ def loop_dataset(datasets, batch_size):
 
 
 def get_signature(
-        dataset, batch_size, with_bool=False,
-        dynamic_num_nodes=True,
-        dynamic_num_edges=True,
-        ):
+    data, with_bool=False,
+    with_batch_dim=False,
+    dynamic_num_nodes=True,
+    dynamic_num_edges=True,
+    ):
     """
     Get signature of inputs for the training loop.
     The signature is used by the tf.function
     """
-    with_batch_dim = False
-    input_list = []
-    target_list = []
-    for dd in dataset.take(batch_size).as_numpy_iterator():
-        input_list.append(dd[0])
-        target_list.append(dd[1])
-
-    inputs = utils_tf.concat(input_list, axis=0)
-    targets = utils_tf.concat(target_list, axis=0)
+    inputs, targets = next(data)
     input_signature = (
         graph.specs_from_graphs_tuple(
             inputs, with_batch_dim,
@@ -103,10 +98,10 @@ def get_signature(
         
     return input_signature
 
-class TrainerBase(object):
+class Trainer(snt.Module):
     
     """
-    The base class to implement a simple trainer and model.
+    The class to implement a simple trainer and model.
     
     ...
     
@@ -123,17 +118,18 @@ class TrainerBase(object):
     validating, and testing
     """
 
-    def __init__(self, input_dir=None, output_dir=None, 
-                model=None, loss_fcn=None, loss_name="GlobalLoss", lr=0.0005,
-                optimizer=None,
-                batch_size=50, num_epochs=5, num_iters=10,
-                metric_mode=None,
-                early_stop=None, max_attempts=1,
-                shuffle_size=1,
-                patterns='*', distributed=False, verbose="INFO", 
-                **extra_configs):
+    def __init__(self, input_dir, evt_per_file, output_dir, 
+                model, loss_fcn, optimizer,
+                mode, # mode, 'clf,globals', 'clf,edges', 'rgr,globals'
+                batch_size=100, num_epochs=1, num_iters=4,
+                stop_on='val_loss', patiences=2,
+                shuffle_size=-1, log_freq=100,
+                val_batches=50,
+                file_pattern='*', #distributed=False,
+                disable_tqdm=False,
+                verbose="INFO", name='Trainer', **kwargs):
         """
-        TrainerBase constructor, which initializes configurations, hyperparameters,
+        Trainer constructor, which initializes configurations, hyperparameters,
         and metrics.
         
         Parameters
@@ -142,30 +138,68 @@ class TrainerBase(object):
         The user can directly unpack the arguments from the ArgumentParser
         created in get_arg_parser().
         """
+        super().__init__(name=name)
         self.input_dir = input_dir
-        self.train_dir = os.path.join(self.input_dir, "train_*.tfrec")
-        self.val_dir = os.path.join(self.input_dir, "val_*.tfrec")
-        self.output_dir = output_dir
-        self.shuffle_size = shuffle_size
 
-        self.num_iters = num_iters
+        # read training and testing data
+        self.training_step = None
+        self.data_train = None
+        self.data_val = None
+        self.data_test = None
+        self.file_pattern = file_pattern
+        self.evt_per_file = evt_per_file
         self.batch_size = batch_size
-        self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
-        self.epoch_count = tf.Variable(0, trainable=False, name='epoch_count', dtype=tf.int64)
-        self.lr = tf.Variable(lr, trainable=False, name='lr', dtype=tf.float32)
+        self.shuffle_size = shuffle_size
+        self.read_all_data()
 
+        self.output_dir = output_dir
+        assert isinstance(model, snt.Module), "Model has to be snt.Module"
         self.model = model
-        self.loss_fcn = loss_fcn
-        self.loss_name = loss_name
-        if optimizer:
-            self.optimizer = optimizer(learning_rate=self.lr)
-        else:
-            self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
-        
-        self.init_metrics(metric_mode, early_stop, max_attempts)
 
-        self.distributed = distributed
-        self.extra_configs = extra_configs
+        if isinstance(loss_fcn, str):
+            self.loss_fcn = getattr(losses, loss_fcn)
+        else:
+            self.loss_fcn = loss_fcn
+
+        if isinstance(optimizer, snt.Optimizer):
+            self.optimizer = optimizer
+        elif isinstance(optimizer, float):
+            self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+        else:
+            self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
+        
+        self.ckpt_manager = self.make_checkpoints()
+
+        self.mode = mode.split(',')
+        self.num_iters = num_iters
+
+        # training hyperparameters
+        self.log_freq = log_freq
+        self.val_batches = val_batches
+        self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
+        self.step_count = tf.Variable(0, trainable=False, name='step_count', dtype=tf.int64)
+        self.lr = tf.Variable(0.0005, trainable=False, name='lr', dtype=tf.float32)
+
+        # self.distributed = distributed
+        self.extra_configs = kwargs
+        self.disable_tqdm = disable_tqdm
+
+        ## setup monitoring issues
+        self.stop_on = stop_on
+        self.attempts = 0
+        self.patiences = patiences
+        self.metric_dict = dict()
+        time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+        self.metric_writer = tf.summary.create_file_writer(
+            os.path.join(self.output_dir, "logs/{}/metrics".format(time_stamp)))
+
+        if "loss" in stop_on or "pull" in stop_on:
+            self.should_max_metric = False
+            self.best_metric = float('inf')
+        else:
+            self.should_max_metric = True
+            self.best_metric = 0.0
+
 
     # Preprocessing
     # --------------------
@@ -185,66 +219,146 @@ class TrainerBase(object):
         add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
         return parser
 
-    def init_metrics(self, mode=None, early_stop=None, max_attempts=1):
+    def train(self, num_steps: int = None, stop_on: str = None, epochs: int = None):
         """
-        Function to initialize TrainerBase metrics, which is called in
-        __init__().
-        
-        Parameters
-        ----------
-        mode: Either 'clf' (classification) or 'rgr' (regression).
-        Determines which metrics will be used:
-            - 'clf' uses 'auc', 'acc', 'pre', 'rec', 'loss'
-            - 'rgr' uses 'loss', 'pull'
-        
-        early_stop: Sets a metric to use as a stopping condition
-        
-        max_attempts: The number of attempts allowed for the early_stop
-        metric to fail before training stops
-        
-        Raises
-        ------
-        ValueError: if self.metric_mode is neither 'clf' or 'rgr'
+        The training step.
         """
-        self.metric_mode = mode
-        if mode is None:
-            self.metric_dict = {}
-            self.early_stop = None
-        elif mode == "clf":
-            self.metric_dict = {
-                "auc": 0.0, "acc": 0.0, "pre": 0.0, "rec": 0.0, "loss": 0.0
-            }
-            self.early_stop = early_stop if early_stop else "auc"
-        elif mode == "rgr":
-            self.metric_dict = {
-                "loss": 0.0, "pull": 0.0
-            }
-            self.early_stop = early_stop if early_stop else "loss"
+        self._setup_training_loop()
+
+        ngraphs = self.ngraphs_train
+        train_data = self.data_train
+        batch_size = self.batch_size
+        steps_per_epoch = ngraphs // batch_size
+        max_epochs = self.num_epochs
+        if epochs is not None and num_steps is not None:
+            raise RuntimeError("Please either use `num_steps` or `epochs`")
+
+        tot_steps = num_steps if num_steps else epochs*steps_per_epoch if epochs else self.num_epochs * steps_per_epoch
+        self.stop_on = stop_on if stop_on else self.stop_on
+        stop_on = self.stop_on
+
+        print(f"Training starts with {ngraphs} graphs with batch size of {batch_size} for {max_epochs} epochs")
+        print(f"runing {tot_steps} steps, {steps_per_epoch} steps per epoch, and stop on variable {stop_on}")
+
+
+        disable_tqdm = self.disable_tqdm
+
+        total_loss = 0
+        with tqdm.trange(tot_steps, disable=disable_tqdm) as t0:
+            for step_num in t0:
+                inputs_tr, targets_tr = next(train_data)
+                total_loss += self.training_step(inputs_tr, targets_tr).numpy()
+
+                if step_num == 0:
+                    print(">>>{:,} trainable parameters<<<".format(
+                        sum([tf.size(v) for v in self.model.trainable_variables])))
+
+                if step_num and (step_num % self.log_freq == 0):
+                    self.step_count.assign(step_num)
+                    # perform validation tests
+                    self.metric_dict['loss'] = total_loss / self.log_freq
+                    total_loss = 0
+                    is_better = self.validation()
+                    t0.set_postfix(**self.metric_dict)
+                    if is_better:
+                        # current validation test is better
+                        # save the model
+                        self.ckpt_manager.save()
+                    else:
+                        if self.attempts >= self.patiences:
+                            print("Reached maximum failed attempts: "\
+                                "{} attempts. Stopping training".format(self.patiences))
+                            break
+                        else:
+                            self.attempts += 1
+
+    def validation(self):
+        """
+        Performs validation steps, record performance metrics.
+        All is based on `mode`. 
+        """
+        val_data = self.data_val
+
+        total_loss = 0.
+        predictions, truth_info = [], []
+        for _ in range(self.val_batches):
+            inputs, targets = next(val_data)
+            outputs = self.model(inputs, self.num_iters, is_training=False)
+            total_loss += (tf.math.reduce_sum(
+                self.loss_fcn(targets, outputs))/tf.constant(
+                    self.num_iters, dtype=tf.float32)).numpy()
+            if len(outputs) > 1:
+                outputs = outputs[-1]
+
+            if "globals" in self.mode:
+                predictions.append(outputs.globals)
+                truth_info.append(targets.globals)
+            elif 'edges' in self.mode:
+                predictions.append(outputs.edges)
+                truth_info.append(targets.edges)
+            else:
+                raise ValueError("currently " + self.modes + " is not supported")
+
+        predictions = np.concatenate(predictions, axis=0)
+        truth_info = np.concatenate(truth_info, axis=0)
+
+        if 'clf' in self.mode:
+            threshold = 0.5
+            y_true, y_pred = (truth_info > threshold), (predictions > threshold)
+            fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+            self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
+            self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
+            self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
+            self.metric_dict['rec'] = sklearn.metrics.recall_score(y_true, y_pred)
+        elif 'rgr' in self.mode:
+            self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
         else:
-            raise ValueError("Unsupported metric mode: must either be 'clf', 'rgr', or None")
-        self.max_attempts = max_attempts
-        self.attempts = 0
-        if self.early_stop in ["loss", "pull"]:
-            self.should_max_metric = True
-            self.best_metric = float('inf')
-        else:
-            self.should_max_metric = False
-            self.best_metric = 0.0
-        time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
-        self.metric_writer = tf.summary.create_file_writer(os.path.join(self.output_dir, "logs/{}/metrics".format(time_stamp)))
-    
-    def _early_stop_condition(self):
+            raise ValueError("currently " + self.modes + " is not supported")
+
+        self.metric_dict['val_loss'] = total_loss / self.log_freq
+
+        with self.metric_writer.as_default():
+            for key,val in self.metric_dict.items():
+                tf.summary.scalar(key, val, step=self.step_count)
+
+
+        current_metric = self.metric_dict[self.stop_on]
+        is_better = (self.should_max_metric and current_metric > self.best_metric) \
+            or (not self.should_max_metric and current_metric < self.best_metric)
+        if is_better:
+            self.best_metric = current_metric
+        return is_better
+
+    # Prediction
+    # --------------------  
+    def predict(self, test_data):
+        """
+        Uses the current model/loss to generate predictions on test_data
+        """
+        predictions, truth_info = [], []
+        for data in test_data:
+            inputs, targets = data
+            outputs = self.model(inputs, self.num_iters, is_training=False)
+            output = outputs[-1]
+            predictions.append(output)
+            truth_info.append(truth_info)
+
+        return predictions, truth_info
+
+    def _meet_stop_condition(self):
         """
         Helper function to check whether, given self.early_stop
         and self.should_max_metric, training should stop at the
         current moment.
         """
-        current_metric = self.metric_dict[self.early_stop]
-        if (self.should_max_metric and current_metric > self.best_metric) or\
-                (not self.should_max_metric and current_metric < self.best_metric):
+        current_metric = self.metric_dict[self.stop_on]
+        if  (self.should_max_metric and current_metric < self.best_metric) \
+            or (not self.should_max_metric and current_metric > self.best_metric):
             print("Current metric {} {:.4f} is {} than best {:.4f}.".format(
-                self.early_stop, current_metric, "higher" if self.should_max_metric else "lower", self.best_metric))
-            if self.attempts >= self.max_attempts:
+                self.stop_on, current_metric, "higher" if self.should_max_metric else "lower",
+                self.best_metric))
+
+            if self.attempts >= self.patiences:
                 print("Reached maximum failed attempts: {} attempts. Stopping training".format(self.max_attempts))
                 return True
             self.attempts += 1
@@ -252,94 +366,8 @@ class TrainerBase(object):
             self.best_metric = current_metric
         return False
 
-    def _get_shuffle_size(self, shuffle_size):
-        """
-        Helper function that returns the buffer size to shuffle with.
-        """
-        return self.ngraphs_train if shuffle_size < 0 else shuffle_size
 
-    def load_training_data(self, filenames=None, shuffle=False, shuffle_size=-1, repeat=1):
-        """
-        Loads, shuffles, and sets up training data from the train directory.
-        
-        Parameters
-        ----------
-        filenames: A list of pattern-matching files, produced by tf.io.gfile.glob.
-        Defaults to None, in which case self.train_dir is used for glob
-        
-        shuffle: A boolean indicating whether to shuffle the dataset or not
-        
-        shuffle_size: If shuffle is True, specifies the shuffle buffer size. If
-        negative, uses the entire dataset as is
-        
-        repeat: Specifies how many times the dataset is repeated
-        """
-        if not filenames:
-            filenames = tf.io.gfile.glob(self.train_dir)
-        if shuffle_size is None:
-            shuffle_size = self.shuffle_size
-        self.data_train, self.ngraphs_train = read_dataset(filenames)
-        if shuffle:
-            self.data_train = self.data_train.shuffle(self._get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
-        if repeat > 1:
-            self.data_train = self.data_train.repeat(repeat)
-        self.data_train = self.data_train.prefetch(AUTO)
-        return self.data_train, self.ngraphs_train
-
-    def load_validating_data(self, filenames=None, shuffle=False, shuffle_size=-1, repeat=1):
-        """
-        Loads, shuffles, and sets up validation data from the val directory.
-        
-        Parameters
-        ----------
-        filenames: A list of pattern-matching files, produced by tf.io.gfile.glob.
-        Defaults to None, in which case self.val_dir is used for glob
-        
-        shuffle: A boolean indicating whether to shuffle the dataset or not
-        
-        shuffle_size: If shuffle is True, specifies the shuffle buffer size. If
-        negative, uses the entire dataset as is
-        
-        repeat: Specifies how many times the dataset is repeated
-        """
-        if not filenames:
-            filenames = tf.io.gfile.glob(self.val_dir)
-        if shuffle_size is None:
-            shuffle_size = self.shuffle_size
-        self.data_val, self.ngraphs_val = read_dataset(filenames)
-        if shuffle:
-            self.data_val = self.data_val.shuffle(self._get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
-        if repeat > 1:
-            self.data_val = self.data_val.repeat(repeat)
-        self.data_val = self.data_val.prefetch(AUTO)
-        return self.data_val, self.ngraphs_val
-
-    def load_testing_data(self, filenames, shuffle=False, shuffle_size=-1, repeat=1):
-        """
-        Loads, shuffles, and sets up testing data from the test directory.
-        
-        Parameters
-        ----------
-        filenames: A list of pattern-matching files, produced by tf.io.gfile.glob
-        
-        shuffle: A boolean indicating whether to shuffle the dataset or not
-        
-        shuffle_size: If shuffle is True, specifies the shuffle buffer size. If
-        negative, uses the entire dataset as is
-        
-        repeat: Specifies how many times the dataset is repeated
-        """
-        self.data_test, self.ngraphs_test = read_dataset(filenames)
-        if shuffle_size is None:
-            shuffle_size = self.shuffle_size
-        if shuffle:
-            self.data_test = self.data_test.shuffle(self._get_shuffle_size(shuffle_size), seed=12345, reshuffle_each_iteration=False)
-        if repeat > 1:
-            self.data_test = self.data_test.repeat(repeat)
-        self.data_test = self.data_test.prefetch(AUTO)
-        return self.data_test, self.ngraphs_test
-
-    def setup_training_loop(self, model=None, loss_fcn=None):
+    def _setup_training_loop(self):
         """
         Sets up training step for the optimizer using tf.function
         and tf.GradientTape. Optionally, the user can pass in a
@@ -352,11 +380,10 @@ class TrainerBase(object):
         
         loss_fcn: The loss function class to use for training
         """
-        if model:
-            self.model = model
-        if loss_fcn:
-            self.loss_fcn = loss_fcn
-        input_signature = self._input_signature()
+        if self.training_step is not None:
+            return 
+
+        input_signature = get_signature(self.data_train)
 
         def update_step(inputs, targets):
             print("Tracing update_step")
@@ -371,183 +398,69 @@ class TrainerBase(object):
 
         self.training_step = tf.function(update_step, input_signature=input_signature)
 
-    def _input_signature(self):
-        """
-        Helper function to generate an input signature, which is
-        passed into tf.function() to generate the training_step.
-        """
-        return get_signature(self.data_train, self.batch_size)
 
-    def optimizer(self, lr):
+    def load_data(self, dirname):
         """
-        Sets the optimizer.
+        Loads, shuffles, and sets up training data from the train directory
         """
-        self.optimizer = snt.optimizers.Adam(lr)
+        _input_dir = os.path.join(self.input_dir, dirname)
+        _files = tf.io.gfile.glob(os.path.join(_input_dir, self.file_pattern))
+        if (not os.path.exists(_input_dir)) or len(_files) < 1:
+            raise RuntimeError(f"{_input_dir} directory does not contain data.")
 
-    def set_model(self, model):
-        """
-        Sets the model.
-        """
-        self.model = model
+        tfdata, ngraphs = read_dataset(_files, self.evt_per_file)
+        shuffle_size = self.shuffle_size
+        if shuffle_size > ngraphs:
+            shuffle_size = ngraphs
 
-    def set_loss(loss_fcn):
-        """
-        Sets the loss function.
-        """
-        self.loss_fcn = loss_fcn
+        if shuffle_size > 0:
+            tfdata = tfdata.shuffle(
+                shuffle_size, seed=12345, reshuffle_each_iteration=False)
 
-    # Training
-    # --------------------        
+        tfdatasets = tfdata.repeat().prefetch(AUTO)
+        tfdata = loop_dataset(tfdatasets, self.batch_size)
+        return tfdata, ngraphs
 
-    def train_one_epoch(self, train_data=None):
+    def load_training_data(self):
         """
-        Performs one epoch of training, returning the training loss
-        and number of batches.
-        
-        Parameters
-        ----------
-        train_data: The data to use for training. Must have been
-        processed by load_training_data() beforehand. If None is
-        specified, defaults to self.data_train
+        Loads, shuffles, and sets up training data from the train directory
         """
-        if train_data is None:
-            train_data = self.data_train
-        num_batches = 0
-        total_loss = 0.
-        for inputs in loop_dataset(train_data, self.batch_size):
-            inputs_tr, targets_tr = inputs
-            total_loss += self.training_step(inputs_tr, targets_tr).numpy()
-            num_batches += 1
-        return total_loss, num_batches
+        if self.data_train is not None:
+            return 
+        self.data_train, self.ngraphs_train = self.load_data('train')
 
-    def validate_one_epoch(self, val_data=None):
+    def load_validating_data(self):
         """
-        Performs one epoch of validation, returning the validation loss,
-        number of batches, predictions, as well as truth info.
-        
-        Parameters
-        ----------
-        val_data: The data to use for validation. Must have been
-        processed by load_validating_data() beforehand. If None is
-        specified, defaults to self.data_val
+        Loads, shuffles, and sets up validation data from the val directory.
         """
-        if val_data is None:
-            val_data = self.data_val
-        total_loss = 0.
-        num_batches = 0
-        predictions, truth_info = [], []
+        if self.data_val is not None:
+            return 
+        self.data_val, self.ngraphs_val = self.load_data('val')
 
-        for data in loop_dataset(val_data, self.batch_size):
-            inputs, targets = data
-            outputs = self.model(inputs, self.num_iters)
-            total_loss += (tf.math.reduce_sum(
-                self.loss_fcn(targets, outputs))/tf.constant(
-                    self.num_iters, dtype=tf.float32)).numpy()
-            if len(outputs) > 1:
-                outputs = outputs[-1]
-            if self.loss_name == "GlobalLoss":
-                predictions.append(outputs.globals)
-                truth_info.append(targets.globals)
-            else:
-                predictions.append(outputs.edges)
-                truth_info.append(targets.edges)
-            num_batches += 1
-        predictions = np.concatenate(predictions, axis=0)
-        truth_info = np.concatenate(truth_info, axis=0)
-        return total_loss, num_batches, predictions, truth_info
-    
-    def update_metrics(self, predictions, truth_info, loss, threshold=0.5):
+    def load_testing_data(self):
         """
-        Updates metrics after receiving both predictions and truth_info from validation.
-        
-        Parameters
-        ----------
-        predictions: Predictions generated from validation
-        
-        truth_info: Truth info used in validation
-        
-        loss: Validation loss
-        
-        Threshold: For the 'clf' metric mode (classification), indicates the threshold
-        for classifying on-class or off-class. Defaults to 0.5
-        
-        Raises
-        ------
-        ValueError: if self.metric_mode is neither 'clf' or 'rgr'
+        Loads, shuffles, and sets up testing data from the test directory.
         """
-        if self.metric_mode == "clf":
-            y_true, y_pred = (truth_info > threshold), (predictions > threshold)
-            fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
-            self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
-            self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
-            self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
-            self.metric_dict['rec'] = sklearn.metrics.recall_score(y_true, y_pred)
-        elif self.metric_mode == "rgr":
-            self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
-        else:
-            raise ValueError("currently " + self.metric_mode + " is not supported")
-        self.metric_dict['loss'] = loss
-        print(self.metric_dict)
-        with self.metric_writer.as_default():
-            for key,val in self.metric_dict.items():
-                tf.summary.scalar(key, val, step=self.epoch_count)
-            self.metric_writer.flush()
-        self.epoch_count.assign_add(1)
+        if self.data_test is not None:
+            return 
+        self.data_test, self.ngraphs_test = self.load_data('test')
 
-    def train(self, model=None, loss_fcn=None, train_data=None, val_data=None, num_epochs=None):
-        """
-        Trains the dataset, potentially using the specified model and loss.
-        
-        Parameters
-        ----------
-        model: Class of model used for training. If not specified, uses current
-        model attribute of TrainerBase
-        
-        loss_fcn: Class of loss function used for training. If not specified,
-        uses current loss_fcn attribute of TrainerBase
-        
-        train_data: Data to train on. Defaults to self.data_train, which should
-        be loaded beforehand by load_training_data()
-        
-        val_data: Data to use for validation. Defaults to self.data_val, which
-        should be loaded beforehand by load_validating_data()
-        
-        num_epochs: The maximum number of epochs for training. Defaults to 
-        self.num_epochs
-        """
-        if num_epochs is None:
-            num_epochs = self.num_epochs
-        self.setup_training_loop(model, loss_fcn)
-        for epoch in range(num_epochs):
-            loss_tr, num_batches_tr = self.train_one_epoch(train_data)
-            loss_val, num_batches_val, predictions, truth_info = self.validate_one_epoch(val_data)
-            if self.metric_mode:
-                self.update_metrics(predictions, truth_info, loss_val / num_batches_val)
-            if self._early_stop_condition():
-                print("breaking after {} epoch(s)".format(epoch + 1))
-                break
+    def read_all_data(self):
+        self.load_training_data()
+        self.load_validating_data()
 
-    # Prediction
-    # --------------------  
-
-    def predict(self, test_data):
-        """
-        Uses the current model/loss to generate predictions on test_data
-        """
-        raise NotImplementedError
-
-    def score(self, y_pred, y_true):
-        """
-        Returns a dictionary of relevant metrics.
-        
-        Parameters
-        ----------
-        y_pred: Values predicted by the model
-        
-        y_true: The ground truth values to score against
-        """
-        raise NotImplementedError
-
-    # future: add hyperparameter optimization
-    # search for tf hyperparam optimization packages, integrate with tensorboard
-    # can try multiple hyperparams, construct surrogate fn predicting hyperparam relationships
+    def make_checkpoints(self):
+        output_dir = self.output_dir
+        model = self.model
+        optimizer = self.optimizer
+        ckpt_dir = os.path.join(output_dir, "checkpoints")
+        checkpoint = tf.train.Checkpoint(
+            optimizer=optimizer,
+            model=model
+            )
+        ckpt_manager = tf.train.CheckpointManager(
+            checkpoint, directory=ckpt_dir,
+            max_to_keep=20, keep_checkpoint_every_n_hours=1)
+        logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
+        _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
+        return ckpt_manager

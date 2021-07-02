@@ -104,16 +104,20 @@ class DataSet(object):
         out_dir = os.path.abspath(os.path.dirname(outname))
         os.makedirs(out_dir, exist_ok=True)
         
-        if num_workers == 1:
-            ifailed, isaved = self.subprocess(0, n_evts_per_record, filename, outname, overwrite, debug)
+        if num_workers < 2:
+            ifailed, isaved=0, 0
+            for ijob in range(n_files):
+                n_failed, n_saved = self.subprocess(ijob, n_evts_per_record, filename, outname, overwrite, debug)
+                ifailed += n_failed
+                isaved += n_saved
         else:
             with Pool(num_workers) as p:
                 process_fnc = partial(self.subprocess,
-                            n_evts_per_record=n_evts_per_record,
-                            filename=filename,
-                            outname=outname,
-                            overwrite=overwrite,
-                            debug=debug)
+                        n_evts_per_record=n_evts_per_record,
+                        filename=filename,
+                        outname=outname,
+                        overwrite=overwrite,
+                        debug=debug)
                 res = p.map(process_fnc, list(range(n_files)))
 
             ifailed = sum([x[0] for x in res])
