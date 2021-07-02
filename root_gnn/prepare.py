@@ -19,6 +19,8 @@ from root_gnn.src.datasets.hyy_gen import HiggsYYGen
 
 from root_gnn.src.datasets.hadronic import HadronicInteraction
 
+from root_gnn.src.datasets.ditaumass import diTauMass
+
 __all__ = (
     "TopTaggerDataset",
     "FourTopDataset",
@@ -30,4 +32,5 @@ __all__ = (
     "TopReco",
     "HiggsYYGen",
     "HadronicInteraction",
+    "diTauMass",
 )
