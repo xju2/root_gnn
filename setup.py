@@ -42,7 +42,7 @@ setup(
         "Programming Language :: Python :: 3.7",
     ],
     scripts=[
-        'root_gnn/scripts/train_classifier',
+        'root_gnn/scripts/train_gnn',
         'root_gnn/scripts/create_tfrecord',
         'root_gnn/scripts/evaluate_global_classifier',
         'root_gnn/scripts/calculate_metrics',

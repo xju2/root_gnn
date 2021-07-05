@@ -11,7 +11,7 @@ if __name__ == "__main__":
     add_arg = parser.add_argument
     add_arg("input_file", help='input file')
     add_arg("outname", help='output name')
-    add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
+    add_arg('--evts-per-record', default=5000, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
             choices=list(DataSets.__all__))
     add_arg("--debug", action='store_true', help='in a debug mode')
@@ -19,17 +19,8 @@ if __name__ == "__main__":
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
     add_arg("--config", help='configuration file for training OR for configuring the dataset', default=None)
     add_arg("--num-workers", help='number of threads', default=1, type=int)
-    
-    #I add an additional argument here? How does this get converted from argument to variable? 
-    add_arg("--include-particle-type", action='store_true', help='whether to create an additional feature storing particle type for root_dataset')
-    #add_arg("--config-yaml-file", default=None, help="yaml file used for root_dataset")
-    #Add an argument for proper truth attribute name: Ex: input "TRUTH" 
-    
-    #TODO: add overwrite option to write over the existing tfrec files  
-    #if they say overwrite, first delete everything that fits the pattern (outname) (ex: *.tfrec) train_x.tfrec in the folder! 
-    #the pattern follows the outname argument (this refers to what the user inputs in the command line)
-    #Let's say they input test_output/train then you would delete files that are like test_output/train_*.tfrec (with or without _)
-    add_arg("--overwrite", action='store_true', help='specifies whether to overwrite existing files with same outname pattern')
+    add_arg("--overwrite", action='store_true',
+        help='specifies whether to overwrite existing files with same outname pattern')
 
     args = parser.parse_args()
     n_evts_per_record = args.evts_per_record

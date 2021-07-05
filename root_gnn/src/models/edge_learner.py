@@ -38,18 +38,14 @@ class EdgeLearnerBase(snt.Module):
 
         self._edge_block = blocks.EdgeBlock(
             edge_model_fn=encoder_mlp_fn,
-            use_edges=False,
-            name='edge_encoder_block',
-            **edge_block_args
+            **edge_block_args,
+            name='edge_encoder_block'
         )
 
 
         self._node_encoder_block = blocks.NodeBlock(
             node_model_fn=encoder_mlp_fn,
-            use_received_edges=False,
-            use_sent_edges=False,
-            use_nodes=True,
-            use_globals=False,
+            **node_block_args,
             name='node_encoder_block'
         )
 

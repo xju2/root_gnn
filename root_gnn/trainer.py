@@ -1,19 +1,18 @@
 from operator import is_
+from numpy.lib.arraysetops import isin
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.set_verbosity("INFO")
 logging.info("TF Version:{}".format(tf.__version__))
-try:
-    import horovod.tensorflow as hvd
-    no_horovod = False
-except ModuleNotFoundError:
-    logging.warning("No horvod module, cannot perform distributed training")
-    no_horovod = True
+# try:
+#     import horovod.tensorflow as hvd
+#     no_horovod = False
+# except ModuleNotFoundError:
+#     logging.warning("No horvod module, cannot perform distributed training")
+#     no_horovod = True
 
 
 import os
-import six
-from types import SimpleNamespace
 import pprint
 import time
 import functools
@@ -31,6 +30,7 @@ import sonnet as snt
 from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
 from root_gnn import losses
+from root_gnn import model as Models
 
 verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
 printer = pprint.PrettyPrinter(indent=2)
@@ -98,6 +98,36 @@ def get_signature(
         
     return input_signature
 
+
+def add_args(parser):
+    """
+    The method adds options for a parser
+    """
+    add_arg = parser.add_argument
+    add_arg("--input-dir", help="name of dir for input", default="inputs")
+    add_arg("--evts-per-file", help="Events per TFRecords", default=5000)
+    add_arg("--output-dir", help='output directory', default='trained')
+    add_arg("--model", help='predefined ModelName', choices=list(Models.__all__), required=True)
+    add_arg("--loss-name", help='predefined Loss Function', choices=list(losses.__all__), required=True)
+    add_arg("--loss-pars", help='weights for loss function', default=None)
+    add_arg("--learning-rate", type=float, help="learning rate", default=0.0005)
+    add_arg("--batch-size", type=int, help='batch size', default=100)
+    add_arg("--num-epochs", type=int, help="number of epochs", default=5)
+    add_arg("--num-iters", type=int, help="number of message passing", default=4)
+    add_arg('--stop-on', help='metric for early stop.'
+        '\"val_loss, auc, acc, pre, rec\" for classification, \"val_loss, pull\" for regression.', default='val_loss')
+    add_arg('--patiences', help='number of allowed no improvement', default=3, type=int)
+    add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
+    add_arg("--log-freq", type=int, help='log frequence in terms of batches', default=100)
+    add_arg("--val-batches", type=int, help='number of batches used for each validation', default=50)
+    add_arg("--file-pattern", default='*', help='file patterns for input TFRecords')
+    add_arg("--disable-tqdm", action='store_true', help='disable tqdm progressing bar')
+    add_arg("--encoder-size", help='MLP size for encoder', default=None)
+    add_arg("--core-size", help='MLP size for core', default=None)
+    add_arg("--decoder-size", help='MLP size for decoder', default=None)
+    add_arg("--with-edge-inputs", action='store_true', help='input graph contains edge information')
+
+
 class Trainer(snt.Module):
     
     """
@@ -118,7 +148,7 @@ class Trainer(snt.Module):
     validating, and testing
     """
 
-    def __init__(self, input_dir, evt_per_file, output_dir, 
+    def __init__(self, input_dir, evts_per_file, output_dir, 
                 model, loss_fcn, optimizer,
                 mode, # mode, 'clf,globals', 'clf,edges', 'rgr,globals'
                 batch_size=100, num_epochs=1, num_iters=4,
@@ -127,6 +157,8 @@ class Trainer(snt.Module):
                 val_batches=50,
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
+                encoder_size=None, core_size=None, decoder_size=None,
+                with_edge_inputs=False,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,
@@ -147,17 +179,33 @@ class Trainer(snt.Module):
         self.data_val = None
         self.data_test = None
         self.file_pattern = file_pattern
-        self.evt_per_file = evt_per_file
+        self.evts_per_file = evts_per_file
         self.batch_size = batch_size
         self.shuffle_size = shuffle_size
         self.read_all_data()
 
+        self.ckpt_manager = None
         self.output_dir = output_dir
-        assert isinstance(model, snt.Module), "Model has to be snt.Module"
-        self.model = model
+
+        if isinstance(model, str):
+            self.model = getattr(Models, model)(
+                with_edge_inputs=with_edge_inputs,
+                encoder_size=encoder_size,
+                core_size=core_size,
+                decoder_size=decoder_size
+                )
+        elif isinstance(model, snt.Module):
+            self.model = model
+        else:
+            raise RuntimeError("model:", model, "is not supported")
 
         if isinstance(loss_fcn, str):
-            self.loss_fcn = getattr(losses, loss_fcn)
+            loss_config = loss_fcn.split(',')
+            loss_name = loss_config[0]
+            if len(loss_config) > 1:
+                self.loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config[1:]])
+            else:
+                self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
 
@@ -167,8 +215,7 @@ class Trainer(snt.Module):
             self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
         else:
             self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
-        
-        self.ckpt_manager = self.make_checkpoints()
+
 
         self.mode = mode.split(',')
         self.num_iters = num_iters
@@ -178,7 +225,7 @@ class Trainer(snt.Module):
         self.val_batches = val_batches
         self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
         self.step_count = tf.Variable(0, trainable=False, name='step_count', dtype=tf.int64)
-        self.lr = tf.Variable(0.0005, trainable=False, name='lr', dtype=tf.float32)
+        # self.lr = tf.Variable(0.0005, trainable=False, name='lr', dtype=tf.float32)
 
         # self.distributed = distributed
         self.extra_configs = kwargs
@@ -199,25 +246,6 @@ class Trainer(snt.Module):
         else:
             self.should_max_metric = True
             self.best_metric = 0.0
-
-
-    # Preprocessing
-    # --------------------
-    @staticmethod
-    def get_arg_parser():
-        """
-        This static method returns an ArgumentParser with important arguments for
-        the TrainerBase's configuration. The parser can be used as a parent parser.
-        """
-        parser = argparse.ArgumentParser(add_help=False)
-        add_arg = parser.add_argument
-        add_arg("--input-dir", help="name of dir for input", default="tfrec")
-        add_arg("--output-dir", help="name of dir for output", default="trained")
-        add_arg("--batch-size", type=int, help="training/evaluation batch size", default=50)
-        add_arg("--num-epochs", type=int, help="number of epochs", default=5)
-        add_arg("--num-iters", type=int, help="level of message passing", default=10)
-        add_arg("--shuffle-size", type=int, help="number for shuffling", default=-1)
-        return parser
 
     def train(self, num_steps: int = None, stop_on: str = None, epochs: int = None):
         """
@@ -263,6 +291,8 @@ class Trainer(snt.Module):
                     if is_better:
                         # current validation test is better
                         # save the model
+                        if self.ckpt_manager is None:
+                            self.make_checkpoint()
                         self.ckpt_manager.save()
                     else:
                         if self.attempts >= self.patiences:
@@ -380,7 +410,7 @@ class Trainer(snt.Module):
         
         loss_fcn: The loss function class to use for training
         """
-        if self.training_step is not None:
+        if self.training_step:
             return 
 
         input_signature = get_signature(self.data_train)
@@ -408,7 +438,7 @@ class Trainer(snt.Module):
         if (not os.path.exists(_input_dir)) or len(_files) < 1:
             raise RuntimeError(f"{_input_dir} directory does not contain data.")
 
-        tfdata, ngraphs = read_dataset(_files, self.evt_per_file)
+        tfdata, ngraphs = read_dataset(_files, self.evts_per_file)
         shuffle_size = self.shuffle_size
         if shuffle_size > ngraphs:
             shuffle_size = ngraphs
@@ -450,17 +480,20 @@ class Trainer(snt.Module):
         self.load_validating_data()
 
     def make_checkpoints(self):
+        if self.ckpt_manager:
+            return
+
         output_dir = self.output_dir
         model = self.model
         optimizer = self.optimizer
         ckpt_dir = os.path.join(output_dir, "checkpoints")
-        checkpoint = tf.train.Checkpoint(
+        self.checkpoint = tf.train.Checkpoint(
             optimizer=optimizer,
             model=model
             )
-        ckpt_manager = tf.train.CheckpointManager(
-            checkpoint, directory=ckpt_dir,
+        self.ckpt_manager = tf.train.CheckpointManager(
+            self.checkpoint, directory=ckpt_dir,
             max_to_keep=20, keep_checkpoint_every_n_hours=1)
         logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
-        _ = checkpoint.restore(ckpt_manager.latest_checkpoint)
-        return ckpt_manager
+        _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
+        self.ckpt_dir = ckpt_dir
