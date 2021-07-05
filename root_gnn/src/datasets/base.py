@@ -8,8 +8,17 @@ from multiprocessing import Pool
 from functools import partial
 
 import tensorflow as tf
-from graph_nets import utils_tf
+# from graph_nets import utils_tf
 from root_gnn.src.datasets import graph
+import subprocess
+
+def linecount(filename):
+    return sum([1 for lin in open(filename)])
+    # out = subprocess.Popen(['wc', '-l', filename],
+    #                      stdout=subprocess.PIPE,
+    #                      stderr=subprocess.STDOUT
+    #                      ).communicate()[0]
+    # return int(out.partition(b' ')[0])
 
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):

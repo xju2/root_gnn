@@ -57,14 +57,6 @@ class WTaggerFilteredDataset(DataSet):
 
         senders = np.array([node_dicts[x] for x in inputs_tr.senders.numpy()[edge_passed]])
         receivers = np.array([node_dicts[x] for x in inputs_tr.receivers.numpy()[edge_passed]])
-        # print("n-nodes:", n_nodes)
-        # print("n-edges:", n_edges)
-        # print("nodes:", nodes.shape)
-        # print("edges:", edges.shape)
-        # print("senders:", senders.shape)
-        # print("receivers:", receivers.shape)
-        # print(senders)
-        # print(receivers)
 
         input_datadict = {
             "n_node": n_nodes,
