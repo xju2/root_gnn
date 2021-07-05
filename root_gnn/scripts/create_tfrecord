@@ -55,9 +55,9 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
         
-    from root_gnn import prepare # the main program to produce the graph
+    from root_gnn import datasets as DataSets # the main program to produce the graph
 
-    data = getattr(prepare, args.type)()
+    data = getattr(DataSets, args.type)()
     if args.type == "WTaggerFilteredDataset":
         if args.config is None:
             print("WTaggerFilteredDataset requires model config, --config")
