@@ -6,9 +6,9 @@ loss_name: EdgeLoss
 loss_pars: 2, 1
 
 learning_rate: 0.001
-batch_size: 2
+batch_size: 1
 num_epochs: 3
-n_iters: 5
+num_iters: 4
 stop_on: "auc"
 patiences: 3
 log_freq: 5

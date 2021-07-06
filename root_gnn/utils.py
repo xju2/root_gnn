@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 import yaml
 import os
 
+import tensorflow as tf
+import sonnet as snt
+from root_gnn import model as Models
+
 def read_log(file_name):
     time_format = '%d %b %Y %H:%M:%S'
     get2nd = lambda x: x.split()[1]
@@ -123,3 +127,21 @@ def check_dir(filename):
     abs_dir = os.path.dirname(os.path.abspath(filename))
     if not os.path.exists(abs_dir):
         os.makedirs(abs_dir)
+
+
+def load_model(config):
+    config = load_yaml(config)
+    ckpt_name = 'checkpoints'
+    modeldir = os.path.join(config['output_dir'], ckpt_name)
+ 
+    learning_rate = config['learning_rate']
+    optimizer = snt.optimizers.Adam(learning_rate)
+    model = getattr(Models, config['model'])(**config)
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
+    _ = checkpoint.restore(ckpt_manager.latest_checkpoint).expect_partial()
+
+    num_processing_steps = config['num_iters']
+    batch_size = config['batch_size']
+    
+    return (model, num_processing_steps, batch_size)

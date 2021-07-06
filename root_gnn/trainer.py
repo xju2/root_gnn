@@ -292,7 +292,7 @@ class Trainer(snt.Module):
                         # current validation test is better
                         # save the model
                         if self.ckpt_manager is None:
-                            self.make_checkpoint()
+                            self.make_checkpoints()
                         self.ckpt_manager.save()
                     else:
                         if self.attempts >= self.patiences:

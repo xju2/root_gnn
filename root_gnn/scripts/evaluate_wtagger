@@ -11,7 +11,7 @@ import sonnet as snt
 
 from root_gnn.src.datasets import wprime
 from root_gnn import model as GNN
-from root_gnn.utils import load_yaml
+from root_gnn.utils import load_yaml, load_model
 
 ckpt_name = 'checkpoint'
 if __name__ == "__main__":
@@ -29,33 +29,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     if not os.path.exists(args.filename):
         print("{} does not exists", args.filename)
 
-
     # config ML model
     config = load_yaml(args.config)
-
-    prod_name = config['prod_name']
-    modeldir = os.path.join(config['output_dir'], prod_name)
-    if args.modeldir is not None:
-        modeldir = args.modeldir
-    
-    config_tr = config['parameters']
-    global_batch_size = config_tr['batch_size']
-    num_processing_steps_tr = config_tr['n_iters']      ## level of message-passing
-    learning_rate = config_tr['learning_rate']
-
-    optimizer = snt.optimizers.Adam(learning_rate)
-    model = getattr(GNN, config['model_name'])()
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
-    if os.path.exists(os.path.join(modeldir, ckpt_name)):
-        status = checkpoint.restore(ckpt_manager.latest_checkpoint).expect_partial()
-        print("Loaded latest checkpoint from {}".format(modeldir))
-    else:
-        raise ValueError("Cannot find model at:", modeldir)
+    model, num_processing_steps, batch_size = load_model(args.config)
 
 
     iskip = 0
@@ -84,7 +63,7 @@ if __name__ == "__main__":
         
         ievt += 1
         inputs_tr, targets_tr = wprime.make_graph(event)[0]
-        outputs_tr = model(inputs_tr, num_processing_steps_tr)
+        outputs_tr = model(inputs_tr, num_processing_steps, is_training=False)
         output_graph = outputs_tr[-1]
         node_predicts.append(output_graph.nodes.numpy())
         node_truths.append(targets_tr.nodes.numpy())
@@ -108,7 +87,7 @@ if __name__ == "__main__":
             nodes_sel_from_nodes = np.arange(output_graph.nodes.shape[0])[node_passed]
             gnn_tlv_node_only = wprime.invariant_mass(event, nodes_sel_from_nodes.tolist())
         else:
-            gnn_tlv_node_only = wprime.ZERO
+            gnn_tlv_node_only = ROOT.TLorentzVector()
 
         ljet, wboson = wprime.evaluate_evt(event)
         # print(wboson.E(), gnn_tlv.E())

@@ -6,7 +6,7 @@ from graph_nets import utils_tf
 
 from root_gnn.src.datasets.base import DataSet
 from root_gnn.src.datasets import graph
-from root_gnn.src.models import model_utils
+from root_gnn.utils import load_model
 
 class WTaggerFilteredDataset(DataSet):
     def __init__(self, *args, **kwargs):
@@ -15,7 +15,7 @@ class WTaggerFilteredDataset(DataSet):
         super().__init__(*args, **kwargs)
 
     def set_gnn_config(self, config):
-        self.model, self.num_mp, self.batch_size = model_utils.create_load_model(config)
+        self.model, self.num_mp, self.batch_size = load_model(config)
 
     def signal(self, ss=True):
         self.is_signal = ss
@@ -36,7 +36,7 @@ class WTaggerFilteredDataset(DataSet):
         inputs_tr, _ = event
         
         # apply the GNN model and filter out the edges with a score less than the threshold 0.5.
-        outputs_tr = self.model(inputs_tr, self.num_mp)
+        outputs_tr = self.model(inputs_tr, self.num_mp, is_training=False)
         output_graph = outputs_tr[-1]
 
         # calculate similar variables for GNN-based reconstruction
