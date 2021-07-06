@@ -5,6 +5,7 @@ from typing import Optional
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
+from root_gnn.src.datasets.base import linecount
 
 n_node_features = 7
 
@@ -87,3 +88,6 @@ class WTaggerLeadingJetDataset(DataSet):
     def signal(self, ss=True):
         global is_signal
         is_signal = ss
+
+    def _num_evts(self, filename: str) -> int:
+        return linecount(filename)

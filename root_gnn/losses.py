@@ -1,4 +1,5 @@
 import tensorflow as tf
+import sonnet as snt
 
 class NodeEdgeLoss:
     def __init__(self, real_edge_weight, fake_edge_weight,
@@ -21,6 +22,7 @@ class NodeEdgeLoss:
         ]
         return tf.stack(loss_ops)
 
+
 class GlobalLoss:
     def __init__(self, real_global_weight, fake_global_weight):
         self.w_global_real = real_global_weight
@@ -34,6 +36,41 @@ class GlobalLoss:
             for output_op in output_ops
         ]
         return tf.stack(loss_ops)
+
+class RegressionLoss(snt.Module):
+    """
+    Loss functions for regression.
+    Supported loss function name: 
+    * AME, absolute mean error
+    * MSE, mean squared error
+    """
+    def __init__(self, loss_name: str=None, name='RegressionLoss') -> None:
+        super().__init__(name=name)
+        name = name.lower()
+        
+        self.fnc = tf.compat.v1.losses.absolute_difference
+        if loss_name and loss_name == 'mse':
+            self.fnc = tf.compat.v1.losses.mean_squared_error
+
+class GlobalRegressionLoss(RegressionLoss):
+    def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLoss") -> None:
+        super().__init__(loss_name=loss_name, name=name)
+
+    def __call__(self, target_op, output_ops):
+        loss_ops = [
+            self.fnc(target_op.globals, output_op.globals) for output_op in output_ops
+        ]
+        return tf.stack(loss_ops)
+
+class EdgeRegressionLoss(RegressionLoss):
+    def __init__(self, loss_name: str = None, name: str = "EdgeRegressionLoss") -> None:
+        super().__init__(loss_name=loss_name, name=name)
+    
+    def __call__(self, target_op, output_ops):
+        loss_ops = [
+            self.fnc(target_op.edges, output_op.edges) for output_op in output_ops
+        ]
+        return tf.stack(loss_ops)        
 
 
 class EdgeGlobalLoss:
@@ -72,13 +109,15 @@ class EdgeLoss:
             tf.compat.v1.losses.log_loss(t_edges, tf.squeeze(output_op.edges), weights=edge_weights) 
                 for output_op in output_ops 
         ]
-        return tf.stack(loss_ops)    
+        return tf.stack(loss_ops)
 
 __all__ = (
     "NodeEdgeLoss",
     "GlobalLoss",
     "EdgeGlobalLoss",
     "EdgeLoss",
+    "GlobalRegressionLoss",
+    "EdgeRegressionLoss"
 )
 
 if __name__ == "__main__":

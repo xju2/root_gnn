@@ -1,13 +1,15 @@
-tfrec_dir_train: /global/cscratch1/sd/xju/WbosonTagger/tfrec_bigger/*_*.tfrec
-tfrec_dir_val: /global/cscratch1/sd/xju/WbosonTagger/tfrec_val_bigger/*_*.tfrec
-output_dir:  /global/cscratch1/sd/xju/WbosonTagger/trained
-prod_name: edgeOnly_fullevts_bigger
-model_name: EdgeClassifier
-loss_name: EdgeLoss, 2, 1
-parameters:
-    batch_size: 1
-    n_iters: 5
-    learning_rate: 0.0001
-    epochs: 2
-    earlystop_metric: "auc_te" #auc_te, acc_te, pre_te, rec_te
-    acceptable_failure: 5
+input_dir: inputs
+evts_per_file: 10
+output_dir: WjetsTrained
+model: EdgeClassifier
+loss_name: EdgeLoss
+loss_pars: 2, 1
+
+learning_rate: 0.001
+batch_size: 1
+num_epochs: 3
+num_iters: 4
+stop_on: "auc"
+patiences: 3
+log_freq: 5
+val_batches: 2

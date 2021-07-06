@@ -10,7 +10,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Calculate and plot the merits for comparison/evluation purpose.")
     add_arg = parser.add_argument
-    add_arg("filename", help='numpy npz file containing predictions and truth-info')
+    add_arg("filename", help='numpy npz file containing arrays of predictions and truth-info')
     add_arg("outname", help='output name prefix')
     args = parser.parse_args()
 

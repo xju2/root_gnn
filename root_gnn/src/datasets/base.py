@@ -8,10 +8,17 @@ from multiprocessing import Pool
 from functools import partial
 
 import tensorflow as tf
-from graph_nets import utils_tf
+# from graph_nets import utils_tf
 from root_gnn.src.datasets import graph
+import subprocess
 
-
+def linecount(filename):
+    return sum([1 for lin in open(filename)])
+    # out = subprocess.Popen(['wc', '-l', filename],
+    #                      stdout=subprocess.PIPE,
+    #                      stderr=subprocess.STDOUT
+    #                      ).communicate()[0]
+    # return int(out.partition(b' ')[0])
 
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
@@ -43,9 +50,10 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, filename, outname, debug):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug):
+       
         outname = "{}_{}.tfrec".format(outname, ijob)
-        if os.path.exists(outname):
+        if os.path.exists(outname) and not overwrite:
             print(outname,"is there. skip...")
             return 0, n_evts_per_record
 
@@ -57,8 +65,8 @@ class DataSet(object):
             ievt += 1
             if ievt < start_entry:
                 continue
-            
             gen_graphs = self.make_graph(event, debug)
+            
             if gen_graphs[0][0] is None:
                 ifailed += 1
                 continue
@@ -91,7 +99,7 @@ class DataSet(object):
         return ifailed, isaved
         
 
-    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, **kwargs):
+    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -101,17 +109,28 @@ class DataSet(object):
         if all_evts%n_evts_per_record > 0:
             n_files += 1
 
-        print("In total {:,} events, write to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
-        with Pool(num_workers) as p:
-            process_fnc = partial(self.subprocess,
+        print("Total {:,} events are requested to be written to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        out_dir = os.path.abspath(os.path.dirname(outname))
+        os.makedirs(out_dir, exist_ok=True)
+        
+        if num_workers < 2:
+            ifailed, isaved=0, 0
+            for ijob in range(n_files):
+                n_failed, n_saved = self.subprocess(ijob, n_evts_per_record, filename, outname, overwrite, debug)
+                ifailed += n_failed
+                isaved += n_saved
+        else:
+            with Pool(num_workers) as p:
+                process_fnc = partial(self.subprocess,
                         n_evts_per_record=n_evts_per_record,
                         filename=filename,
                         outname=outname,
+                        overwrite=overwrite,
                         debug=debug)
-            res = p.map(process_fnc, list(range(n_files)))
+                res = p.map(process_fnc, list(range(n_files)))
 
-        ifailed = sum([x[0] for x in res])
-        isaved = sum([x[1] for x in res])
+            ifailed = sum([x[0] for x in res])
+            isaved = sum([x[1] for x in res])
             
         read_time = time.time() - now
         print("{} added {:,} events, in {:.1f} mins".format(self.__class__.__name__,

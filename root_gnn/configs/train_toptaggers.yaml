@@ -1,13 +1,14 @@
-tfrec_dir_train: tfrec/train_*.tfrec
-tfrec_dir_val: tfrec/val_*.tfrec
-output_dir: trained
-prod_name: noedge_fullevts
-model_name: GlobalClassifierNoEdgeInfo
-loss_name: GlobalLoss, 1, 1
-parameters:
-    batch_size: 50
-    n_iters: 10
-    learning_rate: 0.0005
-    epochs: 1
-    earlystop_metric: "auc_te" # acc_te, pre_te, rec_te
-    acceptable_failure: 1
+input_dir: TopTagger
+output_dir: trainedTopTagger
+model_name: GlobalClassifier
+loss_name: GlobalLoss
+loss_pars: 1, 1
+
+batch_size: 100
+num_iters: 8
+learning_rate: 0.0005
+num_epochs: 10
+stop_on: "auc"
+patiences: 10
+log_freq: 100
+val_batches: 50

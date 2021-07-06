@@ -5,6 +5,7 @@ import itertools
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
+from root_gnn.src.datasets.base import linecount
 
 n_node_features = 7
 
@@ -153,22 +154,6 @@ def invariant_mass(event, p_list):
         for inode in range(n_particles) if inode in p_list
     ]
 
-    # w_jet_idxs = [
-    #     inode
-    #     for inode in range(n_particles) if event[inode*n_node_features+5] == 1        
-    # ]
-    # wset = set(w_jet_idxs)
-    # pset = set(p_list)
-    # print("Total {} objects in W".format(len(wset)))
-    # print("Total {} objects in GNN".format(len(pset)))
-    # print("Total {} objects in common".format(len(pset.intersection(wset))))
-    # print("Total {} objects only in GNN".format(len(pset.difference(wset))))
-    # print("Total {} objects only in W".format(len(wset.difference(pset))))
-    # print("Total {} particles".format(len(particles)))
-    # print(w_jet_idxs)
-    # print(p_list)
-
-
     tlv = ROOT.TLorentzVector(particles[0])
     for pp in particles[1:]:
         tlv += pp
@@ -216,3 +201,6 @@ class WTaggerDataset(DataSet):
         super().__init__(*args, **kwargs)
         self.read = read
         self.make_graph = make_graph
+
+    def _num_evts(self, filename: str) -> int:
+        return linecount(filename)

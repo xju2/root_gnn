@@ -1,6 +1,9 @@
 #!/usr/bin/env python
+from root_gnn.src.datasets.base import DataSet
 import time
 import os
+
+from root_gnn import datasets as DataSets
 
 if __name__ == "__main__":
     import argparse
@@ -8,23 +11,16 @@ if __name__ == "__main__":
     add_arg = parser.add_argument
     add_arg("input_file", help='input file')
     add_arg("outname", help='output name')
-    add_arg('--evts-per-record', default=10, type=int, help='number of events per output file')
+    add_arg('--evts-per-record', default=5000, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
-            choices=['TopTaggerDataset', 'WTaggerDataset',
-                     'FourTopDataset', 'WTaggerFilteredDataset',
-                     'WTaggerLeadingJetDataset',
-                     'HerwigHadrons',
-                     'ToppairDataSet',
-                     'TopReco',
-                     'HiggsYYGen',
-                     'HadronicInteraction',
-                     ])
+            choices=list(DataSets.__all__))
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
-    add_arg("--model-config", help='configuration file for training', default=None)
+    add_arg("--config", help='configuration file for training OR for configuring the dataset', default=None)
     add_arg("--num-workers", help='number of threads', default=1, type=int)
-
+    add_arg("--overwrite", action='store_true',
+        help='specifies whether to overwrite existing files with same outname pattern')
 
     args = parser.parse_args()
     n_evts_per_record = args.evts_per_record
@@ -44,24 +40,36 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
         
-    from root_gnn import prepare # the main program to produce the graph
-    data = getattr(prepare, args.type)()
+    from root_gnn import datasets as DataSets # the main program to produce the graph
+
+    data = getattr(DataSets, args.type)()
     if args.type == "WTaggerFilteredDataset":
-        if args.model_config is None:
-            print("WTaggerFilteredDataset requires model config, --model-config")
+        if args.config is None:
+            print("WTaggerFilteredDataset requires model config, --config")
             exit(1)
         else:
-            data.set_gnn_config(args.model_config)
+            data.set_gnn_config(args.config)
 
     if args.type in ["FourTopDataset", "WTaggerLeadingJetDataset", "WTaggerFilteredDataset"]:
         if args.signal:
             data.signal()
 
+    if args.type == "RootDataset":
+        if args.config is None:
+            print("RootDataset requires model yaml config, --config")
+            exit(1)
+        #call data.set_config_file here to get the yaml file before doing branch reading
+        else:
+            data.set_config_file(args.config)
+        
+        data.set_include_particle_type(args.include_particle_type)
+
     now = time.time()
 
+    print("GOING TO PROCESS NOW") 
     data.process(filename=args.input_file, outname=outname,\
         n_evts_per_record=n_evts_per_record, debug=args.debug,
-        max_evts=args.max_evts, num_workers=args.num_workers)
+        max_evts=args.max_evts, num_workers=args.num_workers, overwrite = args.overwrite)
     
     read_time = time.time() - now
     print("{} finished in {:.1f} mins".format(data.__class__.__name__, read_time/60.))
