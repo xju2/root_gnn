@@ -1,5 +1,7 @@
 # root_gnn
-GNN classification for reconstructed HEP events stored in ROOT
+GNN classification/Regression for reconstructed HEP events. 
+
+[![DOI](https://zenodo.org/badge/173806807.svg)](https://zenodo.org/badge/latestdoi/173806807)
 
 ## Install
 ```bash
