@@ -49,7 +49,7 @@ def make_graph(event, debug=False):
     return [(input_graph, target_graph)]
 
 class JetInfo:
-    def __init__(self, is_tau_jet: bool, nodes: list[list[float]], n_nodes: int):
+    def __init__(self, is_tau_jet, nodes, n_nodes):
         self.is_tau_jet = is_tau_jet
         self.n_nodes = n_nodes
         self.nodes = nodes
