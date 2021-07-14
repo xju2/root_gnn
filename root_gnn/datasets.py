@@ -16,6 +16,6 @@ __all__ = (
     "TopTaggerDataset",
     "WTaggerDataset",
     "WTaggerFilteredDataset",
-    "WTaggerLeadingJetDataset"
+    "WTaggerLeadingJetDataset",
     "TauIdentificationDataset",
 )
