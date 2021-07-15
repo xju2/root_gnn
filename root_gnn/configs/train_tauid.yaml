@@ -1,0 +1,16 @@
+input_dir: /global/u1/l/lreed/data/processed/v1/split
+evts_per_file: 5000
+output_dir: /global/u1/l/lreed/firstGPUtrained/trained
+model: GlobalClassifier
+loss_name: GlobalLoss
+loss_pars: 1, 1
+
+batch_size: 100
+num_batches: 3000
+num_iters: 8
+learning_rate: 0.0005
+num_epochs: 10
+stop_on: "auc"
+patiences: 10
+log_freq: 5
+val_batches: 50
