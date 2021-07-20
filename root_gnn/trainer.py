@@ -327,7 +327,7 @@ class Trainer(snt.Module):
                 predictions.append(outputs.edges)
                 truth_info.append(targets.edges)
             else:
-                raise ValueError("currently " + self.modes + " is not supported")
+                raise ValueError("currently " + self.mode + " is not supported")
 
         predictions = np.concatenate(predictions, axis=0)
         truth_info = np.concatenate(truth_info, axis=0)
