@@ -119,7 +119,7 @@ class EdgeRegression(EdgeLearnerBase):
             snt.nets.MLP(decoder_size,
                         activation=tf.nn.relu, # default is relu
                         name='edge_regresssion_output')])
-                        
+
         super().__init__(edge_fn, with_edge_inputs=with_edge_inputs,
             with_node_inputs=with_node_inputs,
             encoder_size=encoder_size,
