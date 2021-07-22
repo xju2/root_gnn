@@ -28,8 +28,9 @@ if __name__ == "__main__":
     
     model_name = config['model']
     mode = 'clf' if "Classifier" in model_name else 'rgr'
-    mode += ',global' if "Global" in model_name else ',edges'
+    mode += ',globals' if "Global" in model_name else ',edges'
     config['mode'] = mode
+    print("mode is", mode)
 
     if 'loss_pars' in config and config['loss_pars']:
         loss_fcn = config['loss_name']+','+config['loss_pars']

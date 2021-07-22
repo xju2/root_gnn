@@ -24,7 +24,7 @@ def make_mlp_model(
   return snt.Sequential([
       snt.nets.MLP(mlp_size,
                   activation=activations,
-                  activate_final=activate_final, 
+                  activate_final=activate_final,
                   dropout_rate=dropout_rate
         ),
       snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
