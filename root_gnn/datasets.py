@@ -9,10 +9,12 @@ from root_gnn.src.datasets.toptagger import TopTaggerDataset
 from root_gnn.src.datasets.wprime import WTaggerDataset
 from root_gnn.src.datasets.wprimefiltered import WTaggerFilteredDataset
 from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
+from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 __all__ = (
     "TopTaggerDataset",
     "WTaggerDataset",
     "WTaggerFilteredDataset",
-    "WTaggerLeadingJetDataset"
+    "WTaggerLeadingJetDataset",
+    "DiTauMassDataset"
 )
