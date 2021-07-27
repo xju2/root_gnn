@@ -320,7 +320,7 @@ class Trainer(snt.Module):
             if len(outputs) > 1:
                 outputs = outputs[-1]
 
-            if "global" in self.mode:
+            if "globals" in self.mode:
                 predictions.append(outputs.globals)
                 truth_info.append(targets.globals)
             elif 'edges' in self.mode:
