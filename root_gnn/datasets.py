@@ -11,10 +11,13 @@ from root_gnn.src.datasets.wprimefiltered import WTaggerFilteredDataset
 from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
+from root_gnn.src.datasets.tauid import TauIdentificationDataset
+
 __all__ = (
     "TopTaggerDataset",
     "WTaggerDataset",
     "WTaggerFilteredDataset",
     "WTaggerLeadingJetDataset",
     "DiTauMassDataset"
+    "TauIdentificationDataset",
 )

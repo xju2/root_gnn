@@ -1,0 +1,19 @@
+input_dir: /mnt/c/Users/Landon/root_gnn/processed/v1
+evts_per_file: 5000
+output_dir: /mnt/c/Users/Landon/root_gnn/big_results
+model: GlobalClassifier
+loss_name: GlobalLoss
+loss_pars: 1, 1
+
+batch_size: 100
+num_iters: 4 
+learning_rate: 0.0005
+num_epochs: 100
+stop_on: "auc"
+patiences: 20
+log_freq: 10
+val_batches: 100
+shuffle_size: 1000
+dropout_rate: 0.1
+encoder_size: [256,256]
+core_size: [256,256]

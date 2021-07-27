@@ -343,7 +343,7 @@ class Trainer(snt.Module):
         elif 'rgr' in self.mode:
             self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
         else:
-            raise ValueError("currently " + self.modes + " is not supported")
+            raise ValueError("currently " + self.mode + " is not supported")
 
         self.metric_dict['val_loss'] = total_loss / self.log_freq
 
