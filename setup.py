@@ -10,7 +10,7 @@ description="Use Graph Network to perform data analysis"
 
 setup(
     name="root_gnn",
-    version="2.0.0",
+    version="2.0.1",
     description="Library for using Graph Nural Networks in HEP analysis",
     long_description=description,
     author="Xiangyang Ju",
@@ -20,6 +20,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
+        "tensorflow==2.4",
         "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
         "networkx",

@@ -23,14 +23,14 @@ class GlobalLearnerBase(snt.Module):
         super(GlobalLearnerBase, self).__init__(name=name)
 
         if encoder_size is not None:
-            encoder_mlp_fn = partial(make_mlp_model, mlp_size=encoder_size, **kwargs)
+            encoder_mlp_fn = partial(make_mlp_model, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
         else:
-            encoder_mlp_fn = partial(make_mlp_model, **kwargs)
+            encoder_mlp_fn = partial(make_mlp_model, name='EncoderMLP', **kwargs)
 
         node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=False)
         edge_block_args=dict(use_edges=False, use_receiver_nodes=True, use_sender_nodes=True, use_globals=False)
         global_block_args=dict(use_edges=True, use_nodes=True, use_globals=False)
-        
+
         if with_edge_inputs:
             edge_block_args['use_edges'] = True
             node_block_args['use_received_edges'] = True
@@ -43,16 +43,16 @@ class GlobalLearnerBase(snt.Module):
             global_block_args['use_globals']=True
 
         self._edge_encoder_block = blocks.EdgeBlock(
-            edge_model_fn=make_mlp_model,
+            edge_model_fn=encoder_mlp_fn,
             name='edge_encoder_block', **edge_block_args)
 
         self._node_encoder_block = blocks.NodeBlock(
-            node_model_fn=make_mlp_model,
+            node_model_fn=encoder_mlp_fn,
             name='node_encoder_block', **node_block_args)
 
         self._global_block = blocks.GlobalBlock(
-            global_model_fn=make_mlp_model, name='global_encoder_block', **global_block_args)
-        
+            global_model_fn=encoder_mlp_fn, name='global_encoder_block', **global_block_args)
+
         if core_size is not None:
             core_mlp_fn = partial(make_mlp_model, mlp_size=core_size, **kwargs)
         else:
@@ -95,7 +95,7 @@ class GlobalClassifier(GlobalLearnerBase):
                         activation=tf.nn.relu, # default is relu
                         name='edge_classifier_output'),
             tf.sigmoid])
-        
+
         super().__init__(global_fn,
             with_edge_inputs=with_edge_inputs,
             with_node_inputs=with_node_inputs,

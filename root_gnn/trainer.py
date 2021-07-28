@@ -327,7 +327,7 @@ class Trainer(snt.Module):
                 predictions.append(outputs.edges)
                 truth_info.append(targets.edges)
             else:
-                raise ValueError("currently " + self.modes + " is not supported")
+                raise ValueError("currently " + self.mode + " is not supported")
 
         predictions = np.concatenate(predictions, axis=0)
         truth_info = np.concatenate(truth_info, axis=0)
@@ -343,7 +343,7 @@ class Trainer(snt.Module):
         elif 'rgr' in self.mode:
             self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
         else:
-            raise ValueError("currently " + self.modes + " is not supported")
+            raise ValueError("currently " + self.mode + " is not supported")
 
         self.metric_dict['val_loss'] = total_loss / self.log_freq
 
