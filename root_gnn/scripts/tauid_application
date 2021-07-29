@@ -78,7 +78,7 @@ if __name__ == "__main__":
         # Generate graphs and predictions
         leafValues.clear()
         for graph in graph_list:
-            outputs = model(graph[0], num_iters,is_training=True)
+            outputs = model(graph[0], num_iters,is_training=False)
             #extract gnn output
             output = np.float32(outputs[-1].globals[0][0])
             leafValues.push_back(output)
