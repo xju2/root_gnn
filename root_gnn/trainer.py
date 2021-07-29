@@ -345,7 +345,7 @@ class Trainer(snt.Module):
         else:
             raise ValueError("currently " + self.mode + " is not supported")
 
-        self.metric_dict['val_loss'] = total_loss / self.log_freq
+        self.metric_dict['val_loss'] = total_loss / self.val_batches
 
         with self.metric_writer.as_default():
             for key,val in self.metric_dict.items():
