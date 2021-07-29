@@ -252,6 +252,7 @@ class Trainer(snt.Module):
         The training step.
         """
         self._setup_training_loop()
+        self.make_checkpoints()
 
         ngraphs = self.ngraphs_train
         train_data = self.data_train
@@ -291,8 +292,6 @@ class Trainer(snt.Module):
                     if is_better:
                         # current validation test is better
                         # save the model
-                        if self.ckpt_manager is None:
-                            self.make_checkpoints()
                         self.ckpt_manager.save()
                     else:
                         if self.attempts >= self.patiences:
