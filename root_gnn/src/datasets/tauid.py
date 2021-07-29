@@ -88,6 +88,8 @@ def read(filename):
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
+        if chain.nJets == 0:
+            continue
         yield chain
 
 class TauIdentificationDataset(DataSet):
