@@ -316,7 +316,7 @@ class Trainer(snt.Module):
             total_loss += (tf.math.reduce_sum(
                 self.loss_fcn(targets, outputs))/tf.constant(
                     self.num_iters, dtype=tf.float32)).numpy()
-            if len(outputs) > 1:
+            if len(outputs) > 0:
                 outputs = outputs[-1]
 
             if "globals" in self.mode:
