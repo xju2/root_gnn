@@ -1,19 +1,21 @@
-input_dir: /mnt/c/Users/Landon/root_gnn/processed/v1
-evts_per_file: 5000
-output_dir: /mnt/c/Users/Landon/root_gnn/big_results
+input_dir: /global/u1/l/lreed/tfrec/v1_4/split
+evts_per_file: 1000
+output_dir: /global/u1/l/lreed/results/v1_4/0_gc_5e4_it4_mlp2_128_bs1000_dr0
 model: GlobalClassifier
+model_name: GlobalClassifier
 loss_name: GlobalLoss
 loss_pars: 1, 1
 
-batch_size: 100
-num_iters: 4 
+batch_size: 1000
+prod_name: gnn128
+num_iters: 4
 learning_rate: 0.0005
-num_epochs: 100
+num_epochs: 10
 stop_on: "auc"
-patiences: 20
-log_freq: 10
-val_batches: 100
-shuffle_size: 1000
-dropout_rate: 0.1
-encoder_size: [256,256]
-core_size: [256,256]
+patiences: 2000
+log_freq: 100
+val_batches: 20 
+shuffle_size: 100000
+dropout_rate: 0.0
+encoder_size: [128,128]
+core_size: [128,128]
