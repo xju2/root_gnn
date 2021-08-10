@@ -125,43 +125,56 @@ class GlobalRegression(GlobalLearnerBase):
             with_global_inputs=with_global_inputs,
             encoder_size=encoder_size, core_size=core_size, name=name, **kwargs)
 
-class GlobalSetClassifier(snt.Module):
 
-    def __init__(self,
-        with_edge_inputs=False,
-        with_node_inputs=True,
-        with_global_inputs=False,
-        encoder_size: list=None,
-        core_size: list=None,
-        name="GlobalSetBase", **kwargs):
+class GlobalSetClassifier(snt.Module):
+    def __init__(self,with_global_inputs=False,core_size: list=None,decoder_size: list=None,name="GlobalSetClassifier",**kwargs):
         super(GlobalSetClassifier, self).__init__(name=name)
 
-        if encoder_size is not None:
-            node_model_fn = partial(make_mlp_model, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
-        else:
-            node_model_fn = partial(make_mlp_model, name="EncoderMLP", **kwargs)
+        node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=with_global_inputs)
+        global_block_args=dict(use_edges=False, use_nodes=True, use_globals=with_global_inputs)
 
         if core_size is not None:
-            global_size = core_size + [1]
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,mlp_size=core_size, **kwargs)
         else:
-            global_size = [1]
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,**kwargs)
 
-        global_model_fn = lambda: snt.Sequential([snt.nets.MLP(global_size,name="global_block_model"),tf.sigmoid])
+        global_size = core_size + [1]
 
-        self._node_encoder_block = blocks.NodeBlock(
-            node_model_fn=node_model_fn,
-            use_received_edges=False,
-            use_sent_edges=False,
-            use_globals=True,
-            name='node_encoder_block')
+        global_fn = lambda: snt.Sequential([snt.nets.MLP(global_size,activation=tf.nn.relu, name='set_classifier_output'),tf.sigmoid])
 
-        self._global_block = blocks.GlobalBlock(
-            global_model_fn=global_model_fn,
-            use_edges=False,
-            use_globals=True,
-            name='global_encoder_block')
+        self.deep_set = modules.DeepSets(node_mlp_fn,global_fn)
 
 
-    def __call__(self, input_op, num_processing_steps, is_training=True,**kwargs):
+    def __call__(self, input_op, num_processing_steps, is_training=True):
         node_kwargs = global_kwargs = dict(is_training=is_training)
-        return [self._global_block(self._node_encoder_block(input_op, node_kwargs))]
+        output_op = self.deep_set(input_op)
+        return [output_op]
+
+
+
+
+class GlobalGraphNetClassifier(snt.Module):
+    def __init__(self,with_global_inputs=False,core_size: list=None,decoder_size: list=None,name="GlobalSetClassifier",**kwargs):
+        super(GlobalGraphNetClassifier, self).__init__(name=name)
+
+        node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=with_global_inputs)
+        global_block_args=dict(use_edges=False, use_nodes=True, use_globals=with_global_inputs)
+
+        if core_size is not None:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,mlp_size=core_size, **kwargs)
+        else:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,**kwargs)
+
+        global_size = core_size + [1]
+
+        global_fn = lambda: snt.Sequential([snt.nets.MLP(global_size,activation=tf.nn.relu, name='set_classifier_output'),tf.sigmoid])
+
+        self.deep_set = modules.GraphNetwork(node_mlp_fn,node_mlp_fn,global_fn)
+
+
+    def __call__(self, input_op, num_processing_steps, is_training=True):
+        node_kwargs = global_kwargs = dict(is_training=is_training)
+        output_op = self.deep_set(input_op)
+        return [output_op]
+
+
