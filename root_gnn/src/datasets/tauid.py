@@ -5,10 +5,6 @@ import itertools
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
-import ROOT
-from ROOT import TChain, AddressOf, std
-from array import array
-
 def make_graph(chain, debug=False):
     isTau = 0
     scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
