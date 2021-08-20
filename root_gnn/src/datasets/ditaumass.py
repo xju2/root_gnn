@@ -9,16 +9,20 @@ from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
 
 tree_name = "output"
-def make_graph(event, debug=False):
-    # globals
-    try:
-        tau_info = [event.truthTauEt, event.truthTauEta, event.truthTauPhi]
-        tau1_param = [param[0] for param in tau_info]
-        tau2_param = [param[1] for param in tau_info]
-        global_attr = tau1_param + tau2_param
-        
-    except IndexError:
+def make_graph(event, disconnect_jets=True, calculate_mass=True, debug=False):
+    # Check if size is 0
+    if event.nJets < 1 or event.truthTauN != 2:
         return [(None, None)]
+    
+    # globals
+    Pt1, Pt2 = event.truthTauEt[0], event.truthTauEt[1]
+    eta1, eta2 = event.truthTauEta[0], event.truthTauEta[1]
+    phi1, phi2 = event.truthTauPhi[0], event.truthTauPhi[1]
+    if calculate_mass:
+        M = np.sqrt(2*Pt1*Pt2*(np.cosh(eta1-eta2)-np.cos(phi1-phi2)))
+        global_attr = [M]
+    else:
+        global_attr = [Pt1, eta1, phi1, Pt2, eta2, phi2]
 
     # nodes
     n_nodes = 0
@@ -35,30 +39,48 @@ def make_graph(event, debug=False):
     prev_num_track = 0
     prev_num_tower = 0
     
+    node_indx = []
+    inode = 0
+    
+    
     for indv_jet in range(event.nJets):
         
         # adding tracks associated with each jet
         for num_track in range(event.JetGhostTrackN[indv_jet]):
-            track_idx = event.JetGhostTrackIdx[num_track]
+            track_idx = event.JetGhostTrackIdx[num_track+prev_num_track]
             nodes.append(get_track_info(track_idx))
+            inode += 1
+            
+        prev_num_track += event.JetGhostTrackN[indv_jet]
             
         # add towers associated with each jet
         for num_tower in range(event.JetTowerN[indv_jet]):
             tower_idx = num_tower+prev_num_tower
             nodes.append(get_tower_info(tower_idx))
+            inode += 1
 
         prev_num_tower += event.JetTowerN[indv_jet]
-    
-    nodes = np.array(nodes, dtype=np.float32)
+        
+        node_indx.append(inode)
+        
+    nodes = np.tanh(np.array(nodes, dtype=np.float32))
     n_nodes = nodes.shape[0]
     
     if debug:
         #print(np.array(event.TrackPt).shape)
+        assert node_indx[-1] == n_nodes, 'Nodes Error'
         print(n_nodes)
         print(nodes)
 
     # edges
-    all_edges = list(itertools.combinations(range(n_nodes), 2))
+    if disconnect_jets:
+        all_edges = []
+        prev_node = 0
+        for i in node_indx:
+            all_edges += list(itertools.permutations(range(prev_node, i), 2))
+            prev_node = i
+    else:
+        all_edges = list(itertools.permutations(range(n_nodes), 2))
     senders = np.array([x[0] for x in all_edges])
     receivers = np.array([x[1] for x in all_edges])
     n_edges = len(all_edges)
