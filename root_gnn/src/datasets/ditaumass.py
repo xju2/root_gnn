@@ -11,8 +11,9 @@ from root_gnn.src.datasets.base import DataSet
 
 tree_name = "output"
 scales = np.array([100, 5, np.pi, 100, 5, np.pi, 100], dtype=np.float32)
+do_disconnect_jets = False
 
-def make_graph(event, disconnect_jets=True, calculate_mass=True, debug=False):
+def make_graph(event, debug=False):
     # selecting events with at least one reco jets
     # and two true tau leptons
     if event.nJets < 1 or event.truthTauN != 2:
@@ -40,6 +41,7 @@ def make_graph(event, disconnect_jets=True, calculate_mass=True, debug=False):
     nodes = []
     node_indx = [] 
     prev_num_tower = 0
+    inode = 0
     for indv_jet in range(event.nJets):
         
         # adding tracks associated with each jet
@@ -68,7 +70,7 @@ def make_graph(event, disconnect_jets=True, calculate_mass=True, debug=False):
         print(nodes)
 
     # edges
-    if disconnect_jets:
+    if do_disconnect_jets:
         all_edges = []
         prev_node = 0
         for i in node_indx:
@@ -128,3 +130,7 @@ class DiTauMassDataset(DataSet):
         chain.Add(filename)
         n_entries = chain.GetEntries()
         return n_entries
+
+    def disconnect_jets(self):
+        global do_disconnect_jets
+        do_disconnect_jets = False

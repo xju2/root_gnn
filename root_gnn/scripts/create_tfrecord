@@ -21,6 +21,7 @@ if __name__ == "__main__":
     add_arg("--num-workers", help='number of threads', default=1, type=int)
     add_arg("--overwrite", action='store_true',
         help='specifies whether to overwrite existing files with same outname pattern')
+    add_arg("--disconnect-jets", help="applicable for DitauMass", action='store_true')
 
     args = parser.parse_args()
     n_evts_per_record = args.evts_per_record
@@ -43,6 +44,8 @@ if __name__ == "__main__":
     from root_gnn import datasets as DataSets # the main program to produce the graph
 
     data = getattr(DataSets, args.type)()
+
+    # following are hacks for specific dataset
     if args.type == "WTaggerFilteredDataset":
         if args.config is None:
             print("WTaggerFilteredDataset requires model config, --config")
@@ -64,6 +67,10 @@ if __name__ == "__main__":
         
         data.set_include_particle_type(args.include_particle_type)
 
+    if args.type == "DiTauMassDataset":
+        if args.disconnect_jets:
+            data.disconnect_jets()
+            
     now = time.time()
 
     print("GOING TO PROCESS NOW") 
