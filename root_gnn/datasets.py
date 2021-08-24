@@ -18,6 +18,6 @@ __all__ = (
     "WTaggerDataset",
     "WTaggerFilteredDataset",
     "WTaggerLeadingJetDataset",
-    "DiTauMassDataset"
+    "DiTauMassDataset",
     "TauIdentificationDataset",
 )

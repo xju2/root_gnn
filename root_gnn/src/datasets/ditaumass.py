@@ -10,16 +10,16 @@ from root_gnn.src.datasets.base import DataSet
 
 tree_name = "output"
 def make_graph(event, debug=False):
-    # globals
-    try:
-        tau_info = [event.truthTauEt, event.truthTauEta, event.truthTauPhi]
-        tau1_param = [param[0] for param in tau_info]
-        tau2_param = [param[1] for param in tau_info]
-        global_attr = tau1_param + tau2_param
-        
-    except IndexError:
+    # selecting events with at least one reco jets
+    # and two true tau leptons
+
+    if event.nJets < 1 or len(event.truthTauEt) < 2:
         return [(None, None)]
 
+    # globals
+    global_attr =  [event.truthTauEt[0], event.truthTauEta[0], event.truthTauPhi[0]]
+    global_attr += [event.truthTauEt[1], event.truthTauEta[1], event.truthTauPhi[1]]        
+    
     # nodes
     n_nodes = 0
     
@@ -30,11 +30,8 @@ def make_graph(event, debug=False):
         return [event.JetTowerEt[idx], event.JetTowerEta[idx], event.JetTowerPhi[idx]]
 
     
-    nodes = []
-    
-    prev_num_track = 0
+    nodes = []    
     prev_num_tower = 0
-    
     for indv_jet in range(event.nJets):
         
         # adding tracks associated with each jet
@@ -68,7 +65,7 @@ def make_graph(event, debug=False):
         "n_node": n_nodes,
         "n_edge": n_edges,
         "nodes": nodes,
-        "edges": edges,
+        "edges": None,
         "senders": senders,
         "receivers": receivers,
         "globals": np.array([0], dtype=np.float32)
@@ -77,7 +74,7 @@ def make_graph(event, debug=False):
         "n_node": n_nodes,
         "n_edge": n_edges,
         "nodes": nodes,
-        "edges": edges,
+        "edges": None,
         "senders": senders,
         "receivers": receivers,
         "globals": np.array(global_attr, dtype=np.float32)
