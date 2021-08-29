@@ -39,21 +39,21 @@ def make_graph(event, debug=False):
 
     
     nodes = []
-    node_indx = [] 
+    node_indx = []
+    prev_num_track = 0
     prev_num_tower = 0
     inode = 0
     for indv_jet in range(event.nJets):
         
         # adding tracks associated with each jet
         for num_track in range(event.JetGhostTrackN[indv_jet]):
-            track_idx = event.JetGhostTrackIdx[num_track]
+            track_idx = event.JetGhostTrackIdx[num_track+prev_num_track]
             nodes.append(get_track_info(track_idx))
             inode += 1
             
         # add towers associated with each jet
         for num_tower in range(event.JetTowerN[indv_jet]):
-            tower_idx = num_tower+prev_num_tower
-            nodes.append(get_tower_info(tower_idx))
+            nodes.append(get_tower_info(num_tower+prev_num_tower))
             inode += 1
 
         prev_num_tower += event.JetTowerN[indv_jet]
@@ -87,7 +87,7 @@ def make_graph(event, debug=False):
         "n_node": n_nodes,
         "n_edge": n_edges,
         "nodes": nodes,
-        "edges": None,
+        "edges": edges,
         "senders": senders,
         "receivers": receivers,
         "globals": np.array([0], dtype=np.float32)
@@ -96,7 +96,7 @@ def make_graph(event, debug=False):
         "n_node": n_nodes,
         "n_edge": n_edges,
         "nodes": nodes,
-        "edges": None,
+        "edges": edges,
         "senders": senders,
         "receivers": receivers,
         "globals": np.array(global_attr, dtype=np.float32)
