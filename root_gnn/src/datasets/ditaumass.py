@@ -29,8 +29,6 @@ def make_graph(event, debug=False):
     global_attr = np.array(global_attr) / scales
 
     # nodes
-    n_nodes = 0
-    
     def get_track_info(idx):
         return [event.TrackPt[idx], event.TrackEta[idx], event.TrackPhi[idx]]
 
@@ -112,6 +110,15 @@ def read(filename):
     chain.Add(filename)
     n_entries = chain.GetEntries()
     print("Total {:,} Events".format(n_entries))
+    chain.SetBranchStatus("*", 0)
+    branches = [
+        'nJets',
+        'truthTauN', 'truthTauEt', 'truthTauEta', 'truthTauPhi',
+        'TrackPt', 'TrackEta', 'TrackPhi',
+        'JetTowerEt', 'JetTowerEta', 'JetTowerPhi',
+        'JetGhostTrackN', 'JetGhostTrackIdx', 'JetTowerN'
+    ]
+    [chain.SetBranchStatus(brname, 1) for brname in branches]
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
