@@ -13,6 +13,31 @@ from graph_nets import blocks
 
 import sonnet as snt
 
+class MultiMLP(snt.Module):
+    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
+        super(MMLP, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
+    def __call__(self,x):
+        return self.tower_mlp(tf.reshape(x[0][1:],[1, 3]))*x[0][0]+self.track_mlp(tf.reshape(x[0][1:],[1, 3]))*(1.-x[0][0])
+
+def make_multi_mlp_model(
+    mlp_size: list = [128]*2,
+    dropout_rate: float = 0.05,
+    activations=tf.nn.relu,
+    activate_final: bool =True,
+    name: str = 'MLP', *args, **kwargs):
+  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+  return snt.Sequential([
+      MultiMLP(mlp_size,
+                  activation=activations,
+                  activate_final=activate_final,
+                  dropout_rate=dropout_rate
+        ),
+      snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
+  ], name=name)
+
 def make_mlp_model(
     mlp_size: list = [128]*2,
     dropout_rate: float = 0.05,

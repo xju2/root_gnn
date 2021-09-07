@@ -6,7 +6,7 @@ from graph_nets import modules
 from graph_nets import blocks
 
 from root_gnn.src.models.base import MLPGraphNetwork
-from root_gnn.src.models.base import make_mlp_model
+from root_gnn.src.models.base import make_mlp_model, make_multi_mlp_model
 from functools import partial
 
 
@@ -19,13 +19,14 @@ class GlobalLearnerBase(snt.Module):
         with_global_inputs=False,
         encoder_size: list=None,
         core_size: list=None,
-        name="GlobalLearnerBase", **kwargs):
+        name="GlobalLearnerBase",
+        encoder_fn = make_mlp_model, **kwargs):
         super(GlobalLearnerBase, self).__init__(name=name)
 
         if encoder_size is not None:
-            encoder_mlp_fn = partial(make_mlp_model, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
+            encoder_mlp_fn = partial(encoder_fn, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
         else:
-            encoder_mlp_fn = partial(make_mlp_model, name='EncoderMLP', **kwargs)
+            encoder_mlp_fn = partial(ecoder_fn, name='EncoderMLP', **kwargs)
 
         node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=False)
         edge_block_args=dict(use_edges=False, use_receiver_nodes=True, use_sender_nodes=True, use_globals=False)
@@ -82,6 +83,32 @@ class GlobalClassifier(GlobalLearnerBase):
     def __init__(self,
         with_edge_inputs=False, with_node_inputs=True, with_global_inputs=False,
         encoder_size: list=None, core_size: list=None, decoder_size: list=None,
+        name="GlobalClassifier", **kwargs):
+
+        edge_output_size = 1
+        if decoder_size is not None:
+            decoder_size += [edge_output_size]
+        else:
+            decoder_size = [edge_output_size]
+
+        global_fn =lambda: snt.Sequential([
+            snt.nets.MLP(decoder_size,
+                        activation=tf.nn.relu, # default is relu
+                        name='edge_classifier_output'),
+            tf.sigmoid])
+
+        super().__init__(global_fn,
+            with_edge_inputs=with_edge_inputs,
+            with_node_inputs=with_node_inputs,
+            with_global_inputs=with_global_inputs,
+            encoder_size=encoder_size, core_size=core_size,
+            name=name, **kwargs)
+
+
+class GlobalClassifierMultiMLP(GlobalLearnerBase):
+    def __init__(self,
+        with_edge_inputs=False, with_node_inputs=True, with_global_inputs=False,
+        encoder_size: list=None, core_size: list=None, decoder_size: list=None,encoder_fn=make_multi_mlp_model,
         name="GlobalClassifier", **kwargs):
 
         edge_output_size = 1
