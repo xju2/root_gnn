@@ -95,7 +95,7 @@ def get_signature(
     )
     if with_bool:
         input_signature = input_signature + (tf.TensorSpec(shape=[], dtype=tf.bool), )
-        
+
     return input_signature
 
 
@@ -126,29 +126,31 @@ def add_args(parser):
     add_arg("--core-size", help='MLP size for core', default=None)
     add_arg("--decoder-size", help='MLP size for decoder', default=None)
     add_arg("--with-edge-inputs", action='store_true', help='input graph contains edge information')
+    add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
+    add_arg("--decay-steps", help='', default=0)
 
 
 class Trainer(snt.Module):
-    
+
     """
     The class to implement a simple trainer and model.
-    
+
     ...
-    
+
     Important Attributes
     --------------------
     input_dir: The input directory for data
-    
+
     output_dir: The output directory for metrics and outputs
-   
+
     model: The model class to use for training, validating, and
     testing
-    
+
     loss_fcn: The loss function class to use for training,
     validating, and testing
     """
 
-    def __init__(self, input_dir, evts_per_file, output_dir, 
+    def __init__(self, input_dir, evts_per_file, output_dir,
                 model, loss_fcn, optimizer,
                 mode, # mode, 'clf,globals', 'clf,edges', 'rgr,globals'
                 batch_size=100, num_epochs=1, num_iters=4,
@@ -159,11 +161,13 @@ class Trainer(snt.Module):
                 disable_tqdm=False,
                 encoder_size=None, core_size=None, decoder_size=None,
                 with_edge_inputs=False,
+                 cosine_decay=False,
+                 decay_steps=0,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,
         and metrics.
-        
+
         Parameters
         ----------
         Sets input, output, model and loss, as well as relevant hyperparameters.
@@ -182,6 +186,7 @@ class Trainer(snt.Module):
         self.evts_per_file = evts_per_file
         self.batch_size = batch_size
         self.shuffle_size = shuffle_size
+        self.cosine_decay = cosine_decay
         self.read_all_data()
 
         self.ckpt_manager = None
@@ -208,13 +213,19 @@ class Trainer(snt.Module):
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
-
-        if isinstance(optimizer, snt.Optimizer):
-            self.optimizer = optimizer
-        elif isinstance(optimizer, float):
-            self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            
+        if self.cosine_decay:
+            if isinstance(optimizer, snt.Optimizer):
+                self.optimizer = optimizer
+            elif isinstance(optimizer, float):
+                self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            else:
+                self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
         else:
-            self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
+            self.lr_base = 0.0001
+            self.get_lr = lambda n_steps: 0.5*(1+math.cos(math.pi*n_steps/decay_steps))
+            self.lr = tf.Variable(self.lr_base, trainable=False, name='lr', dtype=tf.float32)
+            self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
 
 
         self.mode = mode.split(',')
@@ -304,7 +315,7 @@ class Trainer(snt.Module):
     def validation(self):
         """
         Performs validation steps, record performance metrics.
-        All is based on `mode`. 
+        All is based on `mode`.
         """
         val_data = self.data_val
 
@@ -359,7 +370,7 @@ class Trainer(snt.Module):
         return is_better
 
     # Prediction
-    # --------------------  
+    # --------------------
     def predict(self, test_data):
         """
         Uses the current model/loss to generate predictions on test_data
@@ -402,15 +413,15 @@ class Trainer(snt.Module):
         and tf.GradientTape. Optionally, the user can pass in a
         model and loss_fcn to replace the current model and loss_fcn
         attributes of TrainerBase.
-        
+
         Parameters
         ----------
         model: The model class to use for training
-        
+
         loss_fcn: The loss function class to use for training
         """
         if self.training_step:
-            return 
+            return
 
         input_signature = get_signature(self.data_train)
 
@@ -420,8 +431,13 @@ class Trainer(snt.Module):
                 output_ops = self.model(inputs, self.num_iters)
                 loss_ops_tr = self.loss_fcn(targets, output_ops)
                 loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
-
             gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
+            
+            #receive learning rate from schedule
+            if self.cosine_decay:
+                lr_mult = self.get_lr(step)
+                self.lr.assign(self.lr_base * lr_mult)
+            
             self.optimizer.apply(gradients, self.model.trainable_variables)
             return loss_op_tr
 
@@ -455,7 +471,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up training data from the train directory
         """
         if self.data_train is not None:
-            return 
+            return
         self.data_train, self.ngraphs_train = self.load_data('train')
 
     def load_validating_data(self):
@@ -463,7 +479,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up validation data from the val directory.
         """
         if self.data_val is not None:
-            return 
+            return
         self.data_val, self.ngraphs_val = self.load_data('val')
 
     def load_testing_data(self):
@@ -471,7 +487,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up testing data from the test directory.
         """
         if self.data_test is not None:
-            return 
+            return
         self.data_test, self.ngraphs_test = self.load_data('test')
 
     def read_all_data(self):
@@ -496,3 +512,46 @@ class Trainer(snt.Module):
         logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
         _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
         self.ckpt_dir = ckpt_dir
+(base) lreed@cori08:~/tauid_gnn/root_gnn/root_gnn> cat scripts/train_gnn
+#!/usr/bin/env python
+"""
+Training a classifier
+"""
+import argparse
+from root_gnn.utils import load_yaml
+from root_gnn import trainer
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Train GNN')
+    add_arg = parser.add_argument
+    add_arg("--num-batches", default=None, help='train number of batches')
+
+    subparsers = parser.add_subparsers(help='training options')
+    config_parser = subparsers.add_parser('config', help='config help')
+    config_parser.add_argument("filename", help='configuration file name', default=None)
+
+    args_parser = subparsers.add_parser('args', help='arguments help',\
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    trainer.add_args(args_parser)
+    args = parser.parse_args()
+
+    if args.filename:
+        config = load_yaml(args.filename)
+    else:
+        config = vars(args)
+
+    model_name = config['model']
+    mode = 'clf' if "Classifier" in model_name else 'rgr'
+    mode += ',globals' if "Global" in model_name else ',edges'
+    config['mode'] = mode
+    print("mode is", mode)
+
+    if 'loss_pars' in config and config['loss_pars']:
+        loss_fcn = config['loss_name']+','+config['loss_pars']
+    config['loss_fcn'] = loss_fcn
+
+    config['optimizer'] = config['learning_rate']
+    print(config)
+    trnr = trainer.Trainer(**config)
+    trnr.train(args.num_batches)
