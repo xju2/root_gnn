@@ -11,11 +11,15 @@ from root_gnn.src.models.edge_learner import EdgeRegression
 from root_gnn.src.models.global_learner import GlobalClassifier
 from root_gnn.src.models.global_learner import GlobalRegression
 from root_gnn.src.models.global_learner import GlobalSetClassifier
+from root_gnn.src.models.global_learner import GlobalGraphNetClassifier
+from root_gnn.src.models.global_learner import GlobalClassifierMultiMLP
 
 __all__ = (
     "EdgeClassifier",
     "EdgeRegression",
     "GlobalClassifier",
     "GlobalRegression",
-    "GlobalSetClassifier"
+    "GlobalSetClassifier",
+    "GlobalGraphNetClassifier",
+    "GlobalClassifierMultiMLP",
 )
