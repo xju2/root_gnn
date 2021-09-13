@@ -12,12 +12,25 @@ from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
+from root_gnn.src.datasets.tauid_cutoff import TauIdentificationDatasetCutoff
+from root_gnn.src.datasets.tauid_perm import TauIdentificationDatasetPermutation
+from root_gnn.src.datasets.tauid_cutoff_perm import TauIdentificationDatasetCutoffPermutation
+from root_gnn.src.datasets.tauid_cutoff2 import TauIdentificationDatasetCutoff2
+from root_gnn.src.datasets.tauid_mmlp import TauIdentificationDatasetMMLP
+
+
+
 
 __all__ = (
     "TopTaggerDataset",
     "WTaggerDataset",
     "WTaggerFilteredDataset",
     "WTaggerLeadingJetDataset",
-    "DiTauMassDataset"
+    "DiTauMassDataset",
     "TauIdentificationDataset",
+    "TauIdentificationDatasetCutoff",
+    "TauIdentificationDatasetCutoff2",
+    "TauIdentificationDatasetPermutation",
+    "TauIdentificationDatasetCutoffPermutation",
+    "TauIdentificationDatasetMMLP"
 )
