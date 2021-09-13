@@ -26,38 +26,43 @@ if __name__ == "__main__":
     add_arg = parser.add_argument
     add_arg("-i","--inputfile", help="Path to the input root file")
     add_arg("-o","--outputfile", help="Path of the output root file")
+    add_arg("-n","--num-events", help="Number of events for inference")
     add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
-    add_arg("--config", help="configuration file name",default=None)
+    add_arg("--config",help="configuration file name",metavar='N',type=str,nargs='+')
 
     args = parser.parse_args()
     
     ntuple_in = args.inputfile
     ntuple_out = args.outputfile
-    config = load_yaml(args.config)
- 
-    modeldir = os.path.join(config['output_dir'], 'checkpoints')
-    if args.modeldir is not None:
-        modeldir = args.modeldir
-    
-    global_batch_size = config['batch_size']
-    num_iters = config['num_iters']      ## level of message-passing
-    learning_rate = config['learning_rate']
-    # Load the latest checkpoint
-    optimizer = snt.optimizers.Adam(learning_rate)
-    model = getattr(root_gnn.model, config['model'])()
-    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
-    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
-    if os.path.exists(os.path.join(modeldir, 'checkpoint')):
-        status = checkpoint.restore(ckpt_manager.latest_checkpoint)
-        print("Loaded latest checkpoint from {}".format(modeldir),status)
-    else:
-        raise ValueError("Cannot find model at:", modeldir)
 
+    models = []
+    iters = []
+    for file in args.config:
+        config = load_yaml(file)
+        modeldir = os.path.join(config['output_dir'], 'checkpoints')
+        model_name = config['model']
+        mode = 'clf' if "Classifier" in model_name else 'rgr'
+        mode += ',globals' if "Global" in model_name else ',edges'
+        config['mode'] = mode
+
+        if 'loss_pars' in config and config['loss_pars']:
+            loss_fcn = config['loss_name']+','+config['loss_pars']
+            config['loss_fcn'] = loss_fcn
+
+        config['optimizer'] = config['learning_rate']
+        print(config)
+        trnr = trainer.Trainer(**config)
+        trnr._setup_training_loop()
+        trnr.make_checkpoints()
+        models.append((trnr.model,config['num_iters']))
+
+
+    
     # Apply the model to the jets in the root file
     from root_gnn.datasets import TauIdentificationDataset
     import ROOT
     from ROOT import TFile, TTree, TChain, AddressOf, std
-    from array import arrayi
+    from array import array
 
     tauid = TauIdentificationDataset()
     tree_name = "output"
@@ -70,17 +75,24 @@ if __name__ == "__main__":
     newtree = chain.CloneTree(0)
     leafValues = std.vector('float')()
     newbranch = newtree.Branch("TauPrediction",leafValues)
+    n_entries = min(n_entries,int(args.num_events))
     
     # Iterate over the entries in the input file
     for ientry in range(n_entries):
+        if ientry % 100 == 0 or ientry % 87 == 0 or ientry % 211 == 0:
+            print(ientry)
         chain.GetEntry(ientry)
         graph_list = tauid.make_graph(chain)
         # Generate graphs and predictions
         leafValues.clear()
         for graph in graph_list:
-            outputs = model(graph[0], num_iters,is_training=False)
-            #extract gnn output
-            output = np.float32(outputs[-1].globals[0][0])
-            leafValues.push_back(output)
+            prediction = 0.
+            for model in models:
+                outputs = model[0](graph[0], model[1],is_training=False)
+                #extract gnn output
+                prediction += np.float32(outputs[-1].globals[0][0])
+            prediction /= len(models)
+            leafValues.push_back(prediction)
         newtree.Fill()
     newtree.Write()
+
