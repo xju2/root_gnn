@@ -12,6 +12,7 @@ from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
+from root_gnn.src.datasets.representation import RepresentationDataSet
 
 __all__ = (
     "TopTaggerDataset",
@@ -20,4 +21,5 @@ __all__ = (
     "WTaggerLeadingJetDataset",
     "DiTauMassDataset",
     "TauIdentificationDataset",
+    "RepresentationDataSet"
 )
