@@ -62,8 +62,9 @@ class GlobalRegressionLoss(RegressionLoss):
         ]
         return tf.stack(loss_ops)
 
+#had to slightly change the loss function to work with my trainer structure since both of the inputs to the loss fcn are passed through the model first
 class GlobalRegressionLossForRepresentation(RegressionLoss):
-    def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLoss") -> None:
+    def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLossForRepresentation") -> None:
         super().__init__(loss_name=loss_name, name=name)
 
     def __call__(self, output_ops1, output_ops2):
