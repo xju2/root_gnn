@@ -61,7 +61,10 @@ def make_graph(event, debug=False):
         prev_num_tower += event.JetTowerN[indv_jet]
         
         node_indx.append(inode)
-        
+    
+    if len(nodes) < 1:
+        return [(None, None)]
+
     nodes = np.array(nodes, dtype=np.float32) / node_scales
     n_nodes = nodes.shape[0]
     
@@ -106,9 +109,6 @@ def make_graph(event, debug=False):
     }
     input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
-    
-    if n_nodes < 1 or n_edges < 1:
-        return [(None, None)]
 
     return [(input_graph, target_graph)]
 
