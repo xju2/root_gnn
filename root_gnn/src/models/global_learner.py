@@ -124,3 +124,98 @@ class GlobalRegression(GlobalLearnerBase):
             with_node_inputs=with_node_inputs,
             with_global_inputs=with_global_inputs,
             encoder_size=encoder_size, core_size=core_size, name=name, **kwargs)
+
+class GlobalSetRegression(snt.Module):
+    def __init__(self, global_output_size=1,
+        with_global_inputs=False, core_size: list=None, 
+        decoder_size: list=None, name="GlobalSetRegression",**kwargs):
+        
+        super(GlobalSetRegression, self).__init__(name=name)
+
+        node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=with_global_inputs)
+        global_block_args=dict(use_edges=False, use_nodes=True, use_globals=with_global_inputs)
+
+        if core_size is not None:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None, mlp_size=core_size, **kwargs)
+        else:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,**kwargs)
+
+        global_size = core_size + [global_output_size]
+
+        global_fn = lambda: snt.Sequential([snt.nets.MLP(global_size, activation=tf.nn.relu, name='set_regression_output')])
+
+        self.deep_set = modules.DeepSets(node_mlp_fn, global_fn)
+
+
+    def __call__(self, input_op, num_processing_steps, is_training=True):
+        node_kwargs = global_kwargs = dict(is_training=is_training)
+        output_op = self.deep_set(input_op)
+        return [output_op]
+        
+class GlobalAttentionRegression(snt.Module):
+    def __init__(self, global_output_size=1,
+        with_node_inputs=True, with_global_inputs=False, core_size: list=None, 
+        decoder_size: list=None, name="GlobalAttentionRegression",**kwargs):
+        
+        super(GlobalAttentionRegression, self).__init__(name=name)
+
+        global_size = core_size + [global_output_size]
+
+        global_fn = lambda: snt.Sequential([snt.nets.MLP(global_size, activation=tf.nn.relu, name='Attention_regression_output')])
+
+        self.attention = modules.SelfAttention()
+        
+        self.global_regression = GlobalRegression(global_output_size=global_output_size,
+            with_edge_inputs=with_global_inputs, with_node_inputs=with_node_inputs, with_global_inputs=with_global_inputs,
+            encoder_size=decoder_size, core_size=core_size, decoder_size=decoder_size)
+        
+    
+    def __call__(self, input_graph, num_processing_steps, is_training=True):
+        
+        node = input_graph.nodes
+        
+        k = q = v = node # shape of V, K, Q: [total_num_nodes, num_heads, key_size]
+        weighted_input = self.attention(v, k, q, input_graph)  # Apply the Attention Mechanism
+        
+        node_kwargs = global_kwargs = dict(is_training=is_training)
+        output_graph = self.global_regression(weighted_input, num_processing_steps, is_training=is_training)
+        
+        
+        return output_graph
+    
+    
+class GlobalAttentionDeepset(snt.Module):
+    def __init__(self, global_output_size=1,
+        with_node_inputs=True, with_global_inputs=False, core_size: list=None, 
+        decoder_size: list=None, name="GlobalAttentionDeepset",**kwargs):
+        
+        super(GlobalAttentionDeepset, self).__init__(name=name)
+
+        global_size = core_size + [global_output_size]
+
+        global_fn = lambda: snt.Sequential([snt.nets.MLP(global_size, activation=tf.nn.relu, name='Attention_deepset_output')])
+        
+        node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=with_global_inputs)
+        global_block_args=dict(use_edges=False, use_nodes=True, use_globals=with_global_inputs)
+
+        if core_size is not None:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None, mlp_size=core_size, **kwargs)
+        else:
+            node_mlp_fn = partial(make_mlp_model, dropout_rate=None,**kwargs)
+
+        self.attention = modules.SelfAttention()
+        self.deep_set = modules.DeepSets(node_mlp_fn, global_fn)
+        
+    
+    def __call__(self, input_graph, num_processing_steps, is_training=True):
+        
+        node = input_graph.nodes
+        
+        k = q = v = node # shape of V, K, Q: [total_num_nodes, num_heads, key_size]
+        weighted_input = self.attention(v, k, q, input_graph)  # Apply the Attention Mechanism
+        
+        node_kwargs = global_kwargs = dict(is_training=is_training)
+        output_graph = self.deep_set(weighted_input)
+        
+        
+        return [output_graph]

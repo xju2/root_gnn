@@ -73,10 +73,16 @@ def make_graph(event, debug=False, data_dict=False):
         target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
         return [(input_graph, target_graph)]
 
-def read(filename):
+def read(filename, start_entry, nentries):
+    ievt = 0
     with open(filename, 'r') as f:
         for line in f:
+            if ievt < start_entry:
+                continue
+            if ievt >= start_entry + nentries:
+                break
             yield [float(x) for x in line.split()]
+            ievt += 1
 
 
 class WTaggerLeadingJetDataset(DataSet):
