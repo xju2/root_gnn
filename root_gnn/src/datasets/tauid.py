@@ -74,13 +74,13 @@ def make_graph(chain, debug=False):
         graph_list.append((input_graph, target_graph))
     return graph_list
 
-def read(filename, start_entry, nentries):
+def read(filename, nentries=-1, start_entry=0):
     import ROOT
     tree_name = "output"
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
     tot_entries = chain.GetEntries()
-    nentries = nentries if (start_entry + nentries) <= tot_entries\
+    nentries = nentries if nentries > 0 and (start_entry + nentries) <= tot_entries\
         else tot_entries - start_entry
 
     for ientry in range(nentries):
