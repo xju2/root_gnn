@@ -6,6 +6,7 @@ from graph_nets import modules
 from graph_nets import blocks
 
 from root_gnn.src.models.base import MLPGraphNetwork
+from root_gnn.src.models.base import InteractionNetwork
 from root_gnn.src.models.base import make_mlp_model
 from functools import partial
 
@@ -235,3 +236,34 @@ class GlobalAttentionDeepset(snt.Module):
             gobal_model_kwargs=global_kwargs)
 
         return [output_graph]
+
+
+class GraphEmbedding(snt.Module):
+    """Representation learning for graphs."""
+    def __init__(self, output_dim: int, core_size: int=128, **kwargs):
+        core_mlp_fn = partial(make_mlp_model, mlp_size=core_size, **kwargs)
+        self._core = InteractionNetwork(
+            edge_model_fn=core_mlp_fn,
+            node_model_fn=core_mlp_fn,
+            reducer=tf.math.unsorted_segment_sum,
+        )
+        global_fn =lambda: snt.Sequential([
+            snt.nets.MLP([output_dim],
+                        activation=tf.nn.relu, # default is relu
+                        name='global_attributes')])
+
+        self.output_transform = modules.GraphIndependent(None, None, global_fn)
+
+
+    def __call__(self, input_op, num_processing_steps, is_training=True):
+        node_kwargs = edge_kwargs = dict(is_training=is_training)
+        
+        latent0 = input_op
+        latent = latent0
+        for _ in range(num_processing_steps):
+            core_input = utils_tf.concat([latent0, latent], axis=1)
+            latent = self._core(
+                core_input, edge_model_kwargs=edge_kwargs,
+                node_model_kwargs=node_kwargs)
+            
+        return self.output_transform(latent)
