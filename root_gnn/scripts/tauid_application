@@ -2,7 +2,7 @@
 
 import argparse
 import root_gnn
-from root_gnn import trainer 
+from root_gnn import trainer
 import os
 
 import numpy as np
@@ -18,22 +18,30 @@ from root_gnn.trainer import read_dataset
 from root_gnn.trainer import loop_dataset
 from ROOT import TChain, AddressOf, std
 
+from root_gnn.src.datasets.base import DataSet
+from root_gnn import datasets as DataSets
+
 import tensorflow as tf
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Train GNN')
     add_arg = parser.add_argument
     add_arg("-i","--inputfile", help="Path to the input root file")
     add_arg("-o","--outputfile", help="Path of the output root file")
     add_arg("-n","--num-events", help="Number of events for inference")
-    add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
+    add_arg("--initial-event", default=0, help="Event number to start at")
+   # add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
     add_arg("--config",help="configuration file name",metavar='N',type=str,nargs='+')
+    add_arg('--type', default="TauIdentificationDataset", help='which data to process',
+            choices=list(DataSets.__all__))
 
     args = parser.parse_args()
-    
+
     ntuple_in = args.inputfile
     ntuple_out = args.outputfile
+
+    data = getattr(DataSets, args.type)()
 
     models = []
     iters = []
@@ -57,14 +65,14 @@ if __name__ == "__main__":
         models.append((trnr.model,config['num_iters']))
 
 
-    
+
     # Apply the model to the jets in the root file
     from root_gnn.datasets import TauIdentificationDataset
     import ROOT
     from ROOT import TFile, TTree, TChain, AddressOf, std
     from array import array
 
-    tauid = TauIdentificationDataset()
+    tauid = data
     tree_name = "output"
     chain = TChain(tree_name,tree_name)
     chain.Add(ntuple_in)
@@ -76,11 +84,10 @@ if __name__ == "__main__":
     leafValues = std.vector('float')()
     newbranch = newtree.Branch("TauPrediction",leafValues)
     n_entries = min(n_entries,int(args.num_events))
-    
+    initial_entry = min(n_entries,int(args.initial_event))
+
     # Iterate over the entries in the input file
-    for ientry in range(n_entries):
-        if ientry % 100 == 0 or ientry % 87 == 0 or ientry % 211 == 0:
-            print(ientry)
+    for ientry in range(initial_entry,n_entries):
         chain.GetEntry(ientry)
         graph_list = tauid.make_graph(chain)
         # Generate graphs and predictions
