@@ -29,7 +29,7 @@ if __name__ == "__main__":
     add_arg = parser.add_argument
     add_arg("-i","--inputfile", help="Path to the input root file")
     add_arg("-o","--outputfile", help="Path of the output root file")
-    add_arg("-n","--num-events", help="Number of events for inference")
+    add_arg("-n","--num-events", default=None,  help="Number of events for inference")
     add_arg("--initial-event", default=0, help="Event number to start at")
    # add_arg("--modeldir", help="Overwrite the model directory from the configuration file", default=None)
     add_arg("--config",help="configuration file name",metavar='N',type=str,nargs='+')
@@ -83,7 +83,8 @@ if __name__ == "__main__":
     newtree = chain.CloneTree(0)
     leafValues = std.vector('float')()
     newbranch = newtree.Branch("TauPrediction",leafValues)
-    n_entries = min(n_entries,int(args.num_events))
+    if not args.num_events is None:
+        n_entries = min(n_entries,int(args.num_events))
     initial_entry = min(n_entries,int(args.initial_event))
 
     # Iterate over the entries in the input file
