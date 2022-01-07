@@ -1,9 +1,6 @@
 import tensorflow as tf
 import sonnet as snt
 #import tensorflow_addons as tfa
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from graph_nets import utils_tf
 from tensorflow.python.ops import math_ops
 
