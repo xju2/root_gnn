@@ -1,0 +1,20 @@
+input_dir: /global/cscratch1/sd/andrish/training_data/rep_learning/inputs
+evts_per_file: 10000
+output_dir: /global/cscratch1/sd/andrish/training_data/rep_learning/config53
+model: GlobalRegression
+trainer: rep
+loss_name: RepContrastiveLoss
+loss_pars: 1, 1
+
+
+num_epochs: 40
+batch_size: 1000
+num_iters: 4
+learning_rate: 0.0005
+patiences: 1000000
+log_freq: 100
+val_batches: 20
+dropout_rate: 0
+encoder_size: [128,128]
+core_size: [128,128]
+output_size: 1
