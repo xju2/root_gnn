@@ -17,4 +17,4 @@ val_batches: 20
 dropout_rate: 0
 encoder_size: [128,128]
 core_size: [128,128]
-output_size: 1
+output_size: 3
