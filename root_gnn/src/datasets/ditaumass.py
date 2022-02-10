@@ -1,3 +1,4 @@
+# %%
 from types import DynamicClassAttribute
 import numpy as np
 import pandas as pd
@@ -9,8 +10,10 @@ from graph_nets import utils_tf
 
 from root_gnn.src.datasets.base import DataSet
 
+# %%
 tree_name = "output"
 scales = np.array([100, 5, np.pi, 100, 5, np.pi, 100], dtype=np.float32)
+node_scales = np.array([5, 3, np.pi], dtype=np.float32)
 do_disconnect_jets = False
 
 def make_graph(event, debug=False):
@@ -24,7 +27,8 @@ def make_graph(event, debug=False):
     eta1, eta2 = event.truthTauEta[0], event.truthTauEta[1]
     phi1, phi2 = event.truthTauPhi[0], event.truthTauPhi[1]
     ditau_inv_mass = np.sqrt(2*Pt1*Pt2*(np.cosh(eta1-eta2)-np.cos(phi1-phi2)))
-    global_attr = [Pt1, eta1, phi1, Pt2, eta2, phi2, ditau_inv_mass]
+    # global_attr = [Pt1, eta1, phi1, Pt2, eta2, phi2, ditau_inv_mass]
+    global_attr = [ditau_inv_mass]
     
     global_attr = np.array(global_attr) / scales
 
@@ -57,8 +61,11 @@ def make_graph(event, debug=False):
         prev_num_tower += event.JetTowerN[indv_jet]
         
         node_indx.append(inode)
-        
-    nodes = np.array(nodes, dtype=np.float32)
+    
+    if len(nodes) < 1:
+        return [(None, None)]
+
+    nodes = np.array(nodes, dtype=np.float32) / node_scales
     n_nodes = nodes.shape[0]
     
     if debug:
@@ -76,6 +83,7 @@ def make_graph(event, debug=False):
             prev_node = i
     else:
         all_edges = list(itertools.permutations(range(n_nodes), 2))
+
     senders = np.array([x[0] for x in all_edges])
     receivers = np.array([x[1] for x in all_edges])
     n_edges = len(all_edges)
@@ -101,15 +109,18 @@ def make_graph(event, debug=False):
     }
     input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
-    
+
     return [(input_graph, target_graph)]
 
-def read(filename):
+def read(filename, start_entry, nentries):
     import ROOT
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
-    n_entries = chain.GetEntries()
-    print("Total {:,} Events".format(n_entries))
+    tot_entries = chain.GetEntries()
+    nentries = nentries if (start_entry + nentries) <= tot_entries\
+        else tot_entries - start_entry
+
+    # print("Total {:,} Events".format(n_entries))
     chain.SetBranchStatus("*", 0)
     branches = [
         'nJets',
@@ -120,10 +131,9 @@ def read(filename):
     ]
     [chain.SetBranchStatus(brname, 1) for brname in branches]
 
-    for ientry in range(n_entries):
-        chain.GetEntry(ientry)
+    for ientry in range(nentries):
+        chain.GetEntry(ientry + start_entry)
         yield chain
-
 
 class DiTauMassDataset(DataSet):
     def __init__(self, *args, **kwargs):

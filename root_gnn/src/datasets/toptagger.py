@@ -1,3 +1,4 @@
+from functools import total_ordering
 import numpy as np
 import pandas as pd
 import itertools
@@ -61,13 +62,17 @@ def make_graph(event, debug: Optional[bool] = False):
     target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
     return [(input_graph, target_graph)]
 
-def read(filename):
+def read(filename, start_entry, nentries):
     with pd.HDFStore(filename, mode='r') as store:
         df = store['table']
     
-    print("{:,} Events".format(df.shape[0]))
-    for ievt in range(df.shape[0]):
-        yield df.iloc[ievt]
+    # print("{:,} Events".format(df.shape[0]))
+    tot_entries = df.shape[0]
+    nentries = nentries if (start_entry + nentries) <= tot_entries\
+        else tot_entries - start_entry
+ 
+    for ievt in range(nentries):
+        yield df.iloc[ievt + start_entry]
 
 
 class TopTaggerDataset(DataSet):

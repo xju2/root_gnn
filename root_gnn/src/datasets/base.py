@@ -14,11 +14,6 @@ import subprocess
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
-    # out = subprocess.Popen(['wc', '-l', filename],
-    #                      stdout=subprocess.PIPE,
-    #                      stderr=subprocess.STDOUT
-    #                      ).communicate()[0]
-    # return int(out.partition(b' ')[0])
 
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
@@ -57,49 +52,43 @@ class DataSet(object):
             print(outname,"is there. skip...")
             return 0, n_evts_per_record
 
-        ievt = -1
         ifailed = 0
         all_graphs = []
         start_entry = ijob * n_evts_per_record
-        for event in self.read(filename):
-            ievt += 1
-            if ievt < start_entry:
-                continue
+        for event in self.read(filename, start_entry, n_evts_per_record):
             gen_graphs = self.make_graph(event, debug)
-            
             if gen_graphs[0][0] is None:
                 ifailed += 1
                 continue
 
             all_graphs += gen_graphs
-            if ievt == start_entry + n_evts_per_record - 1:
-                break
         
         isaved = len(all_graphs)
-        ex_input, ex_target = all_graphs[0]
-        input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_input, with_padding=self.with_padding)
-        target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_target, with_padding=self.with_padding)
-        def generator():
-            for G in all_graphs:
-                yield (G[0], G[1])
+        if isaved > 0:
+            ex_input, ex_target = all_graphs[0]
+            input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_input, with_padding=self.with_padding)
+            target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_target, with_padding=self.with_padding)
+            def generator():
+                for G in all_graphs:
+                    yield (G[0], G[1])
 
-        dataset = tf.data.Dataset.from_generator(
-            generator,
-            output_types=(input_dtype, target_dtype),
-            output_shapes=(input_shape, target_shape),
-            args=None)
+            dataset = tf.data.Dataset.from_generator(
+                generator,
+                output_types=(input_dtype, target_dtype),
+                output_shapes=(input_shape, target_shape),
+                args=None)
 
-        writer = tf.io.TFRecordWriter(outname)
-        for data in dataset:
-            example = graph.serialize_graph(*data)
-            writer.write(example)
-        writer.close()
+            writer = tf.io.TFRecordWriter(outname)
+            for data in dataset:
+                example = graph.serialize_graph(*data)
+                writer.write(example)
+            writer.close()
         return ifailed, isaved
-        
 
-    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
+    def process(self, filename, outname, n_evts_per_record,
+        debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -116,7 +105,8 @@ class DataSet(object):
         if num_workers < 2:
             ifailed, isaved=0, 0
             for ijob in range(n_files):
-                n_failed, n_saved = self.subprocess(ijob, n_evts_per_record, filename, outname, overwrite, debug)
+                n_failed, n_saved = self.subprocess(
+                    ijob, n_evts_per_record, filename, outname, overwrite, debug)
                 ifailed += n_failed
                 isaved += n_saved
         else:

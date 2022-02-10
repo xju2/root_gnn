@@ -1,5 +1,9 @@
 import tensorflow as tf
 import sonnet as snt
+#import tensorflow_addons as tfa
+from graph_nets import utils_tf
+from tensorflow.python.ops import math_ops
+
 
 class NodeEdgeLoss:
     def __init__(self, real_edge_weight, fake_edge_weight,
@@ -54,13 +58,117 @@ class RegressionLoss(snt.Module):
         
 class GlobalRegressionLoss(RegressionLoss):
     def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLoss") -> None:
-        super().__init__(loss_name=loss_name, name=name)
+        super().__init__(loss_name=loss_name, name="GlobalRegressionLoss")
 
     def __call__(self, target_op, output_ops):
         loss_ops = [
             self.fnc(target_op.globals, output_op.globals) for output_op in output_ops
         ]
         return tf.stack(loss_ops)
+    
+    
+class RegressionRepLoss(GlobalRegressionLoss):
+    def __init__(self, loss_name: str = None, name: str = "GlobalRepresentationLoss") -> None:
+        super().__init__(loss_name='mse', name="GlobalRepresentationLoss")
+    
+    def __call__(self, output_ops, aug_output_ops, _):
+        loss_ops = [
+            self.fnc(op[0].globals, op[1].globals) for op in zip(output_ops, aug_output_ops)
+        ]
+        return tf.stack(loss_ops)
+    
+
+class ClassificationRepLoss(GlobalLoss):
+    def __init__(self, real_global_weight, fake_global_weight):
+        super().__init__(real_global_weight, fake_global_weight)
+        self.log = tf.compat.v1.losses.log_loss
+        
+    
+    def __call__(self, output_ops, aug_output_ops, target_op):
+        op1 = [self.log(target_op.globals, output_op.globals) for output_op in output_ops]
+        temperature = 0.1
+        op2 = []
+        
+        def cos_sim(y_true, y_pred, axis=-1):
+            y_true = tf.nn.l2_normalize(y_true, axis=axis)
+            y_pred = tf.nn.l2_normalize(y_pred, axis=axis)
+            return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
+        
+        for op in zip(output_ops, aug_output_ops):
+            x_i, x_j = op[0].globals, op[1].globals
+            batch_size = x_i.shape[0]
+            z_i = tf.linalg.normalize(x_i, axis=1)[0]
+            z_j = tf.linalg.normalize(x_j, axis=1)[0]
+            z = tf.concat([z_i, z_j], axis=0)
+
+            similarity_matrix = cos_sim(tf.expand_dims(z, 1), tf.expand_dims(z, 0), axis=2)
+            sim_ij = tf.linalg.diag_part(similarity_matrix, k=batch_size)
+            sim_ji = tf.linalg.diag_part(similarity_matrix, k=-batch_size)
+            positives = tf.concat( [sim_ij, sim_ji], axis=0 )
+            nominator = tf.math.exp( positives / temperature )
+            
+            I = tf.eye(2*batch_size, 2*batch_size, dtype=tf.dtypes.float32)
+            negatives_mask = tf.ones([2*batch_size, 2*batch_size], dtype=tf.dtypes.float32) - I
+            denominator = tf.math.multiply(negatives_mask, tf.math.exp(similarity_matrix / temperature))
+
+            loss_partial = -tf.math.log( nominator / tf.math.reduce_sum( denominator, axis=1 ) )
+            loss = tf.math.reduce_sum( loss_partial )/( 2*batch_size )
+            op2.append(loss)
+        
+        loss_ops = op1 + op2
+        return tf.stack(loss_ops)
+    
+    
+class ContrastiveLoss(GlobalRegressionLoss):
+    def __init__(self, loss_name: str = None, name: str = "ContrastiveLoss") -> None:
+        super().__init__(loss_name=loss_name, name="ContrastiveLoss")
+        self.fnc = tfa.losses.contrastive_loss
+        
+    def __call__(self, output_ops, aug_output_ops, _):
+        loss_ops = [
+            self.fnc(op[0].globals, op[1].globals) for op in zip(output_ops, aug_output_ops)
+        ]
+        return tf.stack(loss_ops)
+    
+    
+class RepContrastiveLoss(snt.Module):
+    def __init__(self, a, b, name: str = "RepContrastiveLoss") -> None:
+        super().__init__(name=name)
+        
+    def __call__(self, output_ops, aug_output_ops, _):
+        temperature = 0.1
+        loss_ops = []
+        
+        def cos_sim(y_true, y_pred, axis=-1):
+            y_true = tf.nn.l2_normalize(y_true, axis=axis)
+            y_pred = tf.nn.l2_normalize(y_pred, axis=axis)
+            return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
+        
+        for op in zip(output_ops, aug_output_ops):
+            x_i, x_j = op[0].globals, op[1].globals
+            batch_size = x_i.shape[0]
+            z_i = tf.linalg.normalize(x_i, axis=1)[0]
+            z_j = tf.linalg.normalize(x_j, axis=1)[0]
+            z = tf.concat([z_i, z_j], axis=0)
+
+            similarity_matrix = cos_sim(tf.expand_dims(z, 1), tf.expand_dims(z, 0), axis=2)
+            sim_ij = tf.linalg.diag_part(similarity_matrix, k=batch_size)
+            sim_ji = tf.linalg.diag_part(similarity_matrix, k=-batch_size)
+            positives = tf.concat( [sim_ij, sim_ji], axis=0 )
+            nominator = tf.math.exp( positives / temperature )
+            
+            I = tf.eye(2*batch_size, 2*batch_size, dtype=tf.dtypes.float32)
+            negatives_mask = tf.ones([2*batch_size, 2*batch_size], dtype=tf.dtypes.float32) - I
+            denominator = tf.math.multiply(negatives_mask, tf.math.exp(similarity_matrix / temperature))
+
+            loss_partial = -tf.math.log( nominator / tf.math.reduce_sum( denominator, axis=1 ) )
+            loss = tf.math.reduce_sum( loss_partial )/( 2*batch_size )
+            loss_ops.append(loss)
+            
+        return tf.stack(loss_ops)
+        
+    
+
 
 #had to slightly change the loss function to work with my trainer structure since both of the inputs to the loss fcn are passed through the model first
 class GlobalRegressionLossForRepresentation(RegressionLoss):
@@ -121,6 +229,9 @@ class EdgeLoss:
                 for output_op in output_ops 
         ]
         return tf.stack(loss_ops)
+    
+
+
 
 __all__ = (
     "NodeEdgeLoss",
@@ -128,8 +239,11 @@ __all__ = (
     "EdgeGlobalLoss",
     "EdgeLoss",
     "GlobalRegressionLoss",
-    "GlobalRegressionLossForRepresentation",
-    "EdgeRegressionLoss"
+    "GlobalRepresentationLoss",
+    "EdgeRegressionLoss",
+    "ContrastiveLoss",
+    "ClassificationRepLoss",
+    "RepContrastiveLoss"
 )
 
 if __name__ == "__main__":
