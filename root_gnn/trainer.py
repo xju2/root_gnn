@@ -179,21 +179,12 @@ class Trainer(snt.Module):
         self.output_size = output_size
 
         if isinstance(model, str):
-            if "regression" in model or "Regression" in model:
-                self.model = getattr(Models, model)(
+            self.model = getattr(Models, model)(
                     self.output_size,
                     with_edge_inputs=with_edge_inputs,
                     encoder_size=encoder_size,
                     core_size=core_size,
-                    decoder_size=decoder_size
-                    )
-            else:
-                self.model = getattr(Models, model)(
-                    with_edge_inputs=with_edge_inputs,
-                    encoder_size=encoder_size,
-                    core_size=core_size,
-                    decoder_size=decoder_size
-                    )
+                    decoder_size=decoder_size)
         elif isinstance(model, snt.Module):
             self.model = model
         else:
