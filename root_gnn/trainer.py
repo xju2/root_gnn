@@ -1,26 +1,15 @@
-from operator import is_
-from numpy.lib.arraysetops import isin
+__all__ = ['read_dataset', 'loop_dataset', 'get_signature', 'Trainer']
+
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.set_verbosity("INFO")
 logging.info("TF Version:{}".format(tf.__version__))
-# try:
-#     import horovod.tensorflow as hvd
-#     no_horovod = False
-# except ModuleNotFoundError:
-#     logging.warning("No horvod module, cannot perform distributed training")
-#     no_horovod = True
-
 
 import os
 import pprint
 import time
-import functools
-import argparse
 import tqdm
-
 import numpy as np
-
 import sklearn.metrics
 
 from graph_nets import utils_tf
@@ -39,7 +28,7 @@ AUTO = tf.data.experimental.AUTOTUNE
 
 def read_dataset(filenames, nEvtsPerFile=5000):
     """
-    Read dataset...
+    Read dataset. nEvtsPerFile is the number of files per file. 
     """
     tr_filenames = tf.io.gfile.glob(filenames)
     n_files = len(tr_filenames)
