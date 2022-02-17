@@ -20,6 +20,14 @@ class MultiMLP(snt.Module):
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
     def __call__(self,x):
         return self.tower_mlp(tf.reshape(x[0][1:],[1, 3]))*x[0][0]+self.track_mlp(tf.reshape(x[0][1:],[1, 3]))*(1.-x[0][0])
+    
+class ConcatMLP(snt.Module):
+    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
+        super(MMLP, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
+    def __call__(self,x):
+        return tf.concatenate(self.tower_mlp(tf.reshape(x[0][1:],[1, 3]))*x[0][0],self.track_mlp(tf.reshape(x[0][1:],[1, 3]))*(1.-x[0][0]))
 
 def make_multi_mlp_model(
     mlp_size: list = [128]*2,
@@ -79,12 +87,12 @@ class MLPGraphIndependent(snt.Module):
 
 class MLPGraphNetwork(snt.Module):
     """GraphIndependent with same Neural Network type---such as MLPs---for edge, node, and global models."""
-    def __init__(self, nn_fn, name="MLPGraphNetwork"):
+    def __init__(self, nn_fn, reducer=tf.math.unsorted_segment_sum, name="MLPGraphNetwork"):
         super(MLPGraphNetwork, self).__init__(name=name)
         self._network = modules.GraphNetwork(
             edge_model_fn=nn_fn,
             node_model_fn=nn_fn,
-            global_model_fn=nn_fn)
+            global_model_fn=nn_fn,reducer=reducer)
 
     def __call__(self, inputs,
             edge_model_kwargs=None,
