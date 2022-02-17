@@ -40,13 +40,16 @@ def make_graph(chain, debug=False):
             nodes.append([chain.TrackPt[ghost_track_idx],chain.TrackEta[ghost_track_idx],chain.TrackPhi[ghost_track_idx]])
             track_idx+=1
 
+
         n_nodes = len(nodes)
+        if n_nodes<1:
+            continue
         nodes = np.array(nodes,dtype=np.float32)*scale_factors
         if debug:
             print(nodes.shape)
             print(n_nodes)
             print(nodes)
-
+        
         # edges
         all_edges = list(itertools.combinations(range(n_nodes), 2))
         senders = np.array([x[0] for x in all_edges])
@@ -76,7 +79,10 @@ def make_graph(chain, debug=False):
         input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
         target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
         graph_list.append((input_graph, target_graph))
-    return graph_list
+    if not len(graph_list):
+        return [(None,None)]
+    else:
+        return graph_list
 
 def read(filename):
     import ROOT
@@ -88,8 +94,6 @@ def read(filename):
 
     for ientry in range(n_entries):
         chain.GetEntry(ientry)
-        if chain.nJets == 0:
-            continue
         yield chain
 
 class TauIdentificationDataset(DataSet):
