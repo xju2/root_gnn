@@ -214,7 +214,7 @@ class Trainer(snt.Module):
         else:
             self.loss_fcn = loss_fcn
             
-        if self.cosine_decay:
+        if !self.cosine_decay:
             if isinstance(optimizer, snt.Optimizer):
                 self.optimizer = optimizer
             elif isinstance(optimizer, float):
