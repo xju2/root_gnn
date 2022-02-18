@@ -437,6 +437,10 @@ class Trainer(snt.Module):
             if self.cosine_decay:
                 lr_mult = self.get_lr(step)
                 self.lr.assign(self.lr_base * lr_mult)
+                if step % decay_steps == 0 and step / decay_steps > 0:
+                    ckpt_n = step / decay_steps
+                    ckpt_dir = os.path.join(output_dir, "one-shot-checkpoints/{ckpt_n}")
+                    self.checkpoint = tf.train.Checkpoint(optimizer=optimizer,model=model)
             
             self.optimizer.apply(gradients, self.model.trainable_variables)
             return loss_op_tr
