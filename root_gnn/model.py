@@ -13,6 +13,9 @@ from root_gnn.src.models.global_learner import GlobalRegression
 from root_gnn.src.models.global_learner import GlobalSetClassifier
 from root_gnn.src.models.global_learner import GlobalGraphNetClassifier
 from root_gnn.src.models.global_learner import GlobalClassifierMultiMLP
+from root_gnn.src.models.global_learner import GlobalClassifierConcatMLP
+from root_gnn.src.models.global_learner import GlobalAttentionClassifier
+from root_gnn.src.models.global_learner import GlobalInputClassifier
 
 __all__ = (
     "EdgeClassifier",
@@ -22,4 +25,8 @@ __all__ = (
     "GlobalSetClassifier",
     "GlobalGraphNetClassifier",
     "GlobalClassifierMultiMLP",
+    "GlobalClassifierConcatMLP",
+    "GlobalAttentionClassifier",
+    "GlobalInputClassifier",
+    "GlobalClassifierEdgesFirst"
 )
