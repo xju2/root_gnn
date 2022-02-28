@@ -23,9 +23,12 @@ from root_gnn import datasets as DataSets
 
 import tensorflow as tf
 
+def count_prongs(entry):
+    return 0
+
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Train GNN')
+    parser = argparse.ArgumentParser(description='Predict with GNN')
     add_arg = parser.add_argument
     add_arg("-i","--inputfile", help="Path to the input root file")
     add_arg("-o","--outputfile", help="Path of the output root file")
@@ -95,6 +98,8 @@ if __name__ == "__main__":
         leafValues.clear()
         for graph in graph_list:
             prediction = 0.
+            if graph[0] == None:
+                continue
             for model in models:
                 outputs = model[0](graph[0], model[1],is_training=False)
                 #extract gnn output

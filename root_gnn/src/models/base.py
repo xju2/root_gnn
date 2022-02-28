@@ -46,6 +46,23 @@ def make_multi_mlp_model(
       snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
   ], name=name)
 
+def make_concat_mlp_model(
+    mlp_size: list = [128]*2,
+    dropout_rate: float = 0.05,
+    activations=tf.nn.relu,
+    activate_final: bool =True,
+    name: str = 'MLP', *args, **kwargs):
+  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+  return snt.Sequential([
+      ConcatMLP(mlp_size,
+                  activation=activations,
+                  activate_final=activate_final,
+                  dropout_rate=dropout_rate
+        ),
+      snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
+  ], name=name)
+
 def make_mlp_model(
     mlp_size: list = [128]*2,
     dropout_rate: float = 0.05,
