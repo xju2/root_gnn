@@ -15,19 +15,31 @@ import sonnet as snt
 
 class MultiMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
-        super(MMLP, self).__init__()
-        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
-        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
-    def __call__(self,x):
-        return self.tower_mlp(tf.reshape(x[0][1:],[1, 3]))*x[0][0]+self.track_mlp(tf.reshape(x[0][1:],[1, 3]))*(1.-x[0][0])
+        super(MultiMLP, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
+    def __call__(self,x,is_training=True):
+        return self.tower_mlp(tf.reshape(x[:,1:],[len(x), len(x[0])-1]))*tf.reshape(x[:,0],[len(x),1])+self.track_mlp(tf.reshape(x[:,1:],[len(x), len(x[0])-1]))*(1.-tf.reshape(x[:,0],[len(x),1]))
     
 class ConcatMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
-        super(MMLP, self).__init__()
+        super(ConcatMLP, self).__init__()
         self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
-    def __call__(self,x):
-        return tf.concatenate(self.tower_mlp(tf.reshape(x[0][1:],[1, 3]))*x[0][0],self.track_mlp(tf.reshape(x[0][1:],[1, 3]))*(1.-x[0][0]))
+    def __call__(self,x,is_training=True):
+        return tf.concatenate(self.tower_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*x[0][0],self.track_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*(1.-x[0][0]))
+
+class EdgeMLP(snt.Module):
+    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
+        super(EdgeMLP, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+        self.mix_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+    def __call__(self,x,is_training=True):
+        return \
+    self.tower_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,0],[len(x),1])+\
+    self.mix_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,1],[len(x),1])+\
+    self.track_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,2],[len(x),1])
 
 def make_multi_mlp_model(
     mlp_size: list = [128]*2,
@@ -35,10 +47,27 @@ def make_multi_mlp_model(
     activations=tf.nn.relu,
     activate_final: bool =True,
     name: str = 'MLP', *args, **kwargs):
-  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
-  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
-  return snt.Sequential([
+    create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+    create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+    return snt.Sequential([
       MultiMLP(mlp_size,
+                  activation=activations,
+                  activate_final=activate_final,
+                  dropout_rate=dropout_rate
+        ),
+      snt.LayerNorm(axis=-1, create_scale=create_scale, create_offset=create_offset)
+  ], name=name)
+
+def make_heterogeneous_edges_model(
+    mlp_size: list = [128]*2,
+    dropout_rate: float = 0.05,
+    activations=tf.nn.relu,
+    activate_final: bool =True,
+    name: str = 'MLP', *args, **kwargs):
+    create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+    create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+    return snt.Sequential([
+      EdgeMLP(mlp_size,
                   activation=activations,
                   activate_final=activate_final,
                   dropout_rate=dropout_rate
@@ -52,9 +81,9 @@ def make_concat_mlp_model(
     activations=tf.nn.relu,
     activate_final: bool =True,
     name: str = 'MLP', *args, **kwargs):
-  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
-  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
-  return snt.Sequential([
+    create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+    create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+    return snt.Sequential([
       ConcatMLP(mlp_size,
                   activation=activations,
                   activate_final=activate_final,
@@ -69,9 +98,9 @@ def make_mlp_model(
     activations=tf.nn.relu,
     activate_final: bool =True,
     name: str = 'MLP', *args, **kwargs):
-  create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
-  create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
-  return snt.Sequential([
+    create_scale = True if not "create_scale" in kwargs else kwargs['create_scale']
+    create_offset = True if not "create_offset" in kwargs else kwargs['create_offset']
+    return snt.Sequential([
       snt.nets.MLP(mlp_size,
                   activation=activations,
                   activate_final=activate_final,
@@ -90,11 +119,11 @@ class MLPGraphIndependent(snt.Module):
         node_model_fn=nn_fn,
         global_model_fn=nn_fn)
 
-  def __call__(self, inputs,
+    def __call__(self, inputs,
             edge_model_kwargs=None,
             node_model_kwargs=None,
             global_model_kwargs=None):
-    return self._network(
+        return self._network(
       inputs,
       edge_model_kwargs=edge_model_kwargs,
       node_model_kwargs=node_model_kwargs,
@@ -142,10 +171,9 @@ class InteractionNetwork(snt.Module):
         use_sent_edges=True,
         use_globals=False,
         received_edges_reducer=reducer)
-
-  def __call__(self,
+    def __call__(self,
     graph,
     edge_model_kwargs=None,
     node_model_kwargs=None
   ):
-    return self._edge_block(self._node_block(graph, node_model_kwargs), edge_model_kwargs)
+        return self._edge_block(self._node_block(graph, node_model_kwargs), edge_model_kwargs)
