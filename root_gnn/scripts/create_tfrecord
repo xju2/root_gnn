@@ -14,6 +14,7 @@ if __name__ == "__main__":
     add_arg('--evts-per-record', default=5000, type=int, help='number of events per output file')
     add_arg('--type', default=None, help='which data to process', 
             choices=list(DataSets.__all__))
+    add_arg('--type-arg', default="", help='argument to pass to the dataset object constructor if any')
     add_arg("--debug", action='store_true', help='in a debug mode')
     add_arg("--signal", action='store_true', help='the event is signal')
     add_arg("--max-evts", type=int, default=-1, help='maximum number of events to process')
@@ -41,6 +42,7 @@ if __name__ == "__main__":
         exit(1)
         
     from root_gnn import datasets as DataSets # the main program to produce the graph
+    from root_gnn.datasets import *
 
     data = getattr(DataSets, args.type)()
     if args.type == "WTaggerFilteredDataset":
@@ -63,6 +65,10 @@ if __name__ == "__main__":
             data.set_config_file(args.config)
         
         data.set_include_particle_type(args.include_particle_type)
+    
+    if "TauIdentificationDataset" in args.type:
+        if args.config is not None:
+            data.set_config_file(args.config)
 
     now = time.time()
 
