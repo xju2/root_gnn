@@ -23,9 +23,6 @@ from root_gnn import datasets as DataSets
 
 import tensorflow as tf
 
-def count_prongs(entry):
-    return 0
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Predict with GNN')
@@ -38,13 +35,19 @@ if __name__ == "__main__":
     add_arg("--config",help="configuration file name",metavar='N',type=str,nargs='+')
     add_arg('--type', default="TauIdentificationDataset", help='which data to process',
             choices=list(DataSets.__all__))
+    add_arg('--type-arg', default="", help='argument to pass to the dataset object constructor if any')
 
     args = parser.parse_args()
 
     ntuple_in = args.inputfile
     ntuple_out = args.outputfile
+    
+    from root_gnn import datasets as DataSets # the main program to produce the graph
+    from root_gnn.datasets import *
 
-    data = getattr(DataSets, args.type)()
+    data = eval(f"{args.type}({args.type_arg})")
+    if args.config is not None:
+            data.set_config_file(args.config)
 
     models = []
     iters = []
