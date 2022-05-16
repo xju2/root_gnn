@@ -27,7 +27,7 @@ class ConcatMLP(snt.Module):
         self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final,dropout_rate=dropout_rate)
     def __call__(self,x,is_training=True):
-        return tf.concatenate(self.tower_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*x[0][0],self.track_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*(1.-x[0][0]))
+        return tf.concatenate([self.tower_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*x[0][0],self.track_mlp(tf.reshape(x[0][1:],[1, len(x[0])-1]))*(1.-x[0][0])])
 
 class EdgeMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
@@ -36,10 +36,7 @@ class EdgeMLP(snt.Module):
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
         self.mix_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
     def __call__(self,x,is_training=True):
-        return \
-    self.tower_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,0],[len(x),1])+\
-    self.mix_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,1],[len(x),1])+\
-    self.track_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,2],[len(x),1])
+        return self.tower_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,0],[len(x),1])+self.mix_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,1],[len(x),1])+self.track_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,2],[len(x),1])
 
 def make_multi_mlp_model(
     mlp_size: list = [128]*2,
