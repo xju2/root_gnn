@@ -4,9 +4,10 @@ import itertools
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
+from sklearn.neighbors import NearestNeighbors
 
 tree_name = "output"
-def make_graph(chain, debug=False):
+def make_graph(chain, debug=False, connectivity=None):
     
     def get_tower_info(idx):
         return [chain.JetTowerEt[idx], chain.JetTowerEta[idx], chain.JetTowerPhi[idx], 0, 0]
@@ -61,8 +62,14 @@ def make_graph(chain, debug=False):
             print(nodes)
 
         # edges
-        all_edges = list(itertools.combinations(tower_nodes, 2)) + list(itertools.combinations(track_nodes, 2))
-        #print(all_edges)
+        if connectivity == 'disconnected':
+            all_edges = list(itertools.combinations(tower_nodes, 2)) + list(itertools.combinations(track_nodes, 2))
+        elif connectivity == 'KNN':
+            nbrs = NearestNeighbors(n_neighbors=3).fit(nodes)
+            distances, indices = nbrs.kneighbors(nodes)
+            all_edges = indices
+        else:
+            all_edges = list(itertools.combinations(range(n_nodes), 2))
         senders = np.array([x[0] for x in all_edges])
         receivers = np.array([x[1] for x in all_edges])
         n_edges = len(all_edges)
@@ -75,7 +82,6 @@ def make_graph(chain, debug=False):
         M2 = lambda Pt1, Pt2, eta1, eta2, phi1, phi2: 2*Pt1*Pt2*(np.cosh(eta1-eta2)-np.cos(phi1-phi2))
         
         for e in all_edges:
-            #print(e)
             v1, v2 = nodes[e[0]], nodes[e[1]]
             delta = Delta(v1[1], v2[1], v1[2], v2[2])
             kt = kT(v1[0], v2[0], delta)
@@ -85,7 +91,6 @@ def make_graph(chain, debug=False):
         edges = np.array(edges, dtype=np.float32)
         
         # Feature Scaling
-        #nodes = (np.array(nodes,dtype=np.float32) - np.array([2., 0., 0.], dtype=np.float32))*scale_factors
         nodes = np.array(nodes, dtype=np.float32) * scale_factors
         
         n_nodes = len(nodes)
@@ -130,7 +135,7 @@ def read(filename, start_entry, nentries):
             chain.GetEntry(ientry + start_entry)
             yield chain
 
-class tauidAllEdgeVarWithDZ(DataSet):
+class tauidEdgeVarWithDZ(DataSet):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.read = read

@@ -161,17 +161,10 @@ def invariant_mass(event, p_list):
     return tlv
 
 
-def read(filename, start_entry, nentries):
-    ievt = 0
+def read(filename):
     with open(filename, 'r') as f:
         for line in f:
-            if ievt < start_entry:
-                continue
-            if ievt >= start_entry+nentries:
-                break
-
             yield [float(x) for x in line.split()]
-            ievt += 1
 
 def evt_img(event):
     # pylint: disable=maybe-no-member

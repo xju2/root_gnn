@@ -4,8 +4,10 @@ import itertools
 
 from graph_nets import utils_tf
 from root_gnn.src.datasets.base import DataSet
+from sklearn.neighbors import NearestNeighbors
 
-def make_graph(chain, debug=False):
+tree_name = "output"
+def make_graph(chain, debug=False, connectivity=None):
     isTau = 0
     scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
     track_idx = 0
@@ -37,6 +39,8 @@ def make_graph(chain, debug=False):
             track_idx+=1
 
         n_nodes = len(nodes)
+        if n_nodes < 1:
+            continue
         nodes = np.array(nodes,dtype=np.float32)*scale_factors
         if debug:
             print(nodes.shape)
@@ -44,10 +48,21 @@ def make_graph(chain, debug=False):
             print(nodes)
 
         # edges
-        all_edges = list(itertools.combinations(range(n_nodes), 2))
+        if connectivity == 'disconnected':
+            all_edges = list(itertools.combinations(tower_nodes, 2)) + list(itertools.combinations(track_nodes, 2))
+        elif connectivity == 'KNN':
+            nbrs = NearestNeighbors(n_neighbors=3).fit(nodes)
+            distances, indices = nbrs.kneighbors(nodes)
+            all_edges = indices
+        else:
+            all_edges = list(itertools.combinations(range(n_nodes), 2))
         senders = np.array([x[0] for x in all_edges])
         receivers = np.array([x[1] for x in all_edges])
         n_edges = len(all_edges)
+        
+        if n_edges < 0:
+            continue
+            
         edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
         zeros = np.array([0.0], dtype=np.float32)
 
@@ -72,23 +87,32 @@ def make_graph(chain, debug=False):
         input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
         target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
         graph_list.append((input_graph, target_graph))
+    if len(graph_list) == 0:
+        return [(None, None)]
+    
     return graph_list
 
-def read(filename, nentries=-1, start_entry=0):
-    import ROOT
-    tree_name = "output"
-    chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
-    chain.Add(filename)
-    tot_entries = chain.GetEntries()
-    nentries = nentries if nentries > 0 and (start_entry + nentries) <= tot_entries\
-        else tot_entries - start_entry
+def read(filename, start_entry, nentries):
+        import ROOT
+        chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
+        chain.Add(filename)
+        tot_entries = chain.GetEntries()
+        nentries = nentries if (start_entry + nentries) <= tot_entries\
+            else tot_entries - start_entry
 
-    for ientry in range(nentries):
-        chain.GetEntry(ientry + start_entry)
-        yield chain
+        for ientry in range(nentries):
+            chain.GetEntry(ientry + start_entry)
+            yield chain
 
 class TauIdentificationDataset(DataSet):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.read = read
         self.make_graph = make_graph
+        
+    def _num_evts(self, filename):
+        import ROOT
+        chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
+        chain.Add(filename)
+        n_entries = chain.GetEntries()
+        return n_entries

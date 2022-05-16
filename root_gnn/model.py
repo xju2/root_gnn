@@ -10,12 +10,10 @@ from root_gnn.src.models.edge_learner import EdgeClassifier
 from root_gnn.src.models.edge_learner import EdgeRegression
 from root_gnn.src.models.global_learner import GlobalClassifier
 from root_gnn.src.models.global_learner import GlobalRegression
-from root_gnn.src.models.global_learner import GraphEmbedding
 
 __all__ = (
     "EdgeClassifier",
     "EdgeRegression",
     "GlobalClassifier",
-    "GlobalRegression",
-    "GraphEmbedding",
+    "GlobalRegression"
 )

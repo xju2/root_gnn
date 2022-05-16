@@ -4,8 +4,7 @@ Training a classifier
 """
 import argparse
 from root_gnn.utils import load_yaml
-from root_gnn import trainer
-from root_gnn import rep_trainer
+from root_gnn import trainer 
 
 if __name__ == "__main__":
     
@@ -19,7 +18,6 @@ if __name__ == "__main__":
 
     args_parser = subparsers.add_parser('args', help='arguments help',\
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
     trainer.add_args(args_parser)
     args = parser.parse_args()
 
@@ -40,8 +38,5 @@ if __name__ == "__main__":
 
     config['optimizer'] = config['learning_rate']
     print(config)
-    if config['trainer'] == "rep":
-        trnr = rep_trainer.EmbeddingTrainer(**config)
-    else:
-        trnr = trainer.Trainer(**config)
+    trnr = trainer.Trainer(**config)
     trnr.train(args.num_batches)
