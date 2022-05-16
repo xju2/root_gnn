@@ -3,8 +3,9 @@ import math
 import itertools
 
 from graph_nets import utils_tf
-from root_gnn.utils import calc_dphi, load_yaml
+from root_gnn.utils import calc_dphi
 from root_gnn.src.datasets.base import DataSet
+from root_gnn import utils
 
 import ROOT
 from ROOT import TChain, AddressOf, std
@@ -14,12 +15,27 @@ tower_lim=None
 track_lim=None
 cutoff=False
 
+def create_heterogeneous_edge_features(all_edges,nodes):
+    edge_features = []
+    for x in all_edges:
+        if nodes[x[0]][0] > 0.5:
+            if nodes[x[1]][0] > 0.5: #track-track
+                edge_features.append([0.0,0.0,1.0])
+            else: #track-cluster should not be possible
+                raise("Error: Tracks and clusters out of order")
+        elif nodes[x[1]][0] > 0.5: #cluster-track
+            edge_features.append([0.0,1.0,0.0])
+        else: #cluster-cluster
+            edge_features.append([1.0,0.0,0.0])
+    return edge_features
+
 def make_graph(chain, debug=False):
     isTau = 0
-    scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
     track_idx = 0
     tower_idx = 0
     graph_list = []
+
+    scale_factors = np.array([1.0,1.0,1.0,1.0/3.0,1.0/math.pi,1.0,1.0],dtype=np.float32)
     for ijet in range(chain.nJets):
         # Match jet to truth jet that minimizes angular distance
         nodes = []
@@ -40,9 +56,12 @@ def make_graph(chain, debug=False):
 
         for itower in range(chain.JetTowerN[ijet]):
             if(not cutoff or chain.JetTowerEt[tower_idx] >= 1.0):
-                tower_nodes.append([chain.JetTowerEt[tower_idx],\
+                tower_nodes.append([0.0,math.log10(chain.JetPt[ijet]),\
+                              math.log10(chain.JetTowerEt[tower_idx]),\
                               chain.TowerEta[tower_idx],\
-                              chain.TowerPhi[tower_idx]])
+                              chain.TowerPhi[tower_idx],\
+                              0.0,\
+                              0.0])
             tower_idx += 1
         
         tower_nodes.sort(reverse=True)
@@ -52,17 +71,21 @@ def make_graph(chain, debug=False):
         for itrack in range(chain.JetGhostTrackN[ijet]):
             ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
             if(not cutoff or chain.TrackPt[ghost_track_idx] >= 1.0):
-                track_nodes.append([chain.TrackPt[ghost_track_idx],\
+                theta = 2*math.atan(-math.exp(chain.TrackEta[ghost_track_idx]))
+                z0 = math.log10(10e-3+math.fabs(chain.TrackZ0[ghost_track_idx]*math.sin(theta)))
+                d0 = math.log10(10e-3+math.fabs(chain.TrackD0[ghost_track_idx]))
+                track_nodes.append([1.0,math.log10(chain.JetPt[ijet]),\
+                              math.log10(chain.TrackPt[ghost_track_idx]),\
                               chain.TrackEta[ghost_track_idx],\
-                              chain.TrackPhi[ghost_track_idx]])
+                              chain.TrackPhi[ghost_track_idx],\
+                              z0,\
+                              d0])
             track_idx+=1
         
         track_nodes.sort(reverse=True)
         if track_lim != None:
             track_nodes = track_nodes[0:min(len(track_nodes),track_lim)]
         
-        
-        scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
         nodes = np.array(tower_nodes + track_nodes,dtype=np.float32)*scale_factors
         n_nodes = len(nodes)
         if n_nodes < 1:
@@ -75,10 +98,11 @@ def make_graph(chain, debug=False):
         
         # edges
         all_edges = list(itertools.combinations(range(n_nodes), 2))
+        all_edges.append((0,0))
         senders = np.array([x[0] for x in all_edges])
         receivers = np.array([x[1] for x in all_edges])
         n_edges = len(all_edges)
-        edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
+        edges = np.array(create_heterogeneous_edge_features(all_edges,nodes),dtype=np.float32)
         zeros = np.array([0.0], dtype=np.float32)
 
         input_datadict = {
@@ -119,7 +143,7 @@ def read(filename):
         chain.GetEntry(ientry)
         yield chain
 
-class TauIdentificationDataset(DataSet):
+class TauIdentificationDatasetHeterogeneousEdges(DataSet):
     def __init__(self,
                  use_cutoff=False,\
                  track_limit=None,\
@@ -131,8 +155,4 @@ class TauIdentificationDataset(DataSet):
         track_lim=track_limit
         if use_cutoff:
             cutoff=True
-    def set_config_file(self,config):
-        config = load_yaml(config)
-        self.tower_lim = config.get('tower_limit',None)
-        self.track_lim = config.get('track_limit',None)
-        self.use_cutoff = config.get('use_cutoff',False)
+
