@@ -12,14 +12,10 @@ from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
-from root_gnn.src.datasets.tauid_cutoff import TauIdentificationDatasetCutoff
-from root_gnn.src.datasets.tauid_perm import TauIdentificationDatasetPermutation
-from root_gnn.src.datasets.tauid_cutoff_perm import TauIdentificationDatasetCutoffPermutation
-from root_gnn.src.datasets.tauid_cutoff2 import TauIdentificationDatasetCutoff2
-from root_gnn.src.datasets.tauid_mmlp import TauIdentificationDatasetMMLP
-
-
-
+from root_gnn.src.datasets.tauid_trackvars import TauIdentificationDatasetTrackvars
+from root_gnn.src.datasets.tauid_trackvars_towervars import TauIdentificationDatasetTrackvarsTowervars
+from root_gnn.src.datasets.tauid_heterogeneous_nodes import TauIdentificationDatasetHeterogeneousNodes
+from root_gnn.src.datasets.tauid_heterogeneous_edges import TauIdentificationDatasetHeterogeneousEdges
 
 __all__ = (
     "TopTaggerDataset",
@@ -28,9 +24,9 @@ __all__ = (
     "WTaggerLeadingJetDataset",
     "DiTauMassDataset",
     "TauIdentificationDataset",
-    "TauIdentificationDatasetCutoff",
-    "TauIdentificationDatasetCutoff2",
-    "TauIdentificationDatasetPermutation",
-    "TauIdentificationDatasetCutoffPermutation",
-    "TauIdentificationDatasetMMLP"
+    "TauIdentificationDatasetJetPt",
+    "TauIdentificationDatasetTrackvars",
+    "TauIdentificationDatasetTrackvarsTowervars",
+    "TauIdentificationDatasetHeterogeneousNodes",
+    "TauIdentificationDatasetHeterogeneousEdges"
 )
