@@ -122,19 +122,27 @@ if __name__ == "__main__":
         plt.grid()
         rejections = []
         efficiencies = []
-        for idx in range(0,n_plots):
-            efficiency,rejection=buildRejection(target[idx],predictions[idx],args.colors[idx],args.styles[idx],\
-            efficiencies=(efficiencies_1prong if args.prongs[idx] == '1' else efficiencies_3prong))
-            
-            efficiencies.append(efficiency)
-            rejections.append(rejection)
-            with open(args.prefix+f"rejection{idx}.txt","w") as f:
-                f.write("efficiency,rejection\n")
-                for elem in zip(efficiency,rejection):
-                    print(f"{elem[0]},{elem[1]:.1f}")
-                    #f.write(f"{elem[0]},{elem[1]:.1f}\n")
-        for idx in range(0,n_plots):
-            plt.plot(efficiencies[idx],rejections[idx],color=args.colors[idx],marker='o',linestyle='')
+        with open(args.prefix+'table.csv',"w") as t:
+            column_string = f"model,{working_ponts[0]},{working_ponts[1]},{working_ponts[2]},{working_ponts[3]}\n"
+            t.write(column_string)
+            for idx in range(0,n_plots):
+                table_str = f"{args.legend[idx]},"
+
+                efficiency,rejection=buildRejection(target[idx],predictions[idx],args.colors[idx],args.styles[idx],\
+                efficiencies=(efficiencies_1prong if args.prongs[idx] == '1' else efficiencies_3prong))
+                for r in rejection:
+                    table_str += f"{r:.1f},"
+                
+                efficiencies.append(efficiency)
+                rejections.append(rejection)
+                t.write(table_str+"\n")
+                #with open(args.prefix+f"rejection{idx}.txt","w") as f:
+                #    f.write("efficiency,rejection\n")
+                #    for elem in zip(efficiency,rejection):
+                #        print(f"{elem[0]},{elem[1]:.1f}")
+                        #f.write(f"{elem[0]},{elem[1]:.1f}\n")
+            for idx in range(0,n_plots):
+                plt.plot(efficiencies[idx],rejections[idx],color=args.colors[idx],marker='o',linestyle='')
         plt.legend(args.legend,loc='upper right')
         plt.savefig(args.prefix+'_rejection.pdf')
         plt.close()
@@ -150,6 +158,3 @@ if __name__ == "__main__":
         plt.legend(args.legend,loc='upper left')
         plt.savefig(args.prefix+'_misid.pdf')
         plt.close()
-
-
-
