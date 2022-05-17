@@ -31,7 +31,8 @@ if __name__ == "__main__":
     print("Output Name {}".format(outname))
     print("{} events per record".format(n_evts_per_record))
     print("Data type:", args.type)
-    print("Graph type:", "Disconnected"
+    graph_type = args.connectivity if args.connectivity is not None else "Fully-Connected"
+    print("Graph type:", graph_type)
     print("# of workers:", args.num_workers)
 
     out_dir = os.path.abspath(os.path.dirname(outname))
