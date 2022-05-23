@@ -12,6 +12,7 @@ from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
+from root_gnn.src.datasets.tauid_jetpt import TauIdentificationDatasetJetPt
 from root_gnn.src.datasets.tauid_trackvars import TauIdentificationDatasetTrackvars
 from root_gnn.src.datasets.tauid_trackvars_towervars import TauIdentificationDatasetTrackvarsTowervars
 from root_gnn.src.datasets.tauid_heterogeneous_nodes import TauIdentificationDatasetHeterogeneousNodes
