@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     data = eval(f"{args.type}({args.type_arg})")
     if args.config is not None:
-            data.set_config_file(args.config)
+            data.set_config_file(args.config[0])
 
     models = []
     iters = []
