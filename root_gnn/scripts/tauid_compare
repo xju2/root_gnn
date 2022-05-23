@@ -38,29 +38,6 @@ plt.rc('font',size=medium)
 plt.rc('figure',titlesize=large)
 plt.rc('axes',labelsize=medium)
 
-# add to the plot
-#def buildRejection(tdd,odd,style):
-#    plt.figure()
-#    fpr, tpr, threshold = roc_curve(tdd, odd)
-#    roc_auc = auc(fpr, tpr)
-#    plt.plot(tpr, 1.0/fpr, style, lw=2.0)
-
-##def buildRejection(tdd,odd,style):
-##    cms_points = []
-##    points = []
-##    accuracy = []
-##    bg_efficiency = []
-##    recall = []
-##    thresholds = np.linspace(0.0,1.0,num=10000)
-##    for threshold in thresholds:
-##            y_p, y_t = (odd > threshold), (tdd > threshold)
-##            recall.append(sklearn.metrics.recall_score(y_t, y_p))
-##           #Background rejection efficiency
-##            y_p, y_t = ((1.0-odd) > (1.0-threshold)), ((1.0-tdd) > (1.0-threshold))
-##            bg_efficiency.append(sklearn.metrics.recall_score(y_t, y_p))
-##    #compute 1.0/background selection efficiency
-##    plt.plot(recall, 1.0/(1.0-np.array(bg_efficiency)), style, lw=2.0)
-
 def buildROC(target_test,test_preds,color='r',style='solid'):
     fpr, tpr, threshold = roc_curve(target_test, test_preds)
     plt.plot(fpr, tpr, color=color, linestyle=style, lw=2.0)
@@ -79,11 +56,6 @@ def buildRejection(target_test,test_preds,color='r',style='solid',efficiencies=[
                 break
     return efficiencies,rejections
 
-def buildMisid(target_test,test_preds,color='r',style='solid'):
-    fpr, tpr, threshold = roc_curve(target_test, test_preds)
-    plt.plot(tpr, fpr, color=color, linestyle=style, lw=2.0)
-
-
 if __name__ == "__main__":
     n_plots = len(args.npz)
     target = []
@@ -101,18 +73,16 @@ if __name__ == "__main__":
             predictions.append(array['predictions'])
             target.append(array['truth_info'])
 
-        
-    if args.roc:
-        plt.figure()
-        plt.title('Receiver Operating Characteristic')
-        plt.ylabel('True Positive Rate')
-        plt.xlabel('False Positive Rate')
-        for idx in range(0,n_plots):
-            roc_auc=buildROC(target[idx],predictions[idx],args.colors[idx],args.styles[idx])
-            args.legend[idx] += f" AUC {roc_auc:.4f}"
-        plt.legend(args.legend,loc='lower right')
-        plt.savefig(args.prefix+'_roc.pdf')
-        plt.close()
+    plt.figure()
+    plt.title('Receiver Operating Characteristic')
+    plt.ylabel('True Positive Rate')
+    plt.xlabel('False Positive Rate')
+    for idx in range(0,n_plots):
+        roc_auc=buildROC(target[idx],predictions[idx],args.colors[idx],args.styles[idx])
+        args.legend[idx] += f" AUC {roc_auc:.4f}"
+    plt.legend(args.legend,loc='lower right')
+    plt.savefig(args.prefix+'_roc.pdf')
+    plt.close()
 
     if args.rejection:
         plt.figure()
@@ -136,25 +106,8 @@ if __name__ == "__main__":
                 efficiencies.append(efficiency)
                 rejections.append(rejection)
                 t.write(table_str+"\n")
-                #with open(args.prefix+f"rejection{idx}.txt","w") as f:
-                #    f.write("efficiency,rejection\n")
-                #    for elem in zip(efficiency,rejection):
-                #        print(f"{elem[0]},{elem[1]:.1f}")
-                        #f.write(f"{elem[0]},{elem[1]:.1f}\n")
             for idx in range(0,n_plots):
                 plt.plot(efficiencies[idx],rejections[idx],color=args.colors[idx],marker='o',linestyle='')
         plt.legend(args.legend,loc='upper right')
         plt.savefig(args.prefix+'_rejection.pdf')
-        plt.close()
-
-    if args.misid:
-        plt.figure()
-        plt.yscale('log')
-        plt.ylabel('Misidentification Rate')
-        plt.xlabel('Efficiency')
-        plt.grid()
-        for idx in range(0,n_plots):
-            buildMisid(target[idx],predictions[idx],args.colors[idx],args.styles[idx])
-        plt.legend(args.legend,loc='upper left')
-        plt.savefig(args.prefix+'_misid.pdf')
         plt.close()
