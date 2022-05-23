@@ -123,10 +123,10 @@ class GlobalOnlyLearnerBase(snt.Module):
         with_global_inputs=False,
         encoder_size: list=None,
         core_size: list=None,
-        name="GlobalInputLearnerBase",
+        name="GlobalOnlyLearnerBase",
         reducer=tf.math.unsorted_segment_sum,
         encoder_fn = make_mlp_model, **kwargs):
-        super(GlobalInputLearnerBase, self).__init__(name=name)
+        super(GlobalOnlyLearnerBase, self).__init__(name=name)
 
         if encoder_size is not None:
             encoder_mlp_fn = partial(encoder_fn, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
@@ -188,11 +188,11 @@ class GlobalOnlyLearnerBase(snt.Module):
 
         return output_ops
                        
-class GlobalOnlyClassifier(GlobalInputLearnerBase):
+class GlobalOnlyClassifier(GlobalOnlyLearnerBase):
     def __init__(self,
         with_edge_inputs=False, with_node_inputs=True, with_global_inputs=False,
         encoder_size: list=None, core_size: list=None, decoder_size: list=None,
-        name="GlobalInputClassifier", **kwargs):
+        name="GlobalOnlyClassifier", **kwargs):
 
         global_output_size = 1
         if decoder_size is not None:
