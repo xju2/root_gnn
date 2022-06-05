@@ -31,7 +31,6 @@ from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
 from root_gnn import losses
 from root_gnn import model as Models
-from root_gnn.scripts.add_rotations_translations import add_rotations_translations
 
 verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
 printer = pprint.PrettyPrinter(indent=2)
@@ -123,13 +122,19 @@ def add_args(parser):
     add_arg("--val-batches", type=int, help='number of batches used for each validation', default=50)
     add_arg("--file-pattern", default='*', help='file patterns for input TFRecords')
     add_arg("--disable-tqdm", action='store_true', help='disable tqdm progressing bar')
-    add_arg("--global-output-size", help= 'output size for use in global regression',default= None)
     add_arg("--encoder-size", help='MLP size for encoder', default=None)
     add_arg("--core-size", help='MLP size for core', default=None)
     add_arg("--decoder-size", help='MLP size for decoder', default=None)
     add_arg("--with-edge-inputs", action='store_true', help='input graph contains edge information')
+    add_arg("--with-edges", help='duplicate variable', default=False)
+    add_arg("--with-global-inputs", help='input graph contains global information', default=False)
+    add_arg("--output-size", help='output size of global regression', default=1)
+    add_arg("--num-transformation", help='the number of times transformation is performed for representational learning', default=1)
+    add_arg("--agument-type", help='type of augmentation for representation learning', default='rotation')
+    add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
+    add_arg("--decay-steps", help='Steps for cosine decay in learning rate', default=0)
 
-
+    
 class Trainer(snt.Module):
     
     """
@@ -158,9 +163,11 @@ class Trainer(snt.Module):
                 shuffle_size=-1, log_freq=100,
                 val_batches=50,
                 file_pattern='*', #distributed=False,
-                disable_tqdm=False, global_output_size = None,
+                disable_tqdm=False,
                 encoder_size=None, core_size=None, decoder_size=None,
-                with_edge_inputs=False,
+                with_edge_inputs=False, with_edges=False, with_global_inputs=False,
+                output_size=1, num_transformation=1, augment_type="rotation", 
+                cosine_decay=False, decay_steps=0,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,
@@ -188,14 +195,31 @@ class Trainer(snt.Module):
 
         self.ckpt_manager = None
         self.output_dir = output_dir
+        self.output_size = output_size
+        self.num_transformation = num_transformation
+        self.augment_type = augment_type
+        
+        self.cosine_decay = cosine_decay
+        self.decay_steps = decay_steps
 
         if isinstance(model, str):
-            self.model = getattr(Models, model)(
-                with_edge_inputs=with_edge_inputs,
-                encoder_size=encoder_size,
-                core_size=core_size,
-                decoder_size=decoder_size
-                )
+            if "regression" in model or "Regression" in model:
+                self.model = getattr(Models, model)(
+                    self.output_size,
+                    with_edge_inputs=with_edges,
+                    with_global_inputs=with_global_inputs,
+                    encoder_size=encoder_size,
+                    core_size=core_size,
+                    decoder_size=decoder_size
+                    )
+            else:
+                self.model = getattr(Models, model)(
+                    with_edge_inputs=with_edges,
+                    with_global_inputs=with_global_inputs,
+                    encoder_size=encoder_size,
+                    core_size=core_size,
+                    decoder_size=decoder_size
+                    )
         elif isinstance(model, snt.Module):
             self.model = model
         else:
@@ -205,19 +229,25 @@ class Trainer(snt.Module):
             loss_config = loss_fcn.split(',')
             loss_name = loss_config[0]
             if len(loss_config) > 1:
-                self.loss_fcn = getattr(losses, loss_name)(loss_config[1:])
+                self.loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config[1:]])
             else:
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
-
-
-        if isinstance(optimizer, snt.Optimizer):
-            self.optimizer = optimizer
-        elif isinstance(optimizer, float):
-            self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            
+        if not self.cosine_decay:
+            if isinstance(optimizer, snt.Optimizer):
+                self.optimizer = optimizer
+            elif isinstance(optimizer, float):
+                self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            else:
+                self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
         else:
-            self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
+            self.lr_base = 0.0001
+            self.get_lr = lambda n_steps: 0.5*(1+math.cos(math.pi*n_steps/decay_steps))
+            self.lr = tf.Variable(self.lr_base, trainable=False, name='lr', dtype=tf.float32)
+            self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
+
 
 
         self.mode = mode.split(',')
@@ -302,6 +332,7 @@ class Trainer(snt.Module):
                                 "{} attempts. Stopping training".format(self.patiences))
                             break
                         else:
+                            self.ckpt_manager.save()
                             self.attempts += 1
 
     def validation(self):
@@ -337,7 +368,12 @@ class Trainer(snt.Module):
         if 'clf' in self.mode:
             threshold = 0.5
             y_true, y_pred = (truth_info > threshold), (predictions > threshold)
-            fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+            try:
+                fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
+            except:
+                #print(f"pred, true: {[_ for _ in zip(y_pred, y_true)]}")
+                print(predictions)
+                exit()
             self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
             self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
             self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
@@ -420,13 +456,21 @@ class Trainer(snt.Module):
         def update_step(inputs, targets):
             print("Tracing update_step")
             with tf.GradientTape() as tape:
-                aug_inputs = add_rotations_translations(inputs)
                 output_ops = self.model(inputs, self.num_iters)
-                aug_output_ops = self.model(aug_inputs, self.num_iters)
-                loss_ops_tr = self.loss_fcn(output_ops, aug_output_ops)
+                #print(output_ops)
+                loss_ops_tr = self.loss_fcn(targets, output_ops)
                 loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
-
             gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
+            
+            #receive learning rate from schedule
+            if self.cosine_decay:
+                lr_mult = self.get_lr(step)
+                self.lr.assign(self.lr_base * lr_mult)
+                if step % self.decay_steps == 0 and step / self.decay_steps > 0:
+                    ckpt_n = step / self.decay_steps
+                    ckpt_dir = os.path.join(output_dir, "one-shot-checkpoints/{ckpt_n}")
+                    self.checkpoint = tf.train.Checkpoint(optimizer=optimizer,model=model)
+            
             self.optimizer.apply(gradients, self.model.trainable_variables)
             return loss_op_tr
 
@@ -483,7 +527,7 @@ class Trainer(snt.Module):
         self.load_training_data()
         self.load_validating_data()
 
-    def make_checkpoints(self):
+    def make_checkpoints(self, is_training=True):
         if self.ckpt_manager:
             return
 
@@ -499,7 +543,8 @@ class Trainer(snt.Module):
             self.checkpoint, directory=ckpt_dir,
             max_to_keep=20, keep_checkpoint_every_n_hours=1)
         logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
-
-        _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
+        if not is_training:
+            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint).expect_partial()
+        else:
+            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
         self.ckpt_dir = ckpt_dir
-

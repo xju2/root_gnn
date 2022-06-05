@@ -50,56 +50,81 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=None):
        
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname) and not overwrite:
             print(outname,"is there. skip...")
             return 0, n_evts_per_record
 
-        ievt = -1
         ifailed = 0
         all_graphs = []
         start_entry = ijob * n_evts_per_record
-        for event in self.read(filename):
-            ievt += 1
-            if ievt < start_entry:
-                continue
-            gen_graphs = self.make_graph(event, debug)
+        
+        if debug:
+            print(">>> Debug 0", ijob)
+        
+        t0 = time.time()
+        jevt = 0
+        kgraphs = 0
+        for event in self.read(filename, start_entry, n_evts_per_record):
+            gen_graphs = self.make_graph(event, debug, connectivity=connectivity)
             
-            if gen_graphs[0][0] is None:
+            if debug:
+                print(">>> Debug 1", ijob, jevt, kgraphs)
+            
+            if len(gen_graphs)==0 or gen_graphs[0][0] == None:
                 ifailed += 1
                 continue
 
             all_graphs += gen_graphs
-            if ievt == start_entry + n_evts_per_record - 1:
-                break
-        
+            kgraphs += len(gen_graphs)
+            jevt += 1
+            
+        if debug:
+            print(">>> Debug 2", ijob)
+            
         isaved = len(all_graphs)
-        ex_input, ex_target = all_graphs[0]
-        input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_input, with_padding=self.with_padding)
-        target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
-            ex_target, with_padding=self.with_padding)
-        def generator():
-            for G in all_graphs:
-                yield (G[0], G[1])
+        if isaved > 0:
+            ex_input, ex_target = all_graphs[0]
+            input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_input, with_padding=self.with_padding)
+            target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_target, with_padding=self.with_padding)
+            def generator():
+                for G in all_graphs:
+                    yield (G[0], G[1])
+            
 
-        dataset = tf.data.Dataset.from_generator(
-            generator,
-            output_types=(input_dtype, target_dtype),
-            output_shapes=(input_shape, target_shape),
-            args=None)
-
-        writer = tf.io.TFRecordWriter(outname)
-        for data in dataset:
-            example = graph.serialize_graph(*data)
-            writer.write(example)
-        writer.close()
+            dataset = tf.data.Dataset.from_generator(
+                generator,
+                output_types=(input_dtype, target_dtype),
+                output_shapes=(input_shape, target_shape),
+                args=None)
+            if debug:
+                print(">>> Debug 3", ijob)
+            writer = tf.io.TFRecordWriter(outname)
+            for data in dataset:
+                example = graph.serialize_graph(*data)
+                writer.write(example)
+            if debug:
+                print(">>> Debug 4", ijob)
+            writer.close()
+            t1 = time.time()
+            all_graphs = []
+            print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
+        else:
+            print(ijob, "all failed")
         return ifailed, isaved
-        
 
-    def process(self, filename, outname, n_evts_per_record, debug, max_evts, num_workers=1, overwrite=False, **kwargs):
+    def process(self, filename, outname, n_evts_per_record,
+        debug, max_evts, num_workers=1, overwrite=False, connectivity=None, **kwargs):
+        
+        import time
+        import os
+        from multiprocessing import Pool
+        from functools import partial
+        
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -116,7 +141,8 @@ class DataSet(object):
         if num_workers < 2:
             ifailed, isaved=0, 0
             for ijob in range(n_files):
-                n_failed, n_saved = self.subprocess(ijob, n_evts_per_record, filename, outname, overwrite, debug)
+                n_failed, n_saved = self.subprocess(
+                    ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=connectivity)
                 ifailed += n_failed
                 isaved += n_saved
         else:
@@ -126,7 +152,8 @@ class DataSet(object):
                         filename=filename,
                         outname=outname,
                         overwrite=overwrite,
-                        debug=debug)
+                        debug=debug,
+                        connectivity=connectivity)
                 res = p.map(process_fnc, list(range(n_files)))
 
             ifailed = sum([x[0] for x in res])
