@@ -8,11 +8,19 @@ from sklearn.neighbors import NearestNeighbors
 
 tree_name = "output"
 def make_graph(chain, debug=False, connectivity=None):
+    
+    def get_tower_info(idx):
+        return [chain.JetTowerEt[idx], chain.JetTowerEta[idx], chain.JetTowerPhi[idx], 0, 0]
+    
+    def get_track_info(idx):
+        return [chain.TrackPt[idx], chain.TrackEta[idx], chain.TrackPhi[idx], chain.TrackD0[idx], chain.TrackZ0[idx]]
+        
     isTau = 0
-    scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
+    scale_factors = np.array([1.0e-3,1.0/6, 1.0/2/math.pi, 1, 1],dtype=np.float32)
     track_idx = 0
     tower_idx = 0
     graph_list = []
+    
     for ijet in range(chain.nJets):
         # Match jet to truth jet that minimizes angular distance
         nodes = []
@@ -29,19 +37,25 @@ def make_graph(chain, debug=False, connectivity=None):
         else:
             isTau = 0
 
+        tower_nodes, track_nodes = [], []
+        inode = 0
         for itower in range(chain.JetTowerN[ijet]):
-            nodes.append([chain.JetTowerEt[tower_idx],chain.JetTowerEta[tower_idx],chain.JetTowerPhi[tower_idx]])
+            nodes.append(get_tower_info(tower_idx))
+            tower_nodes.append(inode)
+            inode += 1
             tower_idx += 1
 
         for itrack in range(chain.JetGhostTrackN[ijet]):
             ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
-            nodes.append([chain.TrackPt[ghost_track_idx],chain.TrackEta[ghost_track_idx],chain.TrackPhi[ghost_track_idx]])
+            nodes.append(get_track_info(ghost_track_idx))
+            track_nodes.append(inode)
+            inode += 1
             track_idx+=1
 
         n_nodes = len(nodes)
         if n_nodes < 1:
             continue
-        nodes = np.array(nodes,dtype=np.float32)*scale_factors
+        
         if debug:
             print(nodes.shape)
             print(n_nodes)
@@ -59,12 +73,30 @@ def make_graph(chain, debug=False, connectivity=None):
         senders = np.array([x[0] for x in all_edges])
         receivers = np.array([x[1] for x in all_edges])
         n_edges = len(all_edges)
-        
-        if n_edges < 0:
-            continue
-            
-        edges = np.expand_dims(np.array([0.0]*n_edges, dtype=np.float32), axis=1)
+        edges = []
         zeros = np.array([0.0], dtype=np.float32)
+        
+        Delta = lambda ya, yb, phiA, phiB: np.sqrt((ya-yb)**2+(phiA-phiB)**2)
+        kT = lambda ptA, ptB, delta: min(ptA, ptB) * delta
+        Z = lambda ptA, ptB: min(ptA, ptB) / (ptA + ptB)
+        M2 = lambda Pt1, Pt2, eta1, eta2, phi1, phi2: 2*Pt1*Pt2*(np.cosh(eta1-eta2)-np.cos(phi1-phi2))
+        
+        for e in all_edges:
+            v1, v2 = nodes[e[0]], nodes[e[1]]
+            delta = Delta(v1[1], v2[1], v1[2], v2[2])
+            kt = kT(v1[0], v2[0], delta)
+            z = Z(v1[0], v2[0])
+            m2 = M2(v1[0], v2[0], v1[1], v2[1], v1[2], v2[2])
+            edges.append([np.log(delta), np.log(kt), np.log(z), np.log(m2)])
+        edges = np.array(edges, dtype=np.float32)
+        
+        # Feature Scaling
+        nodes = np.array(nodes, dtype=np.float32) * scale_factors
+        
+        n_nodes = len(nodes)
+        if n_nodes < 1 or n_edges < 1:
+            continue
+        
 
         input_datadict = {
             "n_node": n_nodes,
@@ -73,7 +105,7 @@ def make_graph(chain, debug=False, connectivity=None):
             "edges": edges,
             "senders": senders,
             "receivers": receivers,
-            "globals": np.array([n_nodes], dtype=np.float32)
+            "globals": np.array([chain.JetEta[ijet], chain.JetPhi[ijet]], dtype=np.float32)
         }
         target_datadict = {
             "n_node": n_nodes,
@@ -89,7 +121,6 @@ def make_graph(chain, debug=False, connectivity=None):
         graph_list.append((input_graph, target_graph))
     if len(graph_list) == 0:
         return [(None, None)]
-    
     return graph_list
 
 def read(filename, start_entry, nentries):
@@ -104,7 +135,7 @@ def read(filename, start_entry, nentries):
             chain.GetEntry(ientry + start_entry)
             yield chain
 
-class TauIdentificationDataset(DataSet):
+class tauidEdgeVarWithDZ(DataSet):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.read = read

@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     # Apply the model to the jets in the root file
     from root_gnn.datasets import TauIdentificationDataset
-
+    import ROOT
     from ROOT import TFile, TTree, TChain, AddressOf, std
     from array import arrayi
 

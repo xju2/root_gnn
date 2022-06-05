@@ -128,9 +128,8 @@ def add_args(parser):
     add_arg("--core-size", help='MLP size for core', default=None)
     add_arg("--decoder-size", help='MLP size for decoder', default=None)
     add_arg("--with-edge-inputs", action='store_true', help='input graph contains edge information')
-    add_arg("--output-size", help='output size of global regression', default=1)
 
-    
+
 class Trainer(snt.Module):
     
     """
@@ -161,7 +160,7 @@ class Trainer(snt.Module):
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False, global_output_size = None,
                 encoder_size=None, core_size=None, decoder_size=None,
-                with_edge_inputs=False, output_size=1,
+                with_edge_inputs=False,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,
@@ -189,24 +188,14 @@ class Trainer(snt.Module):
 
         self.ckpt_manager = None
         self.output_dir = output_dir
-        self.output_size = output_size
 
         if isinstance(model, str):
-            if "regression" in model or "Regression" in model:
-                self.model = getattr(Models, model)(
-                    self.output_size,
-                    with_edge_inputs=with_edge_inputs,
-                    encoder_size=encoder_size,
-                    core_size=core_size,
-                    decoder_size=decoder_size
-                    )
-            else:
-                self.model = getattr(Models, model)(
-                    with_edge_inputs=with_edge_inputs,
-                    encoder_size=encoder_size,
-                    core_size=core_size,
-                    decoder_size=decoder_size
-                    )
+            self.model = getattr(Models, model)(
+                with_edge_inputs=with_edge_inputs,
+                encoder_size=encoder_size,
+                core_size=core_size,
+                decoder_size=decoder_size
+                )
         elif isinstance(model, snt.Module):
             self.model = model
         else:
@@ -313,7 +302,6 @@ class Trainer(snt.Module):
                                 "{} attempts. Stopping training".format(self.patiences))
                             break
                         else:
-                            self.ckpt_manager.save()
                             self.attempts += 1
 
     def validation(self):
@@ -495,7 +483,7 @@ class Trainer(snt.Module):
         self.load_training_data()
         self.load_validating_data()
 
-    def make_checkpoints(self, is_training=True):
+    def make_checkpoints(self):
         if self.ckpt_manager:
             return
 
@@ -512,9 +500,6 @@ class Trainer(snt.Module):
             max_to_keep=20, keep_checkpoint_every_n_hours=1)
         logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
 
-        if not is_training:
-            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint).expect_partial()
-        else:
-            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
-
+        _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
         self.ckpt_dir = ckpt_dir
+
