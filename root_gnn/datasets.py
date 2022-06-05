@@ -17,6 +17,8 @@ from root_gnn.src.datasets.tauid_trackvars import TauIdentificationDatasetTrackv
 from root_gnn.src.datasets.tauid_trackvars_towervars import TauIdentificationDatasetTrackvarsTowervars
 from root_gnn.src.datasets.tauid_heterogeneous_nodes import TauIdentificationDatasetHeterogeneousNodes
 from root_gnn.src.datasets.tauid_heterogeneous_edges import TauIdentificationDatasetHeterogeneousEdges
+from root_gnn.src.datasets.tauidEdgeVarWithDZ import tauidEdgeVarWithDZ
+
 
 __all__ = (
     "TopTaggerDataset",
@@ -30,4 +32,5 @@ __all__ = (
     "TauIdentificationDatasetTrackvarsTowervars",
     "TauIdentificationDatasetHeterogeneousNodes",
     "TauIdentificationDatasetHeterogeneousEdges"
+    "tauidEdgeVarWithDZ"
 )

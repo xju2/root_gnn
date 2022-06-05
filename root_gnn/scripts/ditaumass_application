@@ -1,0 +1,216 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+
+from root_gnn import model as Models
+from root_gnn import losses
+from root_gnn.trainer import Trainer
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from graph_nets import utils_tf
+import sonnet as snt
+
+from root_gnn import model
+from root_gnn.utils import load_yaml
+from root_gnn import utils_plot
+
+from root_gnn.trainer import read_dataset
+from root_gnn.trainer import loop_dataset
+from ROOT import TChain, AddressOf, std
+
+import tensorflow as tf
+
+if __name__ == "__main__":
+    
+    
+    parser = argparse.ArgumentParser(description='Train GNN')
+    add_arg = parser.add_argument
+    add_arg("-i","--inputDir", help="Path to the input tfrec file")
+    add_arg("-o", "--outputDir", help="Output directory where training result is saved", default=None)
+    add_arg("-e", "--evtsPerRecord", help="Events per tfrec file", default=1000)
+    add_arg("-v", "--vBatches", help="Number of validation batches desired", default=20)
+    add_arg("-n", "--names", help="Name of the variables wanted for plotting", default=all_names)
+    add_arg("--config", help="configuration file name",default=None)
+
+    args = parser.parse_args()
+
+    # Load needed variables
+    input_dir = args.inputDir
+    output_dir = args.outputDir
+    n_evts_per_record = args.evtsPerRecord
+    v_batches = args.vBatches
+    all_names = ['Et for Tau1', 'Eta for Tau1', 'Phi for Tau1', 'Et for Tau2', 'Eta for Tau2', 'Phi for Tau2']
+    names = args.names if args.names is not None else all_names
+    config = load_yaml(args.config)
+    
+    modeldir = os.path.join(output_dir, 'checkpoints')
+
+    global_batch_size = config['batch_size']
+    num_iters = config['num_iters']            # level of message-passing
+    learning_rate = config['learning_rate']
+    optimizer = snt.optimizers.Adam(learning_rate)
+    loss_fcn = losses.GlobalRegressionLoss()
+
+
+    # Load the latest checkpoint
+    model = Models.GlobalRegression(6)
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=modeldir, max_to_keep=5)
+    if os.path.exists(os.path.join(modeldir, 'checkpoint')):
+        status = checkpoint.restore(ckpt_manager.latest_checkpoint).expect_partial()
+        print("Loaded latest checkpoint from {}".format(modeldir),status)
+    else:
+        raise ValueError("Cannot find model at:", modeldir)
+
+    # Create a trainer object with the current model
+    trainer = Trainer(input_dir=file_in, output_dir=output_dir,
+                  model=model, loss_fcn=loss_fcn, optimizer=optimizer,
+                  evts_per_file=n_evts_per_record, mode='rgr,globals', batch_size=global_batch_size,
+                  val_batches=10, log_freq=300, patiences=float('inf'), num_iters=num_iters)
+
+
+    def load_graphs(num_batch, trainer, dirc='val'):
+        """
+        Load validation data/graphs from directory
+        """
+        batch_size = trainer.batch_size
+        inputs = []
+        for i in range(num_batch):
+            inputs.append(next(trainer.load_data(dirc)[0]))
+        return predict(trainer, inputs)
+
+    def get_components(p, t, x):
+        """
+        Get component x of the graphs and return the prediction and truth values of x
+        Input: prediction and truth arrays p, t with shape (6, ), so for example, p[0] would be the Et of tau 1
+        """
+        p1 = []
+        for i in p:
+            for j in i:
+                p1.append(float(j[x]))
+        t1 = []
+        for i in t:
+            for j in i:
+                t1.append(float(j[x]))
+
+        return np.array(p1), np.array(t1)
+
+
+    def predict(trainer, test_data):
+        """
+        Uses the current model/loss to generate predictions on test_data
+        """
+        predictions, truth_info = [], []
+        for data in test_data:
+            inputs, targets = data
+            outputs = trainer.model(inputs, trainer.num_iters, is_training=False)
+            output = outputs[-1]
+            predictions.append(output.globals)
+            truth_info.append(targets.globals)
+
+        return predictions, truth_info
+
+    def plot_pull_graphs(pred, truth, name, debug=False):
+        """
+        Display four graphs for given prediction and truth values
+        Input: PRED: prediction values; TRUTH: truth values; NAME: variable name
+        """
+        assert len(pred) == len(truth), 'Dimension of prediction and truth needs to be equal'
+
+        num_evts = len(pred)
+        print(f"Number of events: {num_evts}")
+        pull_dist = (pred - truth) / truth
+        pull_val = round(np.mean(pull_dist), 3)
+
+        pred2 = list(pred)
+        pred2.sort()
+
+        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(8.5,8.5))
+
+        weights_p = np.ones_like(pred) / len(pred)
+        weights_t = np.ones_like(truth) / len(truth)
+
+        rg_t = [int(min(truth))-0.5, int(max(truth)+0.5)]
+        rg_p = [int(min(pred))-0.5, int(max(pred)+0.5)]
+        bin_wid = np.mean(np.diff(pred2)) * 100
+        num_bins = int((rg_p[1]-rg_p[0])/bin_wid)
+
+        rg = (min(rg_t+rg_p), max(rg_t+rg_p))
+
+        if debug:
+            print(bin_wid, num_bins)
+            print(weights_p==weights_t)
+            if 'Et' in name:
+                print(pred)
+                print(len(pred))
+
+        ax[0,0].hist(pred, histtype='step', align='left', weights=weights_p, range=rg, bins=num_bins, lw=2, label="Prediction")
+        ax[0,0].hist(truth, histtype='step',  align='left', weights=weights_t, range=rg, bins=num_bins, lw=2, label="Truth")
+        ax[0,0].set_title("Normalized Value Distribution")
+        ax[0,0].set_xlabel(name)
+        ax[0,0].set_ylabel("Normalized Frequency")
+        ax[0,0].legend()
+
+        rg = (-2, 2)
+        pull_dist_adj = np.array([i for i in pull_dist if rg[0]<=i<=rg[1]])
+        pull_val_adj = round(np.mean(pull_dist_adj), 3)
+        weights_d = np.ones_like(pull_dist_adj) / len(pull_dist_adj)
+        bin_wid = 0.02
+        num_bins = int((rg[1]-rg[0])/bin_wid)
+        
+        ax[1,0].hist(pull_dist_adj, weights=weights_d, align='left', range=rg, bins=num_bins, label=name)
+        ax[1,0].set_title(name)
+        ax[1,0].set_xlabel("Pull Value")
+        ax[1,0].set_ylabel("Normalized Frequency")
+        ax[1,0].axvline(pull_val_adj, color='red', linestyle='dashed', alpha=0.6, label=f'Mean Value={pull_val_adj}')
+        ax[1,0].legend()
+
+        weights_d = np.ones_like(pull_dist) / len(pull_dist)
+        rg = (int(min(pull_dist))-0.5, int(max(pull_dist)+0.5))
+        bin_wid = 0.02
+        num_bins = int((rg[1]-rg[0])/bin_wid)
+
+
+        ax[1,1].hist(pull_dist, weights=weights_d, align='left', range=rg, bins=num_bins, label=name)
+        ax[1,1].set_title("All Pull Value Distribution")
+        ax[1,1].set_xlabel("Pull Value")
+        ax[1,1].set_ylabel("Normalized Frequency")
+        ax[1,1].axvline(pull_val, color='red', linestyle='dashed', alpha=0.6, label=f'Mean Value={pull_val}')
+        ax[1,1].legend()
+
+
+        ax[0,1].scatter(pred, truth, marker='.', s=0.1, label=name)
+        left_end, right_end = int(min(truth)), int(max(truth))
+        x = np.linspace(left_end, right_end, int(right_end-left_end))
+        ax[0,1].plot(x, x, linestyle='--', color='red', alpha=0.6, label='Prediction = Truth')
+        ax[0,1].set_xlabel('Prediction Value')
+        ax[0,1].set_ylabel('Truth Value')
+        ax[0,1].set_title("Correspondence Between Prediction and Truth Values")
+        ax[0,1].legend()
+
+
+        plt.tight_layout()
+
+        try:
+            plt.savefig(f'{name}.png', dpi=300, bbox_inches='tight')
+        except:
+            print(f"WARNING: Failed to save image {name}.png")
+
+        plt.show()
+        print(f"Fraction of Outliers: {round(1-len(pull_dist_adj)/num_evts, 3)}")
+
+        if debug:
+            #outliers = [i for i in pull_dist if not rg[0]<=i<=rg[1]]
+            #outliers.sort()
+            #print(f"Outliers: {None if outliers==[] else outliers}")
+            print(bin_wid, num_bins)
+        print()
+        
+    # Plot the graphs for global variables
+    pred, tru = load_graphs(v_batches, trainer=trainer)
+    for i in range(len(names)):
+        prediction, truth = get_components(pred, tru, i)
+        plot_pull_graphs(prediction, truth, names[i])

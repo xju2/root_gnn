@@ -31,6 +31,7 @@ from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
 from root_gnn import losses
 from root_gnn import model as Models
+from root_gnn.scripts.add_rotations_translations import add_rotations_translations
 
 verbosities = ['DEBUG','ERROR', "FATAL", "INFO", "WARN"]
 printer = pprint.PrettyPrinter(indent=2)
@@ -122,6 +123,7 @@ def add_args(parser):
     add_arg("--val-batches", type=int, help='number of batches used for each validation', default=50)
     add_arg("--file-pattern", default='*', help='file patterns for input TFRecords')
     add_arg("--disable-tqdm", action='store_true', help='disable tqdm progressing bar')
+    add_arg("--global-output-size", help= 'output size for use in global regression',default= None)
     add_arg("--encoder-size", help='MLP size for encoder', default=None)
     add_arg("--core-size", help='MLP size for core', default=None)
     add_arg("--decoder-size", help='MLP size for decoder', default=None)
@@ -158,7 +160,7 @@ class Trainer(snt.Module):
                 shuffle_size=-1, log_freq=100,
                 val_batches=50,
                 file_pattern='*', #distributed=False,
-                disable_tqdm=False,
+                disable_tqdm=False, global_output_size = None,
                 encoder_size=None, core_size=None, decoder_size=None,
                 with_edge_inputs=False,
                  cosine_decay=False,
@@ -208,11 +210,12 @@ class Trainer(snt.Module):
             loss_config = loss_fcn.split(',')
             loss_name = loss_config[0]
             if len(loss_config) > 1:
-                self.loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config[1:]])
+                self.loss_fcn = getattr(losses, loss_name)(loss_config[1:])
             else:
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
+
             
         if not self.cosine_decay:
             if isinstance(optimizer, snt.Optimizer):
@@ -221,6 +224,7 @@ class Trainer(snt.Module):
                 self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
             else:
                 self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
+
         else:
             self.lr_base = 0.0001
             self.get_lr = lambda n_steps: 0.5*(1+math.cos(math.pi*n_steps/decay_steps))
@@ -428,8 +432,10 @@ class Trainer(snt.Module):
         def update_step(inputs, targets):
             print("Tracing update_step")
             with tf.GradientTape() as tape:
+                aug_inputs = add_rotations_translations(inputs)
                 output_ops = self.model(inputs, self.num_iters)
-                loss_ops_tr = self.loss_fcn(targets, output_ops)
+                aug_output_ops = self.model(aug_inputs, self.num_iters)
+                loss_ops_tr = self.loss_fcn(output_ops, aug_output_ops)
                 loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
             gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
             
@@ -514,5 +520,7 @@ class Trainer(snt.Module):
             self.checkpoint, directory=ckpt_dir,
             max_to_keep=20, keep_checkpoint_every_n_hours=1)
         logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
+
         _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
         self.ckpt_dir = ckpt_dir
+

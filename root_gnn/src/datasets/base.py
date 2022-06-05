@@ -44,7 +44,7 @@ class DataSet(object):
         """
         return sum([1 for _ in self.read(filename)])
 
-    def make_graph(self, event, debug):
+    def make_graph(self, event, debug, connectivity=None):
         """
         Convert the event into a graphs_tuple. 
         """
