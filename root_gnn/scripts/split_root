@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import argparse
+import root_gnn
+import os
+
+import numpy as np
+
+from root_gnn import model
+from root_gnn.utils import load_yaml
+from root_gnn import utils_plot
+
+from ROOT import TChain, AddressOf, std
+
+import tensorflow as tf
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Split root into two root files for training and inference')
+    add_arg = parser.add_argument
+    add_arg("-i","--inputfile", help="Path to the input root file")
+    add_arg("-o","--outputfile", help="Path of the output root file")
+
+    args = parser.parse_args()
+
+    ntuple_in = args.inputfile
+    ntuple_out = args.outputfile
+
+    # Apply the model to the jets in the root file
+    from root_gnn.datasets import TauIdentificationDataset
+    import ROOT
+    from ROOT import TFile, TTree, TChain, AddressOf, std
+    from array import array
+
+    tree_name = "output"
+    chain = TChain(tree_name,tree_name)
+    chain.Add(ntuple_in)
+    n_entries = chain.GetEntries()
+
+    # Create a new file and a new branch
+    newfile = TFile(ntuple_out+'test.root',"RECREATE")
+    newtree = chain.CloneTree(0)
+    if not args.num_events is None:
+        test_entries = min(n_entries,int(args.num_events))
+    else:
+        test_entries = int(n_entries*0.1)
+
+    # Iterate over the entries in the input file
+    for ientry in range(0,test_entries):
+        chain.GetEntry(ientry)
+        newtree.Fill()
+    newtree.Write()
+
+    trainfile = TFile(ntuple_out+'train.root',"RECREATE")
+    traintree = chain.CloneTree(0)
+
+    for ientry in range(test_entries,n_entries):
+        chain.GetEntry(ientry)
+        traintree.Fill()
+    traintree.Write()
+        

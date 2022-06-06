@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+import argparse
+import os
+
+import numpy as np
+
+from ROOT import TChain, AddressOf, std
+
+import matplotlib.pyplot as plt
+
+import sklearn.metrics
+from sklearn.metrics import mean_squared_error, auc, roc_curve
+import sys
+
+parser = argparse.ArgumentParser(description='Generate plots for comparing the performance of tau identifers')
+parser.add_argument('--npz', nargs='+', help='Files with predictions and truth. Must be from the same events to be compatible')
+parser.add_argument('--qcd', nargs='+', default=[None], help='Files with predictions and truth from qcd events to perform inference on')
+parser.add_argument('--colors', nargs='+', help='Colors to plot with')
+parser.add_argument('--styles', nargs='+', help='Line styles. e.g. \'solid\',\'dashed\', or \'dotted\'')
+parser.add_argument('--legend', nargs='+', help='Labels to use in the plot legends')
+parser.add_argument('--prongs', nargs='+', help='Labels to use in the plot legends')
+parser.add_argument('--roc', action='store_true', help='Plot the ROC')
+parser.add_argument('--rejection', action='store_true', help='Plot the rejection power as a function of efficiency')
+parser.add_argument('--prefix', default=None, help='Prefix for the files')
+parser.add_argument('--efficiencies','-e',default=[0.60,0.75,0.85],help='Find rejection power associated with interesting efficiencies and place them in a table')
+args = parser.parse_args()
+
+small = 10
+medium = 12
+large = 15
+
+efficiencies_3prong = [0.45,0.60,0.75,0.95]
+efficiencies_1prong = [0.60,0.75,0.85,0.95]
+working_ponts = ["Tight","Medium","Loose","Very loose"]
+
+plt.rc('font',size=medium)
+plt.rc('figure',titlesize=large)
+plt.rc('axes',labelsize=medium)
+
+def buildROC(target_test,test_preds,color='r',style='solid'):
+    fpr, tpr, threshold = roc_curve(target_test, test_preds)
+    plt.plot(fpr, tpr, color=color, linestyle=style, lw=2.0)
+    return auc(fpr, tpr)
+
+def buildRejection(target_test,test_preds,color='r',style='solid',efficiencies=[]):
+    fpr, tpr, threshold = roc_curve(target_test, test_preds)
+    plt.plot(tpr, 1.0/fpr, color=color, linestyle=style, lw=2.0)
+    #Make table of rejection power for given efficiencies
+    rejections = []
+    for e in efficiencies:
+        for idx in range(0,len(tpr)):
+            if tpr[idx] > e:
+                # keep track of 1/fpr for e
+                rejections.append(1.0/fpr[idx])
+                break
+    return efficiencies,rejections
+
+if __name__ == "__main__":
+    n_plots = len(args.npz)
+    target = []
+    predictions = []
+    if args.qcd[0] != None and len(args.npz) == len(args.qcd):
+        #handle optional use of qcd
+        for dataset, qcd in zip(args.npz,args.qcd):
+            array1 = np.load(dataset)
+            array2 = np.load(qcd)
+            predictions.append(np.concatenate([array1['predictions'],array2['predictions']]))
+            target.append(np.concatenate([array1['truth_info'],array2['truth_info']]))
+    else:
+        for dataset in args.npz:
+            array = np.load(dataset)
+            predictions.append(array['predictions'])
+            target.append(array['truth_info'])
+
+    plt.figure()
+    plt.title('Receiver Operating Characteristic')
+    plt.ylabel('True Positive Rate')
+    plt.xlabel('False Positive Rate')
+    for idx in range(0,n_plots):
+        roc_auc=buildROC(target[idx],predictions[idx],args.colors[idx],args.styles[idx])
+        args.legend[idx] += f" AUC {roc_auc:.4f}"
+    plt.legend(args.legend,loc='lower right')
+    plt.savefig(args.prefix+'_roc.pdf')
+    plt.close()
+
+    if args.rejection:
+        plt.figure()
+        plt.yscale('log')
+        plt.ylabel(r'Fake $ \tau_{\mathrm{had-vis}}$ Rejection')
+        plt.xlabel(r'True $ \tau_{\mathrm{had-vis}}$ Efficiency')
+        plt.grid()
+        rejections = []
+        efficiencies = []
+        with open(args.prefix+'table.csv',"w") as t:
+            column_string = f"model,{working_ponts[0]},{working_ponts[1]},{working_ponts[2]},{working_ponts[3]}\n"
+            t.write(column_string)
+            for idx in range(0,n_plots):
+                table_str = f"{args.legend[idx]},"
+
+                efficiency,rejection=buildRejection(target[idx],predictions[idx],args.colors[idx],args.styles[idx],\
+                efficiencies=(efficiencies_1prong if args.prongs[idx] == '1' else efficiencies_3prong))
+                for r in rejection:
+                    table_str += f"{r:.1f},"
+                
+                efficiencies.append(efficiency)
+                rejections.append(rejection)
+                t.write(table_str+"\n")
+            for idx in range(0,n_plots):
+                plt.plot(efficiencies[idx],rejections[idx],color=args.colors[idx],marker='o',linestyle='')
+        plt.legend(args.legend,loc='upper right')
+        plt.savefig(args.prefix+'_rejection.pdf')
+        plt.close()

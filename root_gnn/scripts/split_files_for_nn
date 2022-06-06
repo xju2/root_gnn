@@ -58,6 +58,8 @@ if __name__ == "__main__":
     add_arg("--pattern", help='input data pattern',)
     add_arg("--no-shuffle", help='shuffle input files', action='store_true')
     args = parser.parse_args()
+    
+    random.seed(0)
 
     split(**args.__dict__)
     

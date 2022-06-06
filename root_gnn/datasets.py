@@ -12,7 +12,15 @@ from root_gnn.src.datasets.wprimeljet import WTaggerLeadingJetDataset
 from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
+from root_gnn.src.datasets.tauid_jetpt import TauIdentificationDatasetJetPt
+from root_gnn.src.datasets.tauid_trackvars import TauIdentificationDatasetTrackvars
+from root_gnn.src.datasets.tauid_trackvars_towervars import TauIdentificationDatasetTrackvarsTowervars
+from root_gnn.src.datasets.tauid_heterogeneous_nodes import TauIdentificationDatasetHeterogeneousNodes
+from root_gnn.src.datasets.tauid_heterogeneous_edges import TauIdentificationDatasetHeterogeneousEdges
+
+from root_gnn.src.datasets.tauidEdgeVarWithDZ import tauidEdgeVarWithDZ
 from root_gnn.src.datasets.tauidHeterogeneousEdges import tauidHeterogeneousEdges
+
 
 
 __all__ = (
@@ -20,7 +28,14 @@ __all__ = (
     "WTaggerDataset",
     "WTaggerFilteredDataset",
     "WTaggerLeadingJetDataset",
-    "DiTauMassDataset"
+    "DiTauMassDataset",
     "TauIdentificationDataset",
-    "tauidHeterogeneousEdges"
+    "TauIdentificationDatasetJetPt",
+    "TauIdentificationDatasetTrackvars",
+    "TauIdentificationDatasetTrackvarsTowervars",
+    "TauIdentificationDatasetHeterogeneousNodes",
+    "TauIdentificationDatasetHeterogeneousEdges",
+  
+    "tauidEdgeVarWithDZ",
+    "tauidHeterogeneousEdges",
 )
