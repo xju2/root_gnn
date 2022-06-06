@@ -21,7 +21,6 @@ parser.add_argument('--legend', nargs='+', help='Labels to use in the plot legen
 parser.add_argument('--prongs', nargs='+', help='Labels to use in the plot legends')
 parser.add_argument('--roc', action='store_true', help='Plot the ROC')
 parser.add_argument('--rejection', action='store_true', help='Plot the rejection power as a function of efficiency')
-parser.add_argument('--misid', action='store_true', help='Plot the mis-identification as a function of efficiency')
 parser.add_argument('--prefix', default=None, help='Prefix for the files')
 parser.add_argument('--efficiencies','-e',default=[0.60,0.75,0.85],help='Find rejection power associated with interesting efficiencies and place them in a table')
 args = parser.parse_args()
