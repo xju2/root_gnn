@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     data = eval(f"{args.type}({args.type_arg})")
     if args.config is not None:
-            data.set_config_file(args.config[0])
+        data.set_config_file(args.config[0])
 
     models = []
     iters = []
@@ -90,11 +90,11 @@ if __name__ == "__main__":
     leafValues = std.vector('float')()
     newbranch = newtree.Branch("TauPrediction",leafValues)
     if not args.num_events is None:
-        n_entries = min(n_entries,int(args.num_events))
+        end_entry = min(n_entries,initial_entry+int(args.num_events))
     initial_entry = min(n_entries,int(args.initial_event))
 
     # Iterate over the entries in the input file
-    for ientry in range(initial_entry,n_entries):
+    for ientry in range(initial_entry,end_entry):
         chain.GetEntry(ientry)
         graph_list = tauid.make_graph(chain)
         # Generate graphs and predictions
