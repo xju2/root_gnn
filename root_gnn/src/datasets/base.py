@@ -14,6 +14,11 @@ import subprocess
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
+    # out = subprocess.Popen(['wc', '-l', filename],
+    #                      stdout=subprocess.PIPE,
+    #                      stderr=subprocess.STDOUT
+    #                      ).communicate()[0]
+    # return int(out.partition(b' ')[0])
 
 class DataSet(object):
     def __init__(self, with_padding=False, n_graphs_per_evt=1):
@@ -39,13 +44,13 @@ class DataSet(object):
         """
         return sum([1 for _ in self.read(filename)])
 
-    def make_graph(self, event, debug):
+    def make_graph(self, event, debug, connectivity=None):
         """
         Convert the event into a graphs_tuple. 
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=None):
        
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname) and not overwrite:
@@ -55,14 +60,30 @@ class DataSet(object):
         ifailed = 0
         all_graphs = []
         start_entry = ijob * n_evts_per_record
+        
+        if debug:
+            print(">>> Debug 0", ijob)
+        
+        t0 = time.time()
+        jevt = 0
+        kgraphs = 0
         for event in self.read(filename, start_entry, n_evts_per_record):
-            gen_graphs = self.make_graph(event, debug)
-            if gen_graphs[0][0] is None:
+            gen_graphs = self.make_graph(event, debug, connectivity=connectivity)
+            
+            if debug:
+                print(">>> Debug 1", ijob, jevt, kgraphs)
+            
+            if len(gen_graphs)==0 or gen_graphs[0][0] == None:
                 ifailed += 1
                 continue
 
             all_graphs += gen_graphs
-        
+            kgraphs += len(gen_graphs)
+            jevt += 1
+            
+        if debug:
+            print(">>> Debug 2", ijob)
+            
         isaved = len(all_graphs)
         if isaved > 0:
             ex_input, ex_target = all_graphs[0]
@@ -73,22 +94,37 @@ class DataSet(object):
             def generator():
                 for G in all_graphs:
                     yield (G[0], G[1])
+            
 
             dataset = tf.data.Dataset.from_generator(
                 generator,
                 output_types=(input_dtype, target_dtype),
                 output_shapes=(input_shape, target_shape),
                 args=None)
-
+            if debug:
+                print(">>> Debug 3", ijob)
             writer = tf.io.TFRecordWriter(outname)
             for data in dataset:
                 example = graph.serialize_graph(*data)
                 writer.write(example)
+            if debug:
+                print(">>> Debug 4", ijob)
             writer.close()
+            t1 = time.time()
+            all_graphs = []
+            print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
+        else:
+            print(ijob, "all failed")
         return ifailed, isaved
 
     def process(self, filename, outname, n_evts_per_record,
-        debug, max_evts, num_workers=1, overwrite=False, **kwargs):
+        debug, max_evts, num_workers=1, overwrite=False, connectivity=None, **kwargs):
+        
+        import time
+        import os
+        from multiprocessing import Pool
+        from functools import partial
+        
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -106,7 +142,7 @@ class DataSet(object):
             ifailed, isaved=0, 0
             for ijob in range(n_files):
                 n_failed, n_saved = self.subprocess(
-                    ijob, n_evts_per_record, filename, outname, overwrite, debug)
+                    ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=connectivity)
                 ifailed += n_failed
                 isaved += n_saved
         else:
@@ -116,7 +152,8 @@ class DataSet(object):
                         filename=filename,
                         outname=outname,
                         overwrite=overwrite,
-                        debug=debug)
+                        debug=debug,
+                        connectivity=connectivity)
                 res = p.map(process_fnc, list(range(n_files)))
 
             ifailed = sum([x[0] for x in res])

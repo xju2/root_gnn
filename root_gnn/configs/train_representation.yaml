@@ -1,0 +1,21 @@
+input_dir: /global/homes/j/jacobl/processed/v0
+evts_per_file: 200
+output_dir: /global/homes/j/jacobl/results
+model: GlobalRegression
+loss_name: GlobalRegressionLossForRepresentation
+loss_pars: loss_name = 'MSE'
+
+
+batch_size: 100
+num_iters: 4 
+learning_rate: 0.0005
+num_epochs: 100
+stop_on: "auc"
+patiences: 20
+log_freq: 10
+val_batches: 100
+shuffle_size: 1000
+dropout_rate: 0.1
+global_output_size: 3
+encoder_size: [128,128]
+core_size: [128,128]

@@ -40,7 +40,8 @@ if __name__ == "__main__":
 
     config['optimizer'] = config['learning_rate']
     print(config)
-    if config['trainer'] == "rep":
+    
+    if 'trainer' in config and config['trainer'] == "rep":
         trnr = rep_trainer.EmbeddingTrainer(**config)
     else:
         trnr = trainer.Trainer(**config)
