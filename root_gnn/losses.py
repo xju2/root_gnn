@@ -51,7 +51,7 @@ class RegressionLoss(snt.Module):
         self.fnc = tf.compat.v1.losses.absolute_difference
         if loss_name and loss_name == 'mse':
             self.fnc = tf.compat.v1.losses.mean_squared_error
-
+        
 class GlobalRegressionLoss(RegressionLoss):
     def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLoss") -> None:
         super().__init__(loss_name=loss_name, name=name)
@@ -59,6 +59,17 @@ class GlobalRegressionLoss(RegressionLoss):
     def __call__(self, target_op, output_ops):
         loss_ops = [
             self.fnc(target_op.globals, output_op.globals) for output_op in output_ops
+        ]
+        return tf.stack(loss_ops)
+
+#had to slightly change the loss function to work with my trainer structure since both of the inputs to the loss fcn are passed through the model first
+class GlobalRegressionLossForRepresentation(RegressionLoss):
+    def __init__(self, loss_name: str = None, name: str = "GlobalRegressionLossForRepresentation") -> None:
+        super().__init__(loss_name=loss_name, name=name)
+
+    def __call__(self, output_ops1, output_ops2):
+        loss_ops = [
+            self.fnc(output_ops1[idx].globals, output_ops2[idx].globals) for idx in range(len(output_ops1))
         ]
         return tf.stack(loss_ops)
 
