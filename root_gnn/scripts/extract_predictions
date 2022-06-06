@@ -1,0 +1,194 @@
+#!/usr/bin/env python
+import argparse
+import os
+
+import numpy as np
+
+from ROOT import TChain, AddressOf, std
+
+import matplotlib.pyplot as plt
+from root_gnn.utils import calc_dphi
+import sklearn.metrics
+
+small = 10
+medium = 18
+large = 25
+
+plt.rc('font',size=medium)
+plt.rc('figure',titlesize=large)
+plt.rc('axes',labelsize=medium)
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Make useful histograms for understanding the tauid GNN')
+    add_arg = parser.add_argument
+    add_arg("-i","--inputfile", help="Path to the config file")
+    add_arg("--ntuple", help="Name of the Ntuple file")
+    add_arg("-t","--threshold",help="Threshold for the classifier",default=0.5)
+    add_arg("--name",help="Name for the visualizations",default="tauid")
+    args = parser.parse_args()
+    ntuple_in = args.inputfile+"/"+args.ntuple
+    name = args.name
+    threshold = args.threshold
+
+    import ROOT
+    from ROOT import TFile, TTree, TChain, AddressOf, std
+    from array import array
+    import math
+
+    name=args.inputfile+"/"+args.name
+
+
+    tree_name = "output"
+    chain = TChain(tree_name,tree_name)
+    chain.Add(ntuple_in)
+
+
+    n_entries = chain.GetEntries()
+    print("Entries: ",n_entries)
+    #newfile = TFile(ntuple_out,"recreate")
+
+    nJets = 0.
+    false_positive = 0.
+    false_negative = 0.
+    true_positive = 0.
+    true_negative = 0.
+
+    sig_scores = []
+    bg_scores = []
+    purity_scores = []
+    efficiency_scores = []
+    n_taus_pass = []
+    n_non_taus_pass = []
+
+    truth_info = []
+    predictions = []
+
+
+    n_nodes = []
+    fp_nodes = []
+    fn_nodes = []
+    tp_nodes = []
+    tn_nodes = []
+    
+    prediction_1prong = []
+    prediction_3prong = []
+    prediction_other = []
+    truth_1prong = []
+    truth_3prong = []
+    truth_other = []
+
+    isTau = 0
+    for ientry in range(n_entries):
+        chain.GetEntry(ientry)
+        nPass = 0.0
+        nTauPass = 0.0
+        track_idx = 0
+        tower_idx = 0
+        track_nodes = []
+        for ijet in range(chain.nJets):
+            # Match jet to truth jet that minimizes angular distance
+            n_core_tracks = 0
+            nodes = []
+            min_index = 0
+            nJets += 1.0
+            if chain.nTruthJets > 0:
+                min_dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
+            for itruth in range(chain.nTruthJets):
+                dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[itruth])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
+                if dR < min_dR:
+                    min_dR = dR
+                    min_index = itruth
+            if chain.nTruthJets > 0 and min_dR < 0.4:
+                isTau = chain.TruthJetIsTautagged[min_index]
+            else:
+                isTau = 0
+
+            isTauPre = chain.TauPrediction[ijet]
+
+            predictions.append(isTauPre)
+            truth_info.append(1.0 if isTau else 0.0)
+
+            for itrack in range(chain.JetGhostTrackN[ijet]):
+                ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
+                # Angular distance from the jet axis
+                dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TrackPhi[ghost_track_idx])**2 + (chain.JetEta[ijet]-chain.TrackEta[ghost_track_idx])**2)
+                if dR <= 0.2:
+                    n_core_tracks+=1
+                track_nodes.append([math.log(chain.JetPt[ijet]),math.log(chain.TrackPt[ghost_track_idx]),chain.TrackEta[ghost_track_idx],chain.TrackPhi[ghost_track_idx]])
+                track_idx+=1
+
+            if n_core_tracks == 1:
+                prediction_1prong.append(isTauPre)
+                truth_1prong.append( 1.0 if isTau else 0.0 )
+            elif n_core_tracks == 3:
+                prediction_3prong.append(isTauPre)
+                truth_3prong.append( 1.0 if isTau else 0.0 )
+            else:
+                prediction_other.append(isTauPre)
+                truth_other.append( 1.0 if isTau else 0.0 )
+
+            node_c = chain.JetGhostTrackN[ijet]+chain.JetTowerN[ijet]
+
+            if isTau > 0:
+                sig_scores.append(isTauPre)
+            else:
+                bg_scores.append(isTauPre)
+
+            n_nodes.append(node_c)
+
+            if isTauPre > threshold:
+                if isTau > 0:
+                    true_positive += 1.
+                    tp_nodes.append(node_c)
+                    nTauPass += 1.0
+                else:
+                    false_positive += 1.
+                    fp_nodes.append(node_c)
+                nPass += 1.0
+            else:
+                if isTau > 0:
+                    false_negative += 1.
+                    fn_nodes.append(node_c)
+                else:
+                    true_negative += 1.
+                    tn_nodes.append(node_c)
+        if chain.nTauJets >= 2 and not nTauPass > 2.0:
+            if nPass > 0.0:
+                purity_scores.append(nTauPass/nPass)
+                efficiency_scores.append(nTauPass/2.0)
+            n_taus_pass.append(nTauPass)
+            n_non_taus_pass.append(nPass - nTauPass)
+
+    pe_table = np.zeros((3,3),dtype=np.int64)
+    for index in range(0,len(n_taus_pass)):
+        row = int(n_taus_pass[index])
+        col = min(2,int(n_non_taus_pass[index]))
+        pe_table[row][col] += 1
+    print(pe_table)
+
+    with open(name+"_pe.txt","w") as f:
+        for r in range(0,3):
+            for c in range(0,3):
+                f.write(str(float(pe_table[r][c])/float(len(n_taus_pass))))
+                f.write(",")
+            f.write("\n")
+
+    plt.figure()
+    plt.hist(sig_scores,50,histtype='step',lw=1.1,color='#ff9a57')
+    plt.hist(bg_scores,50,histtype='step',lw=1.1,color='#576aff')
+    plt.legend(["Tau jets","Non-tau jets"],loc=9)
+    plt.xlabel("Classification score")
+    plt.ylabel("Number of jets")
+    plt.yscale("log")
+    plt.savefig(name+'_predictions.pdf',dpi=1000)
+    plt.close()
+
+    from root_gnn.utils_plot import plot_metrics
+    plot_metrics(np.array(predictions),np.array(truth_info),outname=name+'_metrics.png')
+
+    np.savez(name+'.npz',predictions = np.array(predictions), truth_info = np.array(truth_info))
+    np.savez(name+'_1prong.npz',predictions = np.array(prediction_1prong), truth_info = np.array(truth_1prong))
+    np.savez(name+'_3prong.npz',predictions = np.array(prediction_3prong), truth_info = np.array(truth_3prong))
+    np.savez(name+'_other.npz',predictions = np.array(prediction_other), truth_info = np.array(truth_other))
+
