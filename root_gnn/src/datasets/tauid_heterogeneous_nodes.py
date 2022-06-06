@@ -3,7 +3,7 @@ import math
 import itertools
 
 from graph_nets import utils_tf
-from root_gnn.utils import calc_dphi
+from root_gnn.utils import calc_dphi, load_yaml
 from root_gnn.src.datasets.base import DataSet
 from root_gnn import utils
 
@@ -140,4 +140,9 @@ class TauIdentificationDatasetHeterogeneousNodes(DataSet):
         track_lim=track_limit
         if use_cutoff:
             cutoff=True
+    def set_config_file(self,config):
+        config = load_yaml(config)
+        self.tower_lim = config.get('tower_limit',None)
+        self.track_lim = config.get('track_limit',None)
+        self.use_cutoff = config.get('use_cutoff',False)
 
