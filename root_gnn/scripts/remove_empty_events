@@ -55,12 +55,16 @@ if __name__ == "__main__":
 
     # Iterate over the entries in the input file
     for ientry in range(0,n_entries):
-        # test if this entry should be kept
         test_chain.GetEntry(ientry)
-        graph_list = tauid.make_graph(test_chain)
-        if graph_list[0][0] == None:
-            continue
-        chain.GetEntry(ientry)
-        newtree.Fill()
+        keep_event = False
+        for ijet in range(test_chain.nJets):
+            n_nodes = test_chain.JetTowerN[ijet] + test_chain.JetGhostTrackN[ijet]
+            # keep the event if there is one non-empty reco jet
+            if n_nodes > 0:
+                keep_event = True
+                break
+        if keep_event:
+            chain.GetEntry(ientry)
+            newtree.Fill()
     newtree.Write()
 
