@@ -30,7 +30,7 @@ class DataSet(object):
         self.n_graphs_per_evt = n_graphs_per_evt
         self.n_evts = 0
 
-    def read(self, filename, nevts: Optional[int] = -1):
+    def read(self, filename, start_entry: Optional[int] = 0, nevts: Optional[int] = -1):
         """
         read the file from `filename` and return an event
         """
@@ -93,16 +93,11 @@ class DataSet(object):
             is_hetero_graph = True if hasattr(ex_input, 'node_types') \
                 and ex_input.node_types is not None else False
 
-            def graph_generator():
+            def generator():
                 for G in all_graphs:
-                    yield graph.serialize_graph(G[0], G[1])
+                    yield (G[0], G[1])
 
-            def hetero_graph_generator():
-                for G in all_graphs:
-                    yield graph.serialize_hetero_graph(G[0], G[1])
-            
-            generator = hetero_graph_generator if is_hetero_graph else graph_generator
-            serialized_dataset = tf.data.Dataset.from_generator(
+            dataset = tf.data.Dataset.from_generator(
                 generator,
                 output_types=(input_dtype, target_dtype),
                 output_shapes=(input_shape, target_shape),
@@ -110,7 +105,10 @@ class DataSet(object):
             if debug:
                 print(">>> Debug 3", ijob)
             writer = tf.io.TFRecordWriter(outname)
-            writer.write(serialized_dataset)
+            serializer = graph.serialize_hetero_graph if is_hetero_graph else graph.serialize_graph
+            for data in dataset:
+                example = serializer(*data)
+                writer.write(example)
             writer.close()
             if debug:
                 print(">>> Debug 4", ijob)

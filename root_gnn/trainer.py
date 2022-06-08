@@ -52,22 +52,21 @@ def read_dataset(filenames, nEvtsPerFile=5000):
 
     all_fields = hetero_graphs.ALL_FIELDS if is_hetero_graph else graphs.ALL_FIELDS
 
-    int64_fields = ('n_node', 'n_edge', 'receivers', 'senders', 'node_types', 'edge_types') \
-        if is_hetero_graph else ('n_node', 'n_edge', 'receivers', 'senders')
-    float_fields = ('nodes', 'edges', 'globals')
-
-    features_description = dict(
-        [(key+"_IN",  tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields] + 
-        [(key+"_OUT", tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields])
-    for key in float_fields:
-        features_description[key] = tf.io.FixedLenFeature([], tf.float32)
-
     GraphClass = hetero_graphs.HeteroGraphsTuple if is_hetero_graph else graphs.GraphsTuple
+
     
     def parse_function(example_proto):
+        features_description = dict(
+            [(key+"_IN",  tf.io.FixedLenFeature([], tf.string)) for key in all_fields] + 
+            [(key+"_OUT", tf.io.FixedLenFeature([], tf.string)) for key in all_fields])
+
         example = tf.io.parse_single_example(example_proto, features_description)
-        input_dd = GraphClass(**dict([(key, example[key+"_IN"])  for key in all_fields]))
-        out_dd   = GraphClass(**dict([(key, example[key+"_OUT"]) for key in all_fields]))
+        input_dd = GraphClass(**dict([
+            (key, tf.io.parse_tensor(example[key+"_IN"], graph.graph_types[key]))
+                for key in all_fields]))
+        out_dd   = GraphClass(**dict([
+            (key, tf.io.parse_tensor(example[key+"_IN"], graph.graph_types[key]))
+                for key in all_fields]))
         return input_dd, out_dd
 
     # dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)

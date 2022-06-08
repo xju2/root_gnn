@@ -6,6 +6,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import tensorflow as tf
+from graph_nets import utils_tf
 
 NODES = "nodes"
 EDGES = "edges"
@@ -27,7 +29,7 @@ ALL_FIELDS = (NODES, EDGES, RECEIVERS, SENDERS, GLOBALS, NODE_TYPES, EDGE_TYPES,
 
 class HeteroGraphsTuple(
     collections.namedtuple("HeteroGraphsTuple",
-                           GRAPH_DATA_FIELDS + GRAPH_NUMBER_FIELDS)):
+                           GRAPH_DATA_FIELDS + GRAPH_TYPE_FIELDS + GRAPH_NUMBER_FIELDS)):
   """Default namedtuple describing `Graphs`s.
   A children of `collections.namedtuple`s, which allows it to be directly input
   and output from `tensorflow.Session.run()` calls.
@@ -95,3 +97,32 @@ class HeteroGraphsTuple(
       of applying `field_fn` to them.
     """
     return self.replace(**{k: field_fn(getattr(self, k)) for k in fields})
+
+
+
+def data_dicts_to_heterographs(data_dicts, name="data_dicts_to_heterographs"):
+  """Creates a `HeteroGraphsTuple` containing tensors from data dicts."""
+  data_dicts = [dict(d) for d in data_dicts]
+  for key in ALL_FIELDS:
+    for data_dict in data_dicts:
+      data_dict.setdefault(key, None)
+      
+  with tf.name_scope(name):
+    data_dicts = _to_compatible_data_dicts(data_dicts)
+    return HeteroGraphsTuple(**utils_tf._concatenate_data_dicts(data_dicts))
+
+
+def _to_compatible_data_dicts(data_dicts):
+  """Converts data dicts to a tensors of the right type."""
+  results = []
+  for data_dict in data_dicts:
+    result = {}
+    for key, value in data_dict.items():
+      if value is None:
+        result[key] = None
+      else:
+        dtype = tf.int32 if key in [
+          SENDERS, RECEIVERS, N_NODE, N_EDGE, NODE_TYPES, EDGE_TYPES] else None
+        result[key] = tf.convert_to_tensor(value, dtype=dtype)
+    results.append(result)
+  return results

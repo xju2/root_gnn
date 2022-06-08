@@ -43,8 +43,6 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
         
-    from root_gnn.datasets import *
-
     data = getattr(DataSets, args.type)()
     if args.type == "WTaggerFilteredDataset":
         if args.config is None:

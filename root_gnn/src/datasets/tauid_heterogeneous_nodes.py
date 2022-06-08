@@ -13,7 +13,7 @@ from array import array
 
 tower_lim=None
 track_lim=None
-cutoff=False
+cutoff=False    # require minimum amount of energy deposited in towers
 
 def make_graph(chain, debug=False):
     isTau = 0
