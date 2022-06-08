@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from root_gnn.src.datasets.base import DataSet
 import time
 import os
 
@@ -44,7 +43,6 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
         
-    from root_gnn import datasets as DataSets # the main program to produce the graph
     from root_gnn.datasets import *
 
     data = getattr(DataSets, args.type)()

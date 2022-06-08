@@ -3,14 +3,12 @@ base class defines the procedure with that the TFrecord data is produced.
 """
 import time
 import os
-from typing import Optional
 from multiprocessing import Pool
 from functools import partial
+from typing import Optional
 
 import tensorflow as tf
-# from graph_nets import utils_tf
 from root_gnn.src.datasets import graph
-import subprocess
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
@@ -50,7 +48,8 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=None):
+    def subprocess(self, ijob, n_evts_per_record, filename, outname,
+            overwrite, debug, connectivity=None):
        
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname) and not overwrite:
@@ -91,12 +90,19 @@ class DataSet(object):
                 ex_input, with_padding=self.with_padding)
             target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
                 ex_target, with_padding=self.with_padding)
-            def generator():
-                for G in all_graphs:
-                    yield (G[0], G[1])
-            
+            is_hetero_graph = True if hasattr(ex_input, 'node_types') \
+                and ex_input.node_types is not None else False
 
-            dataset = tf.data.Dataset.from_generator(
+            def graph_generator():
+                for G in all_graphs:
+                    yield graph.serialize_graph(G[0], G[1])
+
+            def hetero_graph_generator():
+                for G in all_graphs:
+                    yield graph.serialize_hetero_graph(G[0], G[1])
+            
+            generator = hetero_graph_generator if is_hetero_graph else graph_generator
+            serialized_dataset = tf.data.Dataset.from_generator(
                 generator,
                 output_types=(input_dtype, target_dtype),
                 output_shapes=(input_shape, target_shape),
@@ -104,12 +110,10 @@ class DataSet(object):
             if debug:
                 print(">>> Debug 3", ijob)
             writer = tf.io.TFRecordWriter(outname)
-            for data in dataset:
-                example = graph.serialize_graph(*data)
-                writer.write(example)
+            writer.write(serialized_dataset)
+            writer.close()
             if debug:
                 print(">>> Debug 4", ijob)
-            writer.close()
             t1 = time.time()
             all_graphs = []
             print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
@@ -119,12 +123,6 @@ class DataSet(object):
 
     def process(self, filename, outname, n_evts_per_record,
         debug, max_evts, num_workers=1, overwrite=False, connectivity=None, **kwargs):
-        
-        import time
-        import os
-        from multiprocessing import Pool
-        from functools import partial
-        
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -134,7 +132,8 @@ class DataSet(object):
         if all_evts%n_evts_per_record > 0:
             n_files += 1
 
-        print("Total {:,} events are requested to be written to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        print("Total {:,} events are requested to be written to "
+              "{:,} files with {:,} workers".format(all_evts, n_files, num_workers))
         out_dir = os.path.abspath(os.path.dirname(outname))
         os.makedirs(out_dir, exist_ok=True)
         
@@ -142,7 +141,8 @@ class DataSet(object):
             ifailed, isaved=0, 0
             for ijob in range(n_files):
                 n_failed, n_saved = self.subprocess(
-                    ijob, n_evts_per_record, filename, outname, overwrite, debug, connectivity=connectivity)
+                    ijob, n_evts_per_record, filename, outname, overwrite,
+                    debug, connectivity=connectivity)
                 ifailed += n_failed
                 isaved += n_saved
         else:

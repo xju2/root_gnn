@@ -13,11 +13,12 @@ import numpy as np
 import sklearn.metrics
 
 from graph_nets import utils_tf
-from graph_nets import utils_np
+from graph_nets import graphs
 import sonnet as snt
 
 from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
+from root_gnn.src.datasets import hetero_graphs
 from root_gnn import losses
 from root_gnn import model as Models
 
@@ -34,8 +35,44 @@ def read_dataset(filenames, nEvtsPerFile=5000):
     n_files = len(tr_filenames)
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
-    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    # n_graphs = sum([1 for _ in dataset]) # this is computational expensive.
+
+    ## take one event to check if it is heterogenous graph
+    ## the graph contains the "node_types" or "edge_types"
+    is_hetero_graph = False
+    for raw_data in dataset.take(1):
+        example = tf.train.Example()
+        example.ParseFromString(raw_data.numpy())
+        for key, feature in example.features.feature.items():
+            if key == "node_types_IN" or key == "edge_types_IN":
+                kind = feature.WhichOneof("kind")
+                if getattr(feature, kind).value is not None:
+                    is_hetero_graph = True
+                    break
+
+
+    all_fields = hetero_graphs.ALL_FIELDS if is_hetero_graph else graphs.ALL_FIELDS
+
+    int64_fields = ('n_node', 'n_edge', 'receivers', 'senders', 'node_types', 'edge_types') \
+        if is_hetero_graph else ('n_node', 'n_edge', 'receivers', 'senders')
+    float_fields = ('nodes', 'edges', 'globals')
+
+    features_description = dict(
+        [(key+"_IN",  tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields] + 
+        [(key+"_OUT", tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields])
+    for key in float_fields:
+        features_description[key] = tf.io.FixedLenFeature([], tf.float32)
+
+    GraphClass = hetero_graphs.HeteroGraphsTuple if is_hetero_graph else graphs.GraphsTuple
+    
+    def parse_function(example_proto):
+        example = tf.io.parse_single_example(example_proto, features_description)
+        input_dd = GraphClass(**dict([(key, example[key+"_IN"])  for key in all_fields]))
+        out_dd   = GraphClass(**dict([(key, example[key+"_OUT"]) for key in all_fields]))
+        return input_dd, out_dd
+
+    # dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    dataset = dataset.map(parse_function, num_parallel_calls=AUTO)
+    # n_graphs = sum([1 for _ in dataset]) ## this is computational expensive.
     n_graphs = n_files * nEvtsPerFile
     return dataset, n_graphs
 
