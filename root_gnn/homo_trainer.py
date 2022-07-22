@@ -1,24 +1,34 @@
-__all__ = ['read_dataset', 'loop_dataset', 'get_signature', 'Trainer']
-
+from operator import is_
+from numpy.lib.arraysetops import isin
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.set_verbosity("INFO")
 logging.info("TF Version:{}".format(tf.__version__))
+# try:
+#     import horovod.tensorflow as hvd
+#     no_horovod = False
+# except ModuleNotFoundError:
+#     logging.warning("No horvod module, cannot perform distributed training")
+#     no_horovod = True
+
 
 import os
 import pprint
 import time
+import functools
+import argparse
 import tqdm
+
 import numpy as np
+
 import sklearn.metrics
 
 from graph_nets import utils_tf
-from graph_nets import graphs
+from graph_nets import utils_np
 import sonnet as snt
 
 from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
-from root_gnn.src.datasets import hetero_graphs
 from root_gnn import losses
 from root_gnn import model as Models
 
@@ -29,50 +39,14 @@ AUTO = tf.data.experimental.AUTOTUNE
 
 def read_dataset(filenames, nEvtsPerFile=5000):
     """
-    Read dataset. nEvtsPerFile is the number of files per file. 
+    Read dataset...
     """
     tr_filenames = tf.io.gfile.glob(filenames)
     n_files = len(tr_filenames)
 
     dataset = tf.data.TFRecordDataset(tr_filenames)
-
-    ## take one event to check if it is heterogenous graph
-    ## the graph contains the "node_types" or "edge_types"
-    is_hetero_graph = False
-    for raw_data in dataset.take(1):
-        example = tf.train.Example()
-        example.ParseFromString(raw_data.numpy())
-        for key, feature in example.features.feature.items():
-            if key == "node_types_IN" or key == "edge_types_IN":
-                kind = feature.WhichOneof("kind")
-                if getattr(feature, kind).value is not None:
-                    is_hetero_graph = True
-                    break
-
-
-    all_fields = hetero_graphs.ALL_FIELDS if is_hetero_graph else graphs.ALL_FIELDS
-
-    int64_fields = ('n_node', 'n_edge', 'receivers', 'senders', 'node_types', 'edge_types') \
-        if is_hetero_graph else ('n_node', 'n_edge', 'receivers', 'senders')
-    float_fields = ('nodes', 'edges', 'globals')
-
-    features_description = dict(
-        [(key+"_IN",  tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields] + 
-        [(key+"_OUT", tf.io.FixedLenFeature([], tf.int64)) for key in int64_fields])
-    for key in float_fields:
-        features_description[key] = tf.io.FixedLenFeature([], tf.float32)
-
-    GraphClass = hetero_graphs.HeteroGraphsTuple if is_hetero_graph else graphs.GraphsTuple
-    
-    def parse_function(example_proto):
-        example = tf.io.parse_single_example(example_proto, features_description)
-        input_dd = GraphClass(**dict([(key, example[key+"_IN"])  for key in all_fields]))
-        out_dd   = GraphClass(**dict([(key, example[key+"_OUT"]) for key in all_fields]))
-        return input_dd, out_dd
-
-    # dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
-    dataset = dataset.map(parse_function, num_parallel_calls=AUTO)
-    # n_graphs = sum([1 for _ in dataset]) ## this is computational expensive.
+    dataset = dataset.map(graph.parse_tfrec_function, num_parallel_calls=AUTO)
+    # n_graphs = sum([1 for _ in dataset]) # this is computational expensive.
     n_graphs = n_files * nEvtsPerFile
     return dataset, n_graphs
 
@@ -121,7 +95,7 @@ def get_signature(
     )
     if with_bool:
         input_signature = input_signature + (tf.TensorSpec(shape=[], dtype=tf.bool), )
-
+        
     return input_signature
 
 
@@ -152,38 +126,46 @@ def add_args(parser):
     add_arg("--core-size", help='MLP size for core', default=None)
     add_arg("--decoder-size", help='MLP size for decoder', default=None)
     add_arg("--with-edge-inputs", action='store_true', help='input graph contains edge information')
-
     add_arg("--with-edges", help='duplicate variable', default=False)
     add_arg("--with-global-inputs", help='input graph contains global information', default=False)
+    add_arg("--with-globals", help='duplicate with global flag', default=False)
     add_arg("--output-size", help='output size of global regression', default=1)
     add_arg("--num-transformation", help='the number of times transformation is performed for representational learning', default=1)
     add_arg("--agument-type", help='type of augmentation for representation learning', default='rotation')
     add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
     add_arg("--decay-steps", help='Steps for cosine decay in learning rate', default=0)
-
+    add_arg("--use-node-attn", help='Use node attention', default=False)
+    add_arg("--use-global-attn", help='Use global attention', default=False)
+    add_arg("--node-mlp-size", help="MLP size for nodes", default=None)
+    add_arg("--edge-mlp-size", help="MLP size for edge", default=None)
+    add_arg("--global-mlp-size", help="MLP size for global", default=None)
+    add_arg("--num-attn-heads", help="Number of Attention Heads", default=8)
+    add_arg("--num-attn-blocks", help="Number of Attention Blocks", default=2)
+    add_arg("--num-attn-layers", help="Number of Attention Layers", default=1)
+    add_arg("--manual-ngraph", help="Manually set the number of graphs", default=0, type=int)
 
     
 class Trainer(snt.Module):
-
+    
     """
     The class to implement a simple trainer and model.
-
+    
     ...
-
+    
     Important Attributes
     --------------------
     input_dir: The input directory for data
-
+    
     output_dir: The output directory for metrics and outputs
-
+   
     model: The model class to use for training, validating, and
     testing
-
+    
     loss_fcn: The loss function class to use for training,
     validating, and testing
     """
 
-    def __init__(self, input_dir, evts_per_file, output_dir,
+    def __init__(self, input_dir, evts_per_file, output_dir, 
                 model, loss_fcn, optimizer,
                 mode, # mode, 'clf,globals', 'clf,edges', 'rgr,globals'
                 batch_size=100, num_epochs=1, num_iters=4,
@@ -192,15 +174,18 @@ class Trainer(snt.Module):
                 val_batches=50,
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
+                manual_ngraph=0,
                 encoder_size=None, core_size=None, decoder_size=None,
-                with_edge_inputs=False, with_edges=False, with_global_inputs=False,
+                with_edge_inputs=False, with_edges=False, 
+                with_global_inputs=False, with_globals=False,
+                activation=tf.nn.relu, learning_rate=0.005, 
                 output_size=1, num_transformation=1, augment_type="rotation", 
                 cosine_decay=False, decay_steps=0,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,
         and metrics.
-
+        
         Parameters
         ----------
         Sets input, output, model and loss, as well as relevant hyperparameters.
@@ -217,9 +202,9 @@ class Trainer(snt.Module):
         self.data_test = None
         self.file_pattern = file_pattern
         self.evts_per_file = evts_per_file
+        self.manual_ngraph = manual_ngraph
         self.batch_size = batch_size
         self.shuffle_size = shuffle_size
-        self.cosine_decay = cosine_decay
         self.read_all_data()
 
         self.ckpt_manager = None
@@ -230,24 +215,31 @@ class Trainer(snt.Module):
         
         self.cosine_decay = cosine_decay
         self.decay_steps = decay_steps
-
+        
+        if isinstance(activation, str):
+            activation = getattr(tf.nn, activation)
+            
         if isinstance(model, str):
             if "regression" in model or "Regression" in model:
                 self.model = getattr(Models, model)(
                     self.output_size,
                     with_edge_inputs=with_edges,
-                    with_global_inputs=with_global_inputs,
+                    with_global_inputs=with_globals,
                     encoder_size=encoder_size,
                     core_size=core_size,
-                    decoder_size=decoder_size
+                    decoder_size=decoder_size,
+                    activation=activation,
+                    **kwargs
                     )
             else:
                 self.model = getattr(Models, model)(
                     with_edge_inputs=with_edges,
-                    with_global_inputs=with_global_inputs,
+                    with_global_inputs=with_globals,
                     encoder_size=encoder_size,
                     core_size=core_size,
-                    decoder_size=decoder_size
+                    decoder_size=decoder_size,
+                    activation=activation,
+                    **kwargs
                     )
         elif isinstance(model, snt.Module):
             self.model = model
@@ -263,21 +255,22 @@ class Trainer(snt.Module):
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
-
             
         if not self.cosine_decay:
             if isinstance(optimizer, snt.Optimizer):
                 self.optimizer = optimizer
             elif isinstance(optimizer, float):
                 self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            elif isinstance(optimizer, str):
+                self.optimizer = getattr(snt.optimizers, optimizer)(learning_rate=learning_rate)
             else:
                 self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
-
         else:
             self.lr_base = 0.0001
             self.get_lr = lambda n_steps: 0.5*(1+math.cos(math.pi*n_steps/decay_steps))
             self.lr = tf.Variable(self.lr_base, trainable=False, name='lr', dtype=tf.float32)
             self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
+
 
 
         self.mode = mode.split(',')
@@ -316,8 +309,11 @@ class Trainer(snt.Module):
         """
         self._setup_training_loop()
         self.make_checkpoints()
-
-        ngraphs = self.ngraphs_train
+        
+        if self.manual_ngraph != 0:
+            ngraphs = self.manual_ngraph
+        else:
+            ngraphs = self.ngraphs_train
         train_data = self.data_train
         batch_size = self.batch_size
         steps_per_epoch = ngraphs // batch_size
@@ -338,7 +334,10 @@ class Trainer(snt.Module):
         total_loss = 0
         with tqdm.trange(tot_steps, disable=disable_tqdm) as t0:
             for step_num in t0:
-                inputs_tr, targets_tr = next(train_data)
+                try:
+                    inputs_tr, targets_tr = next(train_data)
+                except:
+                    inputs_tr, targets_tr = next(train_data)
                 total_loss += self.training_step(inputs_tr, targets_tr).numpy()
 
                 if step_num == 0:
@@ -356,6 +355,7 @@ class Trainer(snt.Module):
                         # current validation test is better
                         # save the model
                         self.ckpt_manager.save()
+                        self.attempts = 0
                     else:
                         if self.attempts >= self.patiences:
                             print("Reached maximum failed attempts: "\
@@ -368,7 +368,7 @@ class Trainer(snt.Module):
     def validation(self):
         """
         Performs validation steps, record performance metrics.
-        All is based on `mode`.
+        All is based on `mode`. 
         """
         val_data = self.data_val
 
@@ -380,8 +380,10 @@ class Trainer(snt.Module):
             total_loss += (tf.math.reduce_sum(
                 self.loss_fcn(targets, outputs))/tf.constant(
                     self.num_iters, dtype=tf.float32)).numpy()
-            if len(outputs) > 0:
+            if type(outputs) == list or len(outputs) >= 1:
                 outputs = outputs[-1]
+            #if type(outputs) == list or len(outputs) > 1:
+                #outputs = outputs[-1]
 
             if "globals" in self.mode:
                 predictions.append(outputs.globals)
@@ -395,6 +397,7 @@ class Trainer(snt.Module):
         predictions = np.concatenate(predictions, axis=0)
         truth_info = np.concatenate(truth_info, axis=0)
 
+
         if 'clf' in self.mode:
             threshold = 0.5
             y_true, y_pred = (truth_info > threshold), (predictions > threshold)
@@ -402,8 +405,9 @@ class Trainer(snt.Module):
                 fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
             except:
                 #print(f"pred, true: {[_ for _ in zip(y_pred, y_true)]}")
-                print(predictions)
-                exit()
+                print('len(predictions) =', len(predictions))
+                print('len(pred[0]) =', len(predictions[0]))
+                fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
             self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
             self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
             self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
@@ -423,12 +427,12 @@ class Trainer(snt.Module):
         current_metric = self.metric_dict[self.stop_on]
         is_better = (self.should_max_metric and current_metric > self.best_metric) \
             or (not self.should_max_metric and current_metric < self.best_metric)
-        if is_better:
-            self.best_metric = current_metric
+        #if is_better: # changed to avoid impacts from outlier validations
+        self.best_metric = current_metric
         return is_better
 
     # Prediction
-    # --------------------
+    # --------------------  
     def predict(self, test_data):
         """
         Uses the current model/loss to generate predictions on test_data
@@ -471,15 +475,15 @@ class Trainer(snt.Module):
         and tf.GradientTape. Optionally, the user can pass in a
         model and loss_fcn to replace the current model and loss_fcn
         attributes of TrainerBase.
-
+        
         Parameters
         ----------
         model: The model class to use for training
-
+        
         loss_fcn: The loss function class to use for training
         """
         if self.training_step:
-            return
+            return 
 
         input_signature = get_signature(self.data_train)
 
@@ -496,7 +500,6 @@ class Trainer(snt.Module):
             if self.cosine_decay:
                 lr_mult = self.get_lr(step)
                 self.lr.assign(self.lr_base * lr_mult)
-
                 if step % self.decay_steps == 0 and step / self.decay_steps > 0:
                     ckpt_n = step / self.decay_steps
                     ckpt_dir = os.path.join(output_dir, "one-shot-checkpoints/{ckpt_n}")
@@ -524,7 +527,7 @@ class Trainer(snt.Module):
 
         if shuffle_size > 0:
             tfdata = tfdata.shuffle(
-                shuffle_size, seed=12345, reshuffle_each_iteration=False)
+                shuffle_size, reshuffle_each_iteration=False)
 
         tfdatasets = tfdata.repeat().prefetch(AUTO)
         tfdata = loop_dataset(tfdatasets, self.batch_size)
@@ -535,7 +538,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up training data from the train directory
         """
         if self.data_train is not None:
-            return
+            return 
         self.data_train, self.ngraphs_train = self.load_data('train')
 
     def load_validating_data(self):
@@ -543,7 +546,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up validation data from the val directory.
         """
         if self.data_val is not None:
-            return
+            return 
         self.data_val, self.ngraphs_val = self.load_data('val')
 
     def load_testing_data(self):
@@ -551,7 +554,7 @@ class Trainer(snt.Module):
         Loads, shuffles, and sets up testing data from the test directory.
         """
         if self.data_test is not None:
-            return
+            return 
         self.data_test, self.ngraphs_test = self.load_data('test')
 
     def read_all_data(self):

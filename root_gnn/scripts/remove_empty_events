@@ -18,6 +18,7 @@ from root_gnn.src.datasets.base import DataSet
 from root_gnn import datasets as DataSets
 
 import tensorflow as tf
+import tqdm
 
 def count_prongs(entry):
     return 0
@@ -44,27 +45,43 @@ if __name__ == "__main__":
     tauid = data
     tree_name = "output"
     chain = TChain(tree_name,tree_name)
-    chain.Add(ntuple_in)
+    try:
+        ntuple_in = eval(ntuple_in)
+        if type(ntuple_in) == list:
+            for ntuple in ntuple_in:
+                chain.Add(ntuple)
+        else:
+            chain.Add(ntuple_in)
+    except:
+        chain.Add(ntuple_in)
     n_entries = chain.GetEntries()
     test_chain = TChain(tree_name,tree_name)
-    test_chain.Add(ntuple_in)
+    if type(ntuple_in) == list:
+        for ntuple in ntuple_in:
+            test_chain.Add(ntuple)
+    else:
+        test_chain.Add(ntuple_in)
 
     # Create a new file and a new branch
     newfile = TFile(ntuple_out,"RECREATE")
     newtree = chain.CloneTree(0)
 
     # Iterate over the entries in the input file
-    for ientry in range(0,n_entries):
+    n_remain = 0
+    for ientry in tqdm.trange(0,n_entries):
         test_chain.GetEntry(ientry)
         keep_event = False
         for ijet in range(test_chain.nJets):
             n_nodes = test_chain.JetTowerN[ijet] + test_chain.JetGhostTrackN[ijet]
             # keep the event if there is one non-empty reco jet
-            if n_nodes > 0:
+            if n_nodes > 0 and test_chain.JetPt[ijet] >= 30 and abs(test_chain.JetEta[ijet]) <= 3:
                 keep_event = True
+                n_remain += 1
                 break
         if keep_event:
             chain.GetEntry(ientry)
             newtree.Fill()
     newtree.Write()
+    
+    print(f">>> Events remaining: {n_remain/n_entries*100:.2f}")
 

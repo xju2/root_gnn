@@ -9,6 +9,7 @@ from typing import Optional
 
 import tensorflow as tf
 from root_gnn.src.datasets import graph
+from root_gnn.src.datasets import hetero_graphs
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
@@ -42,14 +43,14 @@ class DataSet(object):
         """
         return sum([1 for _ in self.read(filename)])
 
-    def make_graph(self, event, debug, connectivity=None):
+    def make_graph(self, event, debug, **kwargs):
         """
         Convert the event into a graphs_tuple. 
         """
         raise NotImplementedError
 
     def subprocess(self, ijob, n_evts_per_record, filename, outname,
-            overwrite, debug, connectivity=None):
+            overwrite, debug, **kwargs):
        
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname) and not overwrite:
@@ -67,7 +68,7 @@ class DataSet(object):
         jevt = 0
         kgraphs = 0
         for event in self.read(filename, start_entry, n_evts_per_record):
-            gen_graphs = self.make_graph(event, debug, connectivity=connectivity)
+            gen_graphs = self.make_graph(event, debug, **kwargs)
             
             if debug:
                 print(">>> Debug 1", ijob, jevt, kgraphs)
@@ -110,19 +111,26 @@ class DataSet(object):
             if debug:
                 print(">>> Debug 3", ijob)
             writer = tf.io.TFRecordWriter(outname)
-            writer.write(serialized_dataset)
+            
+            for data in serialized_dataset:
+                example = graph.serialize_graph(*data)
+                if debug:
+                    print(">>> Debug 4", ijob, type(example))
+                writer.write(example)
+
             writer.close()
             if debug:
-                print(">>> Debug 4", ijob)
+                print(">>> Debug 5", ijob)
             t1 = time.time()
-            all_graphs = []
+            all_graphs = [] # clear cache
+
             print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
         else:
             print(ijob, "all failed")
         return ifailed, isaved
 
     def process(self, filename, outname, n_evts_per_record,
-        debug, max_evts, num_workers=1, overwrite=False, connectivity=None, **kwargs):
+        debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -142,7 +150,7 @@ class DataSet(object):
             for ijob in range(n_files):
                 n_failed, n_saved = self.subprocess(
                     ijob, n_evts_per_record, filename, outname, overwrite,
-                    debug, connectivity=connectivity)
+                    debug, **kwargs)
                 ifailed += n_failed
                 isaved += n_saved
         else:
@@ -153,7 +161,7 @@ class DataSet(object):
                         outname=outname,
                         overwrite=overwrite,
                         debug=debug,
-                        connectivity=connectivity)
+                        **kwargs)
                 res = p.map(process_fnc, list(range(n_files)))
 
             ifailed = sum([x[0] for x in res])

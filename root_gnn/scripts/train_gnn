@@ -6,6 +6,8 @@ import argparse
 from root_gnn.utils import load_yaml
 from root_gnn import trainer
 from root_gnn import rep_trainer
+from root_gnn import homo_trainer
+from root_gnn import keras_trainer
 
 if __name__ == "__main__":
     
@@ -20,7 +22,7 @@ if __name__ == "__main__":
     args_parser = subparsers.add_parser('args', help='arguments help',\
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    trainer.add_args(args_parser)
+    
     args = parser.parse_args()
 
     if args.filename:
@@ -43,6 +45,13 @@ if __name__ == "__main__":
     
     if 'trainer' in config and config['trainer'] == "rep":
         trnr = rep_trainer.EmbeddingTrainer(**config)
-    else:
+    elif 'trainer' in config and config['trainer'] == "het":
         trnr = trainer.Trainer(**config)
+    elif 'trainer' in config and config['trainer'] == "keras":
+        trainer = keras_trainer
+        trnr = trainer.Trainer(**config)
+    else:
+        trainer = homo_trainer
+        trnr = trainer.Trainer(**config)
+    trainer.add_args(args_parser)
     trnr.train(args.num_batches)

@@ -7,6 +7,10 @@ from __future__ import print_function
 
 import collections
 
+import tensorflow as tf
+from graph_nets import utils_tf
+from graph_nets import utils_np
+
 NODES = "nodes"
 EDGES = "edges"
 RECEIVERS = "receivers"
@@ -27,7 +31,7 @@ ALL_FIELDS = (NODES, EDGES, RECEIVERS, SENDERS, GLOBALS, NODE_TYPES, EDGE_TYPES,
 
 class HeteroGraphsTuple(
     collections.namedtuple("HeteroGraphsTuple",
-                           GRAPH_DATA_FIELDS + GRAPH_NUMBER_FIELDS)):
+                           ALL_FIELDS)):
   """Default namedtuple describing `Graphs`s.
   A children of `collections.namedtuple`s, which allows it to be directly input
   and output from `tensorflow.Session.run()` calls.
@@ -95,3 +99,30 @@ class HeteroGraphsTuple(
       of applying `field_fn` to them.
     """
     return self.replace(**{k: field_fn(getattr(self, k)) for k in fields})
+
+
+def data_dicts_to_hetero_graphs_tuple(data_dicts, name="data_dicts_to_hetero_graphs_tuple"):
+  """Creates a `graphs.GraphsTuple` containing tensors from data dicts.
+   All dictionaries must have exactly the same set of keys with non-`None`
+   values associated to them. Moreover, this set of this key must define a valid
+   graph (i.e. if the `EDGES` are `None`, the `SENDERS` and `RECEIVERS` must be
+   `None`, and `SENDERS` and `RECEIVERS` can only be `None` both at the same
+   time). The values associated with a key must be convertible to `Tensor`s,
+   for instance python lists, numpy arrays, or Tensorflow `Tensor`s.
+   This method may perform a memory copy.
+   The `RECEIVERS`, `SENDERS`, `N_NODE` and `N_EDGE` fields are cast to
+   `np.int32` type.
+  Args:
+    data_dicts: An iterable of data dictionaries with keys in `ALL_FIELDS`.
+    name: (string, optional) A name for the operation.
+  Returns:
+    A `graphs.GraphTuple` representing the graphs in `data_dicts`.
+  """
+  data_dicts = [dict(d) for d in data_dicts]
+  for key in ALL_FIELDS:
+    for data_dict in data_dicts:
+      data_dict.setdefault(key, None)
+  utils_np._check_valid_sets_of_keys(data_dicts)  # pylint: disable=protected-access
+  with tf.name_scope(name):
+    data_dicts = utils_tf._to_compatible_data_dicts(data_dicts)
+    return HeteroGraphsTuple(**utils_tf._concatenate_data_dicts(data_dicts))

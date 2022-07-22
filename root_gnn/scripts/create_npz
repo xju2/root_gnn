@@ -1,0 +1,180 @@
+#!/usr/bin/env python
+from root_gnn import datasets as DataSets
+import math
+from math import fabs, log10, tanh, sin, exp
+import numpy as np
+import argparse
+from root_gnn.utils import calc_dphi
+import time
+import os
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Create sequences for RNN')
+    parser.add_argument('input_path', help='Input root file')
+    parser.add_argument('output_path', help='Output path')
+    parser.add_argument("--initial-event", default=0, help="Event number to start at")
+    parser.add_argument("-n","--num-events", default=None,  help="Number of events for inference")
+    parser.add_argument('--impact-parameter-scaling',default="log10", choices=[None,"log10","tanh"])
+    #parser.add_argument('--prefix','-p',default=None, help='Physics process to use as a prefix in filenames')
+    parser.add_argument('--inclusive', action='store_true')
+    parser.add_argument('--use_delta_angles', default='True',choices=['True','False'])
+    parser.add_argument('--signal', action='store_true')
+    parser.add_argument('--type', default="TauIdentificationDataset", help='which data to process', 
+                        choices=list(DataSets.__all__))
+    args = parser.parse_args()
+
+    offset = 10e-3
+    t0 = time.time()
+    data = getattr(DataSets, args.type)()
+
+    def pad_array(arr,size,n_attrs):
+        arr.extend([[0.]*n_attrs]*(size-len(arr)))
+
+
+    output_path = args.output_path
+    input_path = args.input_path
+
+    n_entries = data._num_evts(input_path)
+
+    # 1 prong data points
+    track1_info = []
+    cluster1_info = []
+    hlv1_info = []
+    labels1 = []
+    # 3 prong data points
+    track3_info = []
+    cluster3_info = []
+    hlv3_info = []
+    labels3 = []
+    # other data points
+    track__info = []
+    cluster__info = []
+    hlv__info = []
+    labels_ = []
+
+    if args.num_events is not None:
+        final_event = min(n_entries,int(args.initial_event)+int(args.num_events))
+    else:
+        final_event = n_entries
+    
+    if os.path.exists(output_path+"_other.npz"):
+        print(f">>> {output_path} already exists, skip...")
+        time.sleep(4*3600)
+        
+    print(f">>> Start processing {output_path} now")
+    n_failed = 0
+    n_succeeded = 0
+    for chain in data.read(input_path, int(args.initial_event), final_event):
+        isTau = 0
+        scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
+        #global_factors = np.array([1.0,5.0,0.2,5.0,0.2],dtype=np.float32)
+        track_idx = 0
+        tower_idx = 0
+        graph_list = []
+        isTauEvent = len([i for i in chain.TruthJetIsTautagged if i > 0]) > 0
+        for ijet in range(chain.nJets):
+            if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+                n_failed += 1
+                continue
+            n_core_tracks = 0
+            nodes = []
+            tower_nodes = []
+            track_nodes = []
+            # Match jet to truth jet that minimizes angular distance
+            min_index = 0
+            if chain.nTruthJets > 0:
+                min_dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
+            for itruth in range(chain.nTruthJets):
+                dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[itruth])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
+                if dR < min_dR:
+                    min_dR = dR
+                    min_index = itruth
+            if chain.nTruthJets > 0 and min_dR < 0.4:
+                isTau = chain.TruthJetIsTautagged[min_index]
+            else:
+                isTau = 0
+
+            n_core_tracks = isTau
+            if (n_core_tracks > 0 and (n_core_tracks != 1 and n_core_tracks != 3)) and isTauEvent:
+                n_failed += 1
+                continue
+            n_succeeded += 1
+            for itower in range(chain.JetTowerN[ijet]):
+                if args.use_delta_angles=='True':
+                    deta = chain.JetEta[ijet]-chain.JetTowerEta[tower_idx]
+                    dphi = calc_dphi(chain.JetPhi[ijet],chain.JetTowerPhi[tower_idx])
+                    tower_nodes.append([log10(chain.JetPt[ijet]),log10(chain.JetTowerEt[tower_idx]),math.fabs(deta),math.fabs(dphi)])
+                else:
+                    tower_nodes.append([log10(chain.JetPt[ijet]),log10(chain.JetTowerEt[tower_idx]),chain.JetTowerEta[tower_idx],chain.JetTowerPhi[tower_idx]])
+                tower_idx += 1
+
+            tower_nodes.sort(reverse=True)
+            tower_nodes = tower_nodes[0:min(len(tower_nodes),6)]
+            pad_array(tower_nodes,6,4)
+
+            for itrack in range(chain.JetGhostTrackN[ijet]):
+                ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
+                deta = chain.JetEta[ijet]-chain.TrackEta[ghost_track_idx]
+                dphi = calc_dphi(chain.JetPhi[ijet],chain.TrackPhi[ghost_track_idx])
+                # Angular distance from the jet axis
+                #dR = math.sqrt(dphi**2 + deta**2)
+                #if dR <= 0.2:
+                    #n_core_tracks+=1
+                theta = 2*math.atan(-exp(chain.TrackEta[ghost_track_idx]))
+                if args.impact_parameter_scaling=="log10":
+                    z0 = log10(offset+fabs(chain.TrackZ0[ghost_track_idx]*sin(theta)))
+                    d0 = log10(offset+fabs(chain.TrackD0[ghost_track_idx]))
+                elif args.impact_parameter_scaling=="tanh":
+                    z0 = 2.0*tanh(chain.TrackZ0[ghost_track_idx]*sin(theta)/2.0)
+                    d0 = 2.0*tanh(chain.TrackD0[ghost_track_idx]/2.0)
+                else:
+                    z0 = fabs(chain.TrackZ0[ghost_track_idx]*sin(theta))
+                    d0 = fabs(chain.TrackD0[ghost_track_idx])
+
+                if args.use_delta_angles=='True':
+                    track_nodes.append([log10(chain.JetPt[ijet]),log10(chain.TrackPt[ghost_track_idx]),math.fabs(deta),math.fabs(dphi),z0,d0])
+                else:
+                    track_nodes.append([log10(chain.JetPt[ijet]),log10(chain.TrackPt[ghost_track_idx]),chain.TrackEta[ghost_track_idx],chain.TrackPhi[ghost_track_idx],z0,d0])
+                track_idx+=1
+
+            track_nodes.sort(reverse=True)
+            track_nodes = track_nodes[0:min(len(track_nodes),10)]
+            pad_array(track_nodes,10,6)
+
+            globals = [chain.JetPt[ijet],chain.JetEta[ijet],chain.JetPhi[ijet],\
+                       chain.JetLeadingTrackFracP[ijet],chain.JetTrackR[ijet],\
+                       chain.JetNumISOTracks[ijet],chain.JetMaxDRInCore[ijet],chain.JetTrackMass[ijet]]
+
+            n_core_tracks = isTau
+            if isTau or not args.signal:
+                if args.inclusive:
+                    track__info.append(track_nodes)
+                    cluster__info.append(tower_nodes)
+                    hlv__info.append(globals)
+                    labels_.append( 1.0 if isTau else 0.0 )
+                else:
+                    if n_core_tracks == 1:
+                        track1_info.append(track_nodes)
+                        cluster1_info.append(tower_nodes)
+                        hlv1_info.append(globals)
+                        labels1.append( 1.0 if isTau else 0.0 )
+                    elif n_core_tracks == 3:
+                        track3_info.append(track_nodes)
+                        cluster3_info.append(tower_nodes)
+                        hlv3_info.append(globals)
+                        labels3.append( 1.0 if isTau else 0.0 )
+                    else:
+                        track__info.append(track_nodes)
+                        cluster__info.append(tower_nodes)
+                        hlv__info.append(globals)
+                        labels_.append( 1.0 if isTau else 0.0 )
+
+    np.savez(output_path+"_inclusive.npz",track_info=np.array(track__info+track3_info+track1_info),\
+        cluster_info=np.array(cluster__info+cluster3_info+cluster1_info),\
+            hlv_info=np.array(hlv__info+hlv3_info+hlv1_info),labels=np.array(labels_+labels3+labels1))
+    np.savez(output_path+"_3prong.npz",track_info=np.array(track3_info),cluster_info=np.array(cluster3_info),hlv_info=np.array(hlv3_info),labels=np.array(labels3))
+    np.savez(output_path+"_1prong.npz",track_info=np.array(track1_info),cluster_info=np.array(cluster1_info),hlv_info=np.array(hlv1_info),labels=np.array(labels1))
+    np.savez(output_path+"_other.npz",track_info=np.array(track__info),cluster_info=np.array(cluster__info),hlv_info=np.array(hlv__info),labels=np.array(labels_))
+
+    t1 = time.time()
+    print(f">>> Finished writing {n_failed}/{n_succeeded} ({n_failed/n_succeeded*100:.2f}%) jets into {output_path} in {(t1-t0)/60:.2f}min.")

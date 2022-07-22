@@ -36,6 +36,35 @@ class GlobalLoss:
             for output_op in output_ops
         ]
         return tf.stack(loss_ops)
+    
+    
+class MSEClassificationRepLoss(GlobalLoss):
+    """
+    Two Log loss for the original data pair and augmented data pair, with MSE loss for the original and augmented pair.
+    """
+    def __init__(self, real_global_weight, fake_global_weight):
+        super().__init__(real_global_weight, fake_global_weight)
+        self.log = tf.compat.v1.losses.log_loss
+        self.mse = tf.compat.v1.losses.mean_squared_error
+        
+    
+    def __call__(self, output_ops, aug_output_op_list, target_op):
+        global_weights = target_op.globals * self.w_global_real \
+            + (1 - target_op.globals) * self.w_global_fake
+        op1 = [self.log(target_op.globals, output_op.globals, weights=global_weights) for output_op in output_ops]
+        op2 = []
+        op3 = []
+        
+        if type(aug_output_op_list) != list:
+            aug_output_op_list = [aug_output_op_list]
+            
+        for aug_output_ops in aug_output_op_list:
+            op2.extend([self.mse(op[0].globals, op[1].globals) for op in zip(output_ops, aug_output_ops)])
+            op3.extend([self.log(target_op.globals, output_op.globals, weights=global_weights) for output_op in aug_output_ops])
+        
+        loss_ops = op1 + op2 + op3
+        return tf.stack(loss_ops)
+    
 
 class RegressionLoss(snt.Module):
     """

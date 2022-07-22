@@ -7,11 +7,19 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.keras import layers
+from tensorflow.keras import activations
+import tensorflow_addons as tfa
+
 from graph_nets import modules
 from graph_nets import utils_tf
 from graph_nets import blocks
+from graph_nets import _base
+
+from functools import partial
 
 import sonnet as snt
+
 
 class MultiMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
@@ -37,6 +45,16 @@ class EdgeMLP(snt.Module):
         self.mix_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
     def __call__(self,x,is_training=True):
         return self.tower_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,0],[len(x),1])+self.mix_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,1],[len(x),1])+self.track_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,2],[len(x),1])
+
+"""
+class NodeKerasMLP(layers.Layer):
+    
+    def __init__(self, mlp_size, activation="relu"):
+        all_layers = []
+        for size in mlp_size:
+            all_layers.append(layers.Dense(size, activation=activation))
+"""
+        
 
 def make_multi_mlp_model(
     mlp_size: list = [128]*2,
@@ -174,3 +192,233 @@ class InteractionNetwork(snt.Module):
     node_model_kwargs=None
   ):
         return self._edge_block(self._node_block(graph, node_model_kwargs), edge_model_kwargs)
+
+    
+class AttentionBlock(snt.Module):
+    """
+    The attention block inspired by https://arxiv.org/pdf/2202.03772.pdf
+    """
+    def __init__(self, node_embed_dim=128, num_attn_heads=8, layer_dim=[128], ffn=None, 
+                 mlp_fn=make_mlp_model, embedding_fcn=None):
+        super(AttentionBlock, self).__init__(name='AttentionBlock')
+        
+        
+        self.use_embedding = False
+        if embedding_fcn is not None:
+            self.embedding = embedding_fcn(mlp_size=[node_embed_dim])
+            self.use_embedding = True
+            
+        self.pre_attn_norm = snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+        self.attention = layers.MultiHeadAttention(num_attn_heads, node_embed_dim)
+        self.post_attn_norm = snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+        
+        self.pre_fc_norm = snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+        self.fc = mlp_fn(mlp_size=layer_dim, activations=activations.gelu)
+
+        
+        
+    def __call__(self, x, q=None, attn_mask=None, is_training=True, **kwargs):
+        
+        if self.use_embedding:
+            x = self.embedding(x)
+        residual = x
+        x = self.pre_attn_norm(x)
+        
+        x = tf.expand_dims(x, axis=0)
+        if q is None:
+            x = self.attention(x, x, x, attention_mask=attn_mask, return_attention_scores=False)
+        else:
+            x = self.attention(q, x, x, attention_mask=attn_mask, return_attention_scores=False)
+        x = tf.squeeze(x, axis=0)
+        
+        x = self.post_attn_norm(x) + residual
+
+        x = self.pre_fc_norm(x)
+        x = self.fc(x, is_training=is_training)
+
+        return x
+    
+    
+class AttentionAggregator(snt.Module):
+    def __init__(self, num_heads, key_dim):
+        super(AttentionAggregator, self).__init__(name='AttentionAggregator')
+        
+        self.pre_attn_norm = snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+        self.attention = layers.MultiHeadAttention(num_heads, key_dim)
+        self.post_attn_norm = snt.LayerNorm(axis=-1, create_scale=True, create_offset=True)
+        
+        self.reducer = tf.math.unsorted_segment_sum
+        self.global_query = tf.Variable(tf.zeros([1, 1, key_dim]), trainable=True)
+
+        
+    def __call__(self, x, segment_ids, num_segments, global_q=None, **kwargs):
+
+        residual = x 
+        x = self.pre_attn_norm(x)
+        
+        x = tf.expand_dims(x, axis=1)
+        if global_q is None:
+            global_q = self.global_query
+        else:
+            global_q = global_q
+        x = self.attention(global_q, x, x, return_attention_scores=False) # Check
+        x = tf.squeeze(x, axis=1)        
+        
+        x = self.post_attn_norm(x) + residual
+
+        return self.reducer(x, segment_ids, num_segments)
+    
+    
+class GlobalAttentionBlock(blocks.GlobalBlock):
+
+    def __init__(self,
+               global_model_fn,
+               use_edges=True,
+               use_nodes=True,
+               use_globals=True,
+               num_heads=8, key_dim=64,
+               name="global_attn_block",
+               **kwargs):
+    
+        super(GlobalAttentionBlock, self).__init__(global_model_fn,
+                                                   use_edges=use_edges,
+                                                   use_nodes=use_nodes,
+                                                   use_globals=use_globals,
+                                                   name=name)
+        
+        if not (use_nodes or use_edges or use_globals):
+            raise ValueError("At least one of use_edges, "
+                           "use_nodes or use_globals must be True.")
+
+        self._use_edges = use_edges
+        self._use_nodes = use_nodes
+        self._use_globals = use_globals
+
+        with self._enter_variable_scope():
+            self._global_model = global_model_fn()
+            if self._use_edges:
+                self._edges_aggregator = EdgeToGlobalAttAggregator(num_heads, key_dim)
+            if self._use_nodes:
+                self._nodes_aggregator = NodeToGlobalAttAggregator(num_heads, key_dim)
+
+                    
+                    
+class GraphAttentionNetwork(modules.GraphNetwork):
+    """
+    Implementation of a Graph Network with Attention Global Block instead of general Global Block
+    """
+    def __init__(self,
+               edge_model_fn,
+               node_model_fn,
+               global_model_fn,
+               reducer=tf.math.unsorted_segment_sum,
+               edge_block_opt=None,
+               node_block_opt=None,
+               global_block_opt=None,
+               num_heads=8, key_dim=64,
+               name="GraphAttentionNetwork"):
+    
+        super(GraphAttentionNetwork, self).__init__(edge_model_fn,
+                                                    node_model_fn,
+                                                    global_model_fn,
+                                                    reducer=reducer,
+                                                    edge_block_opt=edge_block_opt,
+                                                    node_block_opt=node_block_opt,
+                                                    global_block_opt=global_block_opt,
+                                                    name=name)
+        
+        global_block_opt = modules._make_default_global_block_opt(global_block_opt, reducer)
+
+        with self._enter_variable_scope():
+            self._global_block = GlobalAttentionBlock(
+              global_model_fn=global_model_fn, num_heads=num_heads, key_dim=key_dim,
+              **global_block_opt)
+    
+    
+    
+class GlobalAttentionAggregatorBase(snt.Module):
+    def __init__(self, num_heads, key_dim, name="GlobalAttentionAggregatorBase"):
+        super(GlobalAttentionAggregatorBase, self).__init__(name=name)
+        self._normalizer = modules._unsorted_segment_softmax
+        #self.mha = layers.MultiHeadAttention(num_heads, key_dim)
+        #self._setup = False
+
+        self.k_layer = make_mlp_model([key_dim], dropout_rate=0.)
+        self.q_layer = make_mlp_model([key_dim], dropout_rate=0.)
+        self.v_layer = make_mlp_model([key_dim], dropout_rate=0.)
+    
+    def _setup_MHA(self, k, q, v):
+        if self._setup:
+            return
+        #self.mha._build_from_signature(q, v, k)
+        #self.q_layer = self.mha._query_dense
+        #self.k_layer = self.mha._key_dense
+        #self.v_layer = self.mha._value_dense
+        self._setup = True
+
+        
+class NodeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
+    def __init__(self, num_heads, key_dim, name="NodeToGlobalAttAggregator"):
+        super(NodeToGlobalAttAggregator, self).__init__(num_heads, key_dim, name)
+        
+    def __call__(self, graph, **kwargs):
+        k = graph.nodes
+        v = graph.nodes
+        q = graph.globals
+        #self._setup_MHA(k, q, v)
+                                       
+        node_keys = self.k_layer(k)
+        node_values = self.v_layer(v)
+        global_queries = self.q_layer(q)
+        
+        queries = blocks.broadcast_globals_to_nodes(
+            graph.replace(globals=global_queries))
+
+        attention_weights_logits = tf.reduce_sum(
+            node_keys * queries, axis=-1)
+        normalized_attention_weights = blocks.NodesToGlobalsAggregator(
+            reducer=self._normalizer)(graph.replace(nodes=attention_weights_logits))
+
+        attented_nodes = node_values * normalized_attention_weights[..., None]
+        #attention_output = self.mha._output_dense(attented_nodes)
+        attention_output = attented_nodes
+
+        node_to_global_aggregator = blocks.NodesToGlobalsAggregator(
+            reducer=tf.math.unsorted_segment_sum)
+        aggregated_attended_values = node_to_global_aggregator(
+            graph.replace(nodes=attention_output))
+
+        return aggregated_attended_values
+    
+    
+class EdgeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
+    def __init__(self, num_heads, key_dim, name="EdgeToGlobalAttAggregator"):
+        super(EdgeToGlobalAttAggregator, self).__init__(num_heads, key_dim, name)
+        
+    def __call__(self, graph, **kwargs):
+        k = v = graph.edges
+        q = graph.globals
+        #self._setup_MHA(k, q, v)
+        
+        edge_keys = self.k_layer(k)
+        edge_values = self.v_layer(v)
+        global_queries = self.q_layer(q)
+        
+        queries = blocks.broadcast_globals_to_edges(
+            graph.replace(globals=global_queries))
+
+        attention_weights_logits = tf.reduce_sum(
+            edge_keys * queries, axis=-1)
+        normalized_attention_weights = blocks.EdgesToGlobalsAggregator(
+            reducer=self._normalizer)(graph.replace(edges=attention_weights_logits))
+
+        attented_edges = edge_values * normalized_attention_weights[..., None]
+        #attention_output = self.mha._output_dense(attented_edges)
+        attention_output = attented_edges
+        
+        edge_to_global_aggregator = blocks.EdgesToGlobalsAggregator(
+            reducer=tf.math.unsorted_segment_sum)
+        aggregated_attended_values = edge_to_global_aggregator(
+            graph.replace(edges=attention_output))
+
+        return aggregated_attended_values

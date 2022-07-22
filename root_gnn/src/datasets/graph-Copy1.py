@@ -34,8 +34,6 @@ def _float_feature(value):
 
 def _int64_feature(value):
     """Returns an int32_list from a int32 / int64."""
-    if isinstance(value, type(tf.constant(0))):
-        value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
     return tf.train.Feature(int32_list=tf.train.Int64List(value=[value]))
 
 def _bytes_feature(value):
@@ -44,11 +42,16 @@ def _bytes_feature(value):
     value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
-def serialize_graph(G1, G2):
+def serialize_graph(G1: GraphsTuple, G2: GraphsTuple):
     feature = {}
-    for key in graphs.ALL_FIELDS:
-        feature[key+"_IN"] = _bytes_feature(tf.io.serialize_tensor(getattr(G1, key)))
-        feature[key+"_OUT"] = _bytes_feature(tf.io.serialize_tensor(getattr(G2, key)))
+    for key in ('n_node', 'n_edge', 'receivers', 'senders'):
+        feature[key+"_IN"] = _int64_feature(getattr(G1, key))
+        feature[key+"_OUT"] = _int64_feature(getattr(G2, key))
+
+    for key in ('nodes', 'edges', 'globals'):
+        feature[key+"_IN"] = _float_feature(getattr(G1, key))
+        feature[key+"_OUT"] = _float_feature(getattr(G2, key))
+
     example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
     return example_proto.SerializeToString()
 

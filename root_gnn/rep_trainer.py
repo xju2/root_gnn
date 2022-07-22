@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from root_gnn.trainer import *
+from root_gnn.homo_trainer import *
 
 
 
@@ -13,10 +13,14 @@ def rotation(jet_graph, theta, eta, phi, debug=False):
     if debug:
         print("**********", jet_graph, "\n", int(jet_graph.n_node), "**********")
 
-    rot = tf.constant([[1, 0, 0],
-                       [0, np.cos(theta), np.sin(theta)],
-                       [0, -np.sin(theta),  np.cos(theta)]])
-    shift = tf.constant([0, eta, phi])
+    rot = tf.constant([[1, 0, 0, 0, 0, 0, 0],
+                       [0, 1, 0, 0, 0, 0, 0],
+                       [0, 0, np.cos(theta), np.sin(theta), 0, 0, 0],
+                       [0, 0, -np.sin(theta),  np.cos(theta), 0, 0, 0],
+                       [0, 0, 0, 0, 1, 0, 0],
+                       [0, 0, 0, 0, 0, 1, 0],
+                       [0, 0, 0, 0, 0, 0, 1]])
+    shift = tf.constant([0, 0, eta, phi, 0, 0, 0])
 
 
     new_nodes = tf.linalg.matmul(nodes, rot)
