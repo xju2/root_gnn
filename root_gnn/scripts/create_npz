@@ -7,6 +7,7 @@ import argparse
 from root_gnn.utils import calc_dphi
 import time
 import os
+import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create sequences for RNN')
@@ -21,6 +22,7 @@ if __name__ == "__main__":
     parser.add_argument('--signal', action='store_true')
     parser.add_argument('--type', default="TauIdentificationDataset", help='which data to process', 
                         choices=list(DataSets.__all__))
+    parser.add_argument('--overwrite', action='store_true', help='overwrite existing npz files')
     args = parser.parse_args()
 
     offset = 10e-3
@@ -57,30 +59,31 @@ if __name__ == "__main__":
     else:
         final_event = n_entries
     
-    if os.path.exists(output_path+"_other.npz"):
+    if os.path.exists(output_path+"_other.npz") and not args.overwrite:
         print(f">>> {output_path} already exists, skip...")
-        time.sleep(4*3600)
+        #time.sleep(4*3600)
         
     print(f">>> Start processing {output_path} now")
     n_failed = 0
     n_succeeded = 0
-    for chain in data.read(input_path, int(args.initial_event), final_event):
+    
+    all_evts = data.read(input_path, int(args.initial_event), final_event)
+    for _ in tqdm.trange(final_event - int(args.initial_event)):
+        chain = next(all_evts)
         isTau = 0
         scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
         #global_factors = np.array([1.0,5.0,0.2,5.0,0.2],dtype=np.float32)
         track_idx = 0
         tower_idx = 0
         graph_list = []
-        isTauEvent = len([i for i in chain.TruthJetIsTautagged if i > 0]) > 0
+        isTauEvent = chain.nTruthJets > 0
         for ijet in range(chain.nJets):
-            if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
-                n_failed += 1
-                continue
-            n_core_tracks = 0
+                   
+            # Match jet to truth jet that minimizes angular distance
+            split_point = 0
             nodes = []
             tower_nodes = []
             track_nodes = []
-            # Match jet to truth jet that minimizes angular distance
             min_index = 0
             if chain.nTruthJets > 0:
                 min_dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
@@ -93,12 +96,8 @@ if __name__ == "__main__":
                 isTau = chain.TruthJetIsTautagged[min_index]
             else:
                 isTau = 0
-
-            n_core_tracks = isTau
-            if (n_core_tracks > 0 and (n_core_tracks != 1 and n_core_tracks != 3)) and isTauEvent:
-                n_failed += 1
-                continue
-            n_succeeded += 1
+            isTau = 0 if (isTau != 1 and isTau != 3) else isTau
+            
             for itower in range(chain.JetTowerN[ijet]):
                 if args.use_delta_angles=='True':
                     deta = chain.JetEta[ijet]-chain.JetTowerEta[tower_idx]
@@ -110,16 +109,12 @@ if __name__ == "__main__":
 
             tower_nodes.sort(reverse=True)
             tower_nodes = tower_nodes[0:min(len(tower_nodes),6)]
-            pad_array(tower_nodes,6,4)
+            
 
             for itrack in range(chain.JetGhostTrackN[ijet]):
                 ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
                 deta = chain.JetEta[ijet]-chain.TrackEta[ghost_track_idx]
                 dphi = calc_dphi(chain.JetPhi[ijet],chain.TrackPhi[ghost_track_idx])
-                # Angular distance from the jet axis
-                #dR = math.sqrt(dphi**2 + deta**2)
-                #if dR <= 0.2:
-                    #n_core_tracks+=1
                 theta = 2*math.atan(-exp(chain.TrackEta[ghost_track_idx]))
                 if args.impact_parameter_scaling=="log10":
                     z0 = log10(offset+fabs(chain.TrackZ0[ghost_track_idx]*sin(theta)))
@@ -139,6 +134,20 @@ if __name__ == "__main__":
 
             track_nodes.sort(reverse=True)
             track_nodes = track_nodes[0:min(len(track_nodes),10)]
+            if len(track_nodes) + len(tower_nodes) == 0:
+                continue
+            if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+                n_failed += 1
+                continue
+            if not args.signal and isTau:
+                n_failed += 1
+                continue
+            elif args.signal and (not isTau):
+                n_failed += 1
+                continue
+            
+            n_succeeded += 1
+            pad_array(tower_nodes,6,4)
             pad_array(track_nodes,10,6)
 
             globals = [chain.JetPt[ijet],chain.JetEta[ijet],chain.JetPhi[ijet],\
@@ -177,4 +186,4 @@ if __name__ == "__main__":
     np.savez(output_path+"_other.npz",track_info=np.array(track__info),cluster_info=np.array(cluster__info),hlv_info=np.array(hlv__info),labels=np.array(labels_))
 
     t1 = time.time()
-    print(f">>> Finished writing {n_failed}/{n_succeeded} ({n_failed/n_succeeded*100:.2f}%) jets into {output_path} in {(t1-t0)/60:.2f}min.")
+    print(f">>> Finished writing {n_succeeded}/{n_succeeded+n_failed} ({n_succeeded/(n_succeeded+n_failed)*100:.2f}%) jets into {output_path} in {(t1-t0)/60:.2f}min.")

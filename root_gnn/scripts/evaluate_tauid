@@ -1,0 +1,235 @@
+#!/usr/bin/env python
+import argparse
+import os
+from unittest import result
+import tqdm
+
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+import sklearn.metrics
+import sklearn
+
+from ROOT import TChain
+from root_gnn import datasets as DataSets
+from root_gnn import trainer
+from root_gnn import homo_trainer
+from root_gnn import model
+from root_gnn.utils import load_yaml
+from graph_nets import utils_tf
+
+small = 10
+medium = 18
+large = 25
+
+plt.rc('font',size=medium)
+plt.rc('figure',titlesize=large)
+plt.rc('axes',labelsize=medium)
+
+
+def get_model(file):
+    config = load_yaml(file)
+    model_name = config['model']
+    mode = 'clf' if "Classifier" in model_name else 'rgr'
+    mode += ',globals' if "Global" in model_name else ',edges'
+    config['mode'] = mode
+
+    if 'loss_pars' in config and config['loss_pars']:
+        loss_fcn = config['loss_name']+','+config['loss_pars']
+        config['loss_fcn'] = loss_fcn
+
+    config['optimizer'] = config['learning_rate']
+    print(config)
+    if 'trainer' in config and config['trainer'] == "het":
+        trnr = trainer.Trainer(**config)
+    else:
+        trainer = homo_trainer
+    trnr = trainer.Trainer(**config)
+    trnr._setup_training_loop()
+    trnr.make_checkpoints(is_training=False)
+    trnr.train(1)
+    num_trainable = trnr.calc_num_trainable()
+    return (trnr.model, config['num_iters'], num_trainable, trnr.batch_size)
+
+def get_prediction(graph_list, model):
+    inp = [i[0] for i in graph_list if i[0] != None]
+    tar = [i[1] for i in graph_list if i[1] != None]
+    if len(inp) == 0:
+        return [], []
+    inputs_tr = utils_tf.concat(inp, axis=0)
+    targets_tr = utils_tf.concat(tar, axis=0)
+    pred, truth = [], []
+    """
+    for graph in graph_list:
+        if graph[0] is None:
+            continue
+    outputs = model[0](graph[0], model[1],is_training=False)
+    isTauPre = np.float32(outputs[-1].globals[0][0])
+    pred.append(isTauPre)
+    truth.append(graph[1].globals[0][0])
+    """
+    graph = (inputs_tr, targets_tr)
+    outputs = model[0](graph[0], model[1], is_training=False)
+    if type(outputs) == list or len(outputs) >= 1:
+        outputs = outputs[-1]
+    pred.append(outputs.globals)
+    truth.append(graph[1].globals)
+    pred = np.concatenate(pred, axis=0)
+    truth = np.concatenate(truth, axis=0)
+    return pred, truth
+
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Make useful histograms for understanding the tauid GNN')
+    add_arg = parser.add_argument
+    add_arg("-i", "--inputfile", help="Path to the config file")
+    add_arg("-o", "--outputpath", help="Path to the output directory")
+    add_arg("--ntuple", help="Name of the Ntuple file")
+    add_arg("-t","--threshold",help="Threshold for the classifier",default=0.5)
+    add_arg("--name",help="Name for the visualizations",default="tauid")
+
+    # Graph Perdiction args
+    add_arg("-n","--num-events", default=None,  help="Number of events for inference")
+    add_arg("--initial-event", default=0, help="Event number to start at")
+    add_arg("--config",help="configuration file name")
+    add_arg('--type', default="TauIdentificationDataset", help='which data to process',
+            choices=list(DataSets.__all__))
+    add_arg("--connectivity", help='create graph with different types of connectivity, default is fully-connected', default=None, choices=['disconnected', 'KNN'])
+    add_arg("--with-edge-features", action='store_true', help='add in edge features')
+    add_arg("--with-node-type", action='store_true', help='add in one-hot encodings for node and edge types')
+    add_arg("--signal", type=int, default=None, choices=[0, 1, 3, 10], help='choose the number of prongs')
+    add_arg("--with-hlv-features", action='store_true', help='add high-level variables to global')
+    add_arg("--use-delta-angles", action='store_true', help='use delta eta and phi for the node variables')
+    add_arg("--tower-lim", help='Limits on the number of towers', type=int, default=None)
+    add_arg("--track-lim", help='Limits on the number of tracks', type=int, default=None)
+    add_arg("--cutoff", action='store_true', help='use cutoff of towers and tracks')
+    add_arg("--background-dropoff", default=0., type=float, help='the fraction of background not used')
+    add_arg("--use-jetPt", help='use JetPt in the nodes', action='store_true')
+    add_arg("--use-jetVar", help='use Jet vector variables in global', action='store_true')
+    add_arg("--signal-only", help='only use signals from this file', action='store_true')
+
+    args = parser.parse_args()
+    
+    ntuple_in = args.inputfile
+    name = args.outputpath
+    threshold = args.threshold
+
+    data = getattr(DataSets, args.type)()
+    graph_config = {"connectivity": args.connectivity if args.connectivity is not None else "Fully-Connected",
+                    "signal": args.signal,
+                    "with_edge_features": args.with_edge_features,
+                    "with_node_type": args.with_node_type,
+                    "with_hlv_features": args.with_hlv_features,
+                    "use_delta_angles": args.use_delta_angles,
+                    "tower_lim": args.tower_lim,
+                    "track_lim":args.track_lim,
+                    "cutoff":args.cutoff,
+                    "background_dropoff": args.background_dropoff,
+                    "use_jetPt": args.use_jetPt,
+                    "use_jetVar": args.use_jetVar}
+    
+    print(">>> Graph Config:", graph_config)
+    
+    gnn_model = get_model(args.config)
+    print(f">>> Number of Trainable Parameters: {gnn_model[2]}")
+    config_file = open(f"{name}_config.txt", 'w')
+    config_file.write(f"{graph_config}\n\n")
+    config_file.write(f"Number of Trainable Parameters: {gnn_model[2]}")
+    config_file.close()
+    
+    tauid = data
+    tree_name = "output"
+    chain = TChain(tree_name,tree_name)
+    chain.Add(ntuple_in)
+    n_entries = chain.GetEntries()
+    if not args.num_events is None:
+        n_entries = min(n_entries,int(args.num_events))
+    initial_entry = min(n_entries,int(args.initial_event))
+    num_eval = n_entries - initial_entry
+    entry_idx = [_ for _ in range(initial_entry, n_entries)]
+    print(">>> Number of Events:", n_entries)
+   
+    prediction_1prong = []
+    prediction_3prong = []
+    prediction_other = []
+    truth_1prong = []
+    truth_3prong = []
+    truth_other = []
+
+    batch_size = gnn_model[3]
+    graphs_1p = []
+    graphs_3p = []
+    graphs_qcd = []
+    for ientry in tqdm.trange(num_eval):
+        chain.GetEntry(entry_idx[ientry])
+        if args.signal_only:
+
+            # 1-prong
+            graph_config['signal'] = 1
+            graph_list = tauid.make_graph(chain, **graph_config)
+            graphs_1p.extend([g for g in graph_list if g[0] != None])
+            if len(graphs_1p) >= batch_size:
+                result_pred, result_tru = get_prediction(graphs_1p[:batch_size], gnn_model)
+                prediction_1prong.extend(result_pred)
+                truth_1prong.extend(result_tru)
+                graphs_1p = graphs_1p[batch_size:]
+                
+            if ientry == (num_eval - 1):
+                result_pred, result_tru = get_prediction(graphs_1p, gnn_model)
+                prediction_1prong.extend(result_pred)
+                truth_1prong.extend(result_tru)
+
+            # 3-prong
+            graph_config['signal'] = 3
+            graph_list = tauid.make_graph(chain, **graph_config)
+            graphs_3p.extend([g for g in graph_list if g[0] != None])
+            if len(graphs_3p) >= batch_size:
+                result_pred, result_tru = get_prediction(graphs_3p[:batch_size], gnn_model)
+                prediction_3prong.extend(result_pred)
+                truth_3prong.extend(result_tru)
+                graphs_3p = graphs_3p[batch_size:]
+                
+            if ientry == (num_eval - 1):
+                result_pred, result_tru = get_prediction(graphs_3p, gnn_model)
+                prediction_3prong.extend(result_pred)
+                truth_3prong.extend(result_tru)
+
+        else:
+            # QCD
+            graph_config['signal'] = 0
+            graph_list = tauid.make_graph(chain, **graph_config)
+            graphs_qcd.extend([g for g in graph_list if g[0] != None])
+            if len(graphs_qcd) >= batch_size:
+                result_pred, result_tru = get_prediction(graphs_qcd[:batch_size], gnn_model)
+                prediction_other.extend(result_pred)
+                truth_other.extend(result_tru)
+                graphs_qcd = graphs_qcd[batch_size:]
+            
+            if ientry == (num_eval - 1):
+                result_pred, result_tru = get_prediction(graphs_qcd, gnn_model)
+                prediction_other.extend(result_pred)
+                truth_other.extend(result_tru)
+
+            
+
+    
+    if args.signal_only:
+        np.savez(name+'_1prong.npz', predictions = np.array(prediction_1prong), 
+                 truth_info = np.array(truth_1prong))
+        np.savez(name+'_3prong.npz', predictions = np.array(prediction_3prong), 
+                 truth_info = np.array(truth_3prong))
+        np.savez(name+'_ditau.npz',
+                 predictions = np.array(prediction_1prong+prediction_3prong), 
+                 truth_info = np.array(truth_1prong+truth_3prong))
+    elif initial_entry >= 80000:
+        np.savez(name+'_qcd2.npz',predictions = np.array(prediction_other), 
+                 truth_info = np.array(truth_other))
+    elif initial_entry != 0:
+        np.savez(name+'_qcd3.npz',predictions = np.array(prediction_other), 
+                 truth_info = np.array(truth_other))
+    else:
+        np.savez(name+'_qcd1.npz',predictions = np.array(prediction_other), 
+                 truth_info = np.array(truth_other))
+    

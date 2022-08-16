@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+import numpy as np
+import argparse
+
+
+parser = argparse.ArgumentParser(description='Combine npz files for RNN classifier')
+parser.add_argument('--npz', nargs='+', help='npz files to merge')
+parser.add_argument('--output-path','-o', help='Path name for the output file')
+args = parser.parse_args()
+
+track_info=[]
+cluster_info=[]
+hlv_info=[]
+label_info=[]
+for file in args.npz:
+    arr = np.load(file)
+    track_info.append(arr['track_info'])
+    cluster_info.append(arr['cluster_info'])
+    hlv_info.append(arr['hlv_info'])
+    label_info.append(arr['labels'])
+    
+np.savez(args.output_path,track_info=np.concatenate(track_info),\
+        cluster_info=np.concatenate(cluster_info),\
+        hlv_info=np.concatenate(hlv_info),\
+        labels=np.concatenate(label_info))

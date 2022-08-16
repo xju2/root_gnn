@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+
+import argparse
+import numpy as np
+
+from tensorflow.keras import Model, losses
+from keras.models import load_model
+#from train_rnn import LogLoss
+
+# npz in, npz out, model in
+
+parser = argparse.ArgumentParser(description='Predict with RNN')
+parser.add_argument('model_path', default=None)
+parser.add_argument('--input','-i',default=None)
+parser.add_argument('--output','-o',default=None)
+parser.add_argument('-l', default=1)
+    
+    
+if __name__ == "__main__":
+    args = parser.parse_args()
+    data = np.load(args.input)
+    class LogLoss(losses.BinaryCrossentropy):
+        def __init__(self, real_global_weight=args.l, fake_global_weight=1, **kwargs):
+            super(LogLoss, self).__init__(**kwargs)
+            self.w_global_real = real_global_weight
+            self.w_global_fake = fake_global_weight
+
+        def __call__(self, y_true, y_pred, sample_weight=None):
+            global_weights = y_true * self.w_global_real \
+                + (1 - y_true) * self.w_global_fake
+            return super(LogLoss, self).__call__(y_true, y_pred, sample_weight=global_weights)
+    
+    try:
+        model=load_model(args.model_path)
+    except:
+        #loss = LogLoss(5, 1)
+        model=load_model(args.model_path, custom_objects={'LogLoss': LogLoss})
+        # FIXME: pass in config without manually set the weights
+    model.summary()
+
+    #data = [_ for _ in zip(data['track_info'],data['cluster_info'],data['hlv_info'], data['labels'])]
+    #np.random.shuffle(data)
+    predictions = model.predict([data['track_info'],data['cluster_info'],data['hlv_info']])
+    #track = np.array([i[0] for i in data])
+    #cluster = np.array([i[1] for i in data])
+    #hlv = np.array([i[2] for i in data])
+    #predictions = model.predict([track, cluster, hlv])
+    truth_info = data['labels']
+    #truth_info = np.array([i[3] for i in data])
+    np.savez(args.output,predictions=predictions,truth_info=truth_info)

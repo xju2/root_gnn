@@ -11,12 +11,9 @@ from root_gnn.src.models.edge_learner import EdgeRegression
 from root_gnn.src.models.global_learner import GlobalClassifier
 from root_gnn.src.models.global_learner import GlobalRegression
 from root_gnn.src.models.global_learner import GlobalSetClassifier
-from root_gnn.src.models.global_learner import GlobalGraphNetClassifier
-from root_gnn.src.models.global_learner import GlobalClassifierMultiMLP
-from root_gnn.src.models.global_learner import GlobalClassifierConcatMLP
 from root_gnn.src.models.global_learner import GlobalAttentionClassifier
-from root_gnn.src.models.global_learner import GlobalClassifierEdgesFirst, GlobalClassifierHeterogeneousEdges, GlobalClassifierHeterogeneousNodes, GlobalHeterogeneousAttentionClassifier
-from root_gnn.src.models.global_learner import GlobalHetGraphClassifier
+from root_gnn.src.models.global_learner import GlobalClassifierHeterogeneousEdges, GlobalClassifierHeterogeneousNodes, GlobalHeterogeneousAttentionClassifier
+from root_gnn.src.models.global_learner import GlobalHetGraphClassifier, GlobalRGNGraphClassifier
 
 __all__ = (
     "EdgeClassifier",
@@ -24,13 +21,10 @@ __all__ = (
     "GlobalClassifier",
     "GlobalRegression",
     "GlobalSetClassifier",
-    "GlobalGraphNetClassifier",
-    "GlobalClassifierMultiMLP",
-    "GlobalClassifierConcatMLP",
     "GlobalAttentionClassifier",
-    "GlobalClassifierEdgesFirst",
     "GlobalClassifierHeterogeneousEdges",
     "GlobalClassifierHeterogeneousNodes",
     "GlobalHeterogeneousAttentionClassifier",
     "GlobalHetGraphClassifier"
+    "GlobalRGNGraphClassifier"
 )

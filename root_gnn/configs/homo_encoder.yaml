@@ -1,0 +1,23 @@
+input_dir: /global/cscratch1/sd/andrish/training_data/graphs_4/HomHLV/inputs
+evts_per_file: 50000
+output_dir: /global/cscratch1/sd/andrish/training_data/homo_encoder
+model: GlobalClassifier
+loss_name: GlobalLoss
+loss_pars: 5, 1
+
+batch_size: 500
+num_iters: 1 
+learning_rate: 0.0001
+num_epochs: 20
+stop_on: "auc"
+patiences: 20
+log_freq: 1000
+val_batches: 100
+shuffle_size: 1000
+encoder_size: [64,64]
+core_size: [64,64]
+with_edges: False
+with_globals: True
+global_in_nodes: False
+global_in_edges: False
+# Note: do not use globals in encoding nodes and edges

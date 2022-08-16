@@ -19,7 +19,7 @@ from sklearn.neighbors import NearestNeighbors
 
 tree_name = "output"
 
-def make_graph(chain, debug=False, connectivity=None, 
+def make_graph(chain, debug=False, connectivity="disconnected", 
                signal=None, with_edge_features=False, with_node_type=True, 
                with_hlv_features=False, use_delta_angles=True,
                tower_lim=None, track_lim=None, cutoff=False,
@@ -30,7 +30,8 @@ def make_graph(chain, debug=False, connectivity=None,
     tower_idx = 0
     graph_list = []
 
-    
+    has_preceeding_zero = False
+    has_preceeding_sig = False
     isTauEvent = chain.nTruthJets > 0
     for ijet in range(chain.nJets):
                    
@@ -53,6 +54,31 @@ def make_graph(chain, debug=False, connectivity=None,
             isTau = 0
         isTau = 0 if (isTau != 1 and isTau != 3) else isTau
         
+        if ijet > 0:
+            continue
+            
+        if isTau:
+            has_preceeding_sig = True
+        else:
+            has_preceeding_zero = True
+        
+        if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+            continue
+        if signal and isTau == 0:
+            continue
+        
+        
+            
+        if signal is not None and signal != 0 and signal != 10 and isTau != signal:
+            continue
+        elif signal == 0 and isTau:
+            continue
+        elif signal and (not isTau) and isTauEvent:
+            continue
+        elif not isTauEvent and background_dropoff != 0 and rand != None:
+            score = rand.random()
+            if score < background_dropoff:
+                continue
 
         ### Nodes ###
         for itower in range(chain.JetTowerN[ijet]):
@@ -130,15 +156,9 @@ def make_graph(chain, debug=False, connectivity=None,
         # Filtering out jets
         if n_nodes < 1:
             continue
-        if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+        if signal and (has_preceeding_zero or has_preceeding_sig):
             continue
-        if signal != 0 and isTau == 0:
-            continue
-        elif signal == 0 and isTau:
-            continue
-        if signal != None and signal != 0 and signal != 10 and signal != isTau:
-            continue
-            
+        
         if debug:
             #print(nodes.shape)
             #print(n_nodes)
@@ -255,7 +275,7 @@ def read(filename, start_entry=0, nentries=float('inf')):
         chain.GetEntry(ientry + start_entry)
         yield chain
 
-class TauIdentificationDataset(DataSet):
+class Bad(DataSet):
     """
     Tau Identification dataset with heterogeneous nodes. The graph can be set to be fully-connected, fully-connected only among the same type of nodes (denoted as 'disconnected'), or KNN based. 
     Each node in the graph is a vector of length 7, with components:

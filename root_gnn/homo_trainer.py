@@ -143,7 +143,11 @@ def add_args(parser):
     add_arg("--num-attn-blocks", help="Number of Attention Blocks", default=2)
     add_arg("--num-attn-layers", help="Number of Attention Layers", default=1)
     add_arg("--manual-ngraph", help="Manually set the number of graphs", default=0, type=int)
-
+    add_arg("--hom-model", help="Use homogeneous model for GlobalHetGraphClassifier", default=False)
+    add_arg('--global-in-nodes', help='Put global attributes in nodes if with global inputs', type=bool, default=None)
+    add_arg('--global-in-edges', help='Put global attributes in edges if with global inputs', type=bool, default=None)
+    add_arg("--core-mp-size", help="MLP size for RGN MP", default=[64,64])
+    add_arg("--attn-layer-size", help="MLP sizes of Attention Layers", default=[64,64])
     
 class Trainer(snt.Module):
     
@@ -334,10 +338,7 @@ class Trainer(snt.Module):
         total_loss = 0
         with tqdm.trange(tot_steps, disable=disable_tqdm) as t0:
             for step_num in t0:
-                try:
-                    inputs_tr, targets_tr = next(train_data)
-                except:
-                    inputs_tr, targets_tr = next(train_data)
+                inputs_tr, targets_tr = next(train_data)
                 total_loss += self.training_step(inputs_tr, targets_tr).numpy()
 
                 if step_num == 0:
@@ -509,7 +510,9 @@ class Trainer(snt.Module):
             return loss_op_tr
 
         self.training_step = tf.function(update_step, input_signature=input_signature)
-
+        
+    def calc_num_trainable(self):
+        return sum([tf.size(v) for v in self.model.trainable_variables])
 
     def load_data(self, dirname):
         """
@@ -527,7 +530,7 @@ class Trainer(snt.Module):
 
         if shuffle_size > 0:
             tfdata = tfdata.shuffle(
-                shuffle_size, reshuffle_each_iteration=False)
+                shuffle_size, reshuffle_each_iteration=True) # changed to True bc plateaus observed
 
         tfdatasets = tfdata.repeat().prefetch(AUTO)
         tfdata = loop_dataset(tfdatasets, self.batch_size)

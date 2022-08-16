@@ -13,6 +13,7 @@ from root_gnn.src.datasets.ditaumass import DiTauMassDataset
 
 from root_gnn.src.datasets.tauid import TauIdentificationDataset
 from root_gnn.src.datasets.tauidHet import HetTauIdentificationDataset
+from root_gnn.src.datasets.tauidBad import Bad
 
 
 
@@ -24,5 +25,6 @@ __all__ = (
     "WTaggerLeadingJetDataset",
     "DiTauMassDataset",
     "TauIdentificationDataset",
-    "HetTauIdentificationDataset"
+    "HetTauIdentificationDataset",
+    "Bad"
 )

@@ -1,0 +1,90 @@
+import argparse
+import numpy as np
+import sklearn
+from root_gnn.utils_plot import plot_metrics
+import os
+
+
+
+def plot_pred(name):
+    if os.path.exists(name):
+        name = f"{name}/{name}"
+    ditau_npz = f'{name}_ditau.npz'
+    qcd_npz = f'{name}_qcd1.npz'
+    other_npz = f'{name}_qcd2.npz'
+    other2_npz = f'{name}_qcd3.npz'
+    output_npz = f'{name}.npz'
+    QCD_npz = f'{name}_QCD.npz'
+    has_other = False
+
+    ditau_file = np.load(ditau_npz)
+    qcd_file = np.load(qcd_npz)
+    if os.path.exists(other_npz) and os.path.exists(other2_npz):
+        other_file = np.load(other_npz)
+        other2_file = np.load(other2_npz)
+        has_other = True
+    n_ditau = len(ditau_file['predictions'])
+    #n_ditau = 7937
+    ditau_pred = [] 
+    ditau_truth = []
+    ori_ditau_pred = ditau_file['predictions']
+    ori_ditau_truth = ditau_file['truth_info']
+    for i in range(n_ditau):
+        if ori_ditau_truth[i] != 0:
+            ditau_pred.append(ori_ditau_pred[i])
+            ditau_truth.append(ori_ditau_truth[i])
+    ditau_pred = np.array(ditau_pred)
+    ditau_truth = np.array(ditau_truth)
+    n_ditau = len(ditau_pred)
+    n_qcd = len(qcd_file['predictions'])
+    if has_other:
+        n_qcd += len(other_file['predictions']) + len(other2_file['predictions'])
+        ori_qcd_pred = np.concatenate([qcd_file['predictions'], 
+                                       other_file['predictions'],
+                                       other2_file['predictions']]) 
+        ori_qcd_truth = np.concatenate([qcd_file['truth_info'],
+                                        other_file['truth_info'],
+                                        other2_file['truth_info']])
+    else:
+        print(">>> Dataset only has 1 ditau and 1 qcd file!")
+        ori_qcd_pred = qcd_file['predictions']
+        ori_qcd_truth = qcd_file['truth_info']
+    
+    qcd_pred = [] 
+    qcd_truth = []
+    for i in range(n_qcd):
+        if ori_qcd_truth[i] == 0:
+            qcd_pred.append(ori_qcd_pred[i])
+            qcd_truth.append(ori_qcd_truth[i])
+    qcd_pred = np.array(qcd_pred)
+    qcd_truth = np.array(qcd_truth)
+    n_qcd = len(qcd_pred)
+    predictions = np.concatenate([ditau_pred, qcd_pred]) 
+    truth_info = np.concatenate([ditau_truth, qcd_truth])
+    fpr, tpr, pr_th = sklearn.metrics.roc_curve(np.array(truth_info), np.array(predictions))
+    purity, efficiency, thresholds = sklearn.metrics.precision_recall_curve(truth_info, predictions)
+
+    auc = sklearn.metrics.auc(fpr, tpr)
+    print(f">>> AUC: {auc}")
+    print(f">>> Number of ditau jets: {n_ditau}")
+    print(f">>> Number of qcd jets: {n_qcd}")
+    with open(name+".txt","w") as f:
+        f.writelines(f"AUC: {auc}\n")
+        f.writelines(f"Number of ditau jets: {n_ditau}\n")
+        f.writelines(f"Number of qcd jets: {n_qcd}\n")
+        f.writelines(f"Total jets: {n_ditau+n_qcd}\n")
+
+    plot_metrics(np.array(predictions),np.array(truth_info),outname=name+'_metrics.pdf')
+    np.savez(output_npz,
+             predictions = np.array(predictions), 
+             truth_info = np.array(truth_info))
+    np.savez(QCD_npz,
+             predictions = np.array(qcd_pred), 
+             truth_info = np.array(qcd_truth))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Generate plots for tauid evaluations')
+    parser.add_argument('input', help='Input path')
+    args = parser.parse_args()
+    name = args.input
+    plot_pred(name)
