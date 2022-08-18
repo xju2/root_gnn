@@ -9,6 +9,7 @@ from typing import Optional
 
 import tensorflow as tf
 from root_gnn.src.datasets import graph
+from root_gnn.src.datasets import hetero_graphs
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
@@ -111,16 +112,17 @@ class DataSet(object):
                 writer.write(example)
             writer.close()
             if debug:
-                print(">>> Debug 4", ijob)
+                print(">>> Debug 5", ijob)
             t1 = time.time()
-            all_graphs = []
+            all_graphs = [] # clear cache
+
             print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
         else:
             print(ijob, "all failed")
         return ifailed, isaved
 
     def process(self, filename, outname, n_evts_per_record,
-        debug, max_evts, num_workers=1, overwrite=False, connectivity=None, **kwargs):
+        debug, max_evts, num_workers=1, overwrite=False, **kwargs):
         now = time.time()
 
         all_evts = self._num_evts(filename)
@@ -140,7 +142,7 @@ class DataSet(object):
             for ijob in range(n_files):
                 n_failed, n_saved = self.subprocess(
                     ijob, n_evts_per_record, filename, outname, overwrite,
-                    debug, connectivity=connectivity)
+                    debug, **kwargs)
                 ifailed += n_failed
                 isaved += n_saved
         else:
@@ -151,7 +153,7 @@ class DataSet(object):
                         outname=outname,
                         overwrite=overwrite,
                         debug=debug,
-                        connectivity=connectivity)
+                        **kwargs)
                 res = p.map(process_fnc, list(range(n_files)))
 
             ifailed = sum([x[0] for x in res])

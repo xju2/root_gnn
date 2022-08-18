@@ -21,6 +21,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "tensorflow>=2.4",
+        "tensorflow_addons",
         "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
         "networkx",
@@ -52,5 +53,7 @@ setup(
         'root_gnn/scripts/calculate_wtagger_metrics',
         'root_gnn/scripts/split_files_for_nn',
         'root_gnn/scripts/view_checkpoint',
+        'root_gnn/scripts/remove_empty_events',
+        'root_gnn/scripts/create_npz'
     ],
 )
