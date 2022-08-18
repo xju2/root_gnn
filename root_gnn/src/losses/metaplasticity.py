@@ -80,8 +80,7 @@ class Metaplastic(base.Optimizer):
         self._initialize(parameters)
         self.step.assign_add(1)
         for update, param, m_var, v_var in zip(updates, parameters, self.m, self.v):
-        if update is None:
-            continue
+            pass
 
         optimizer_utils.check_same_dtype(update, param)
         learning_rate = tf.cast(self.learning_rate, update.dtype)
