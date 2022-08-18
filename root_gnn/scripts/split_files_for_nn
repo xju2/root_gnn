@@ -27,27 +27,45 @@ def split(input_dir, output_dir, pattern, no_shuffle, **kwargs):
     n_files = len(all_files)
     print("Total {} files".format(n_files))
 
-    train_frac, val_frac = 0.8, 0.1 
+    #train_frac, val_frac = 0.8, 0.1
+    train_frac, val_frac = 0.88, 0.12 # Testing files are already splitted out from the root file 
 
     n_train = int(train_frac*n_files)
     n_val = int(val_frac*n_files)
     n_test = n_files - n_train - n_val
-    print("Training   {} files".format(n_train))
-    print("Validation {} files".format(n_val))
-    print("Testing    {} files".format(n_test))
+    
+    i_train, i_val, i_test = 0, 0, 0
+    dropout_train = kwargs['dropout_train']
+    dropout_val = kwargs['dropout_val']
+    upweight = kwargs['upweight']
+    for w in range(upweight):
+        for file_name in all_files[:n_train]:
+            if dropout_train != 0 and 'qcd' in file_name:
+                if random.random() < dropout_train:
+                    continue
+            dest = os.path.join(outdirs.train, os.path.basename(f'{file_name[:-6]}_{w}.tfrec'))
+            my_copy(file_name, dest)
+            i_train += 1
 
-    for file_name in all_files[:n_train]:
-        dest = os.path.join(outdirs.train, os.path.basename(file_name))
-        my_copy(file_name, dest)
-
-    for file_name in all_files[n_train:n_train+n_val]:
-        dest = os.path.join(outdirs.val, os.path.basename(file_name))
-        my_copy(file_name, dest)
+        for file_name in all_files[n_train:n_train+n_val]:
+            if dropout_val != 0 and 'qcd' in file_name:
+                if random.random() < dropout_val:
+                    continue
+            dest = os.path.join(outdirs.val, os.path.basename(f'{file_name[:-6]}_{w}.tfrec'))
+            my_copy(file_name, dest)
+            i_val += 1
 
     for file_name in all_files[n_train+n_val:]:
+        if dropout_train != 0 and 'qcd' in file_name:
+            if random.random() < dropout_train:
+                continue
         dest = os.path.join(outdirs.test, os.path.basename(file_name))
         my_copy(file_name, dest)
+        i_test += 1
 
+    print("Training   {} files".format(i_train))
+    print("Validation {} files".format(i_val))
+    print("Testing    {} files".format(i_test))
 
 if __name__ == "__main__":
     import argparse
@@ -57,9 +75,12 @@ if __name__ == "__main__":
     add_arg("output_dir", help="output directory")
     add_arg("--pattern", help='input data pattern',)
     add_arg("--no-shuffle", help='shuffle input files', action='store_true')
+    add_arg("--dropout-train", "-pt", type=float, help="Percentage of background files that will be deleted for training", default=0.)
+    add_arg("--dropout-val", "-pv", type=float, help="Percentage of background files that will be deleted for validation", default=0.)
+    add_arg("--upweight", "-u", type=int, help='Ratio that the signal will be upweighted by', default=1)
     args = parser.parse_args()
     
-    random.seed(0)
+    random.seed(12345)
 
     split(**args.__dict__)
     

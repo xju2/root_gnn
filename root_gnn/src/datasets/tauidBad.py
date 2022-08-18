@@ -1,97 +1,84 @@
-from platform import node
 import numpy as np
 import math
 import itertools
 
 from graph_nets import utils_tf
-from root_gnn.utils import calc_dphi, load_yaml
+from root_gnn.utils import calc_dphi
 from root_gnn.src.datasets.base import DataSet
+
+import time
+import os
+from multiprocessing import Pool
+from functools import partial
+import tensorflow as tf
+from root_gnn.src.datasets import graph
+from root_gnn.utils import load_yaml
 from sklearn.neighbors import NearestNeighbors
+
+
 
 tree_name = "output"
 
-class TauIdentificationDataset(DataSet):
-    """
-    Tau Identification dataset with heterogeneous nodes.
-    The graph can be set to be fully-connected, 
-        fully-connected only among the same type of nodes (denoted as 'disconnected'),
-        or KNN based. 
-    Each node in the graph is a vector of length 6, with components:
-        * Pt of the jet
-        * Et of tower/Pt of track
-        * Eta of tower/track
-        * Phi of tower/track
-        * d0 of track, 0 if tower
-        * z0 of track, 0 if tower
-    Each edge contains 4 edge features, delta, kT, z, mass square
-    """
-    def __init__(self,
-                 use_cutoff: bool =False,
-                 track_limit: int = None,
-                 tower_limit: int = None, *args, **kwargs):
+def make_graph(chain, debug=False, connectivity="disconnected", 
+               signal=None, with_edge_features=False, with_node_type=True, 
+               with_hlv_features=False, use_delta_angles=True,
+               tower_lim=None, track_lim=None, cutoff=False,
+               background_dropoff=0., rand=None,
+               use_jetPt=True, use_jetVar=True):
+    isTau = 0
+    track_idx = 0
+    tower_idx = 0
+    graph_list = []
 
-        self.use_cutoff = use_cutoff
-        self.track_limit = track_limit
-        self.tower_limit = tower_limit
-        super(TauIdentificationDataset, self).__init__(*args, **kwargs)
-
-    def set_config_file(self,config):
-        config = load_yaml(config)
-        self.tower_limit = config.get('tower_limit',None)
-        self.track_limit = config.get('track_limit',None)
-        self.use_cutoff = config.get('use_cutoff',False)
-
-    def _num_evts(self, filename):
-        import ROOT
-        chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
-        chain.Add(filename)
-        n_entries = chain.GetEntries()
-        return n_entries
-
-    def read(self, filename, start_entry, nentries):
-        import ROOT
-        chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
-        chain.Add(filename)
-        tot_entries = chain.GetEntries()
-        nentries = nentries if (start_entry + nentries) <= tot_entries\
-            else tot_entries - start_entry
-        #print("Total {:,} Events".format(nentries))
-        for ientry in range(nentries):
-            chain.GetEntry(ientry + start_entry)
-            yield chain
-
-    
-    def make_graph(self, chain, debug=False, connectivity="disconnected"):
-        isTau = 0
-        track_idx = 0
-        tower_idx = 0
-        graph_list = []
-
-        scale_factors = np.array([1.0,1.0,1.0/3.0,1.0/math.pi,1.0,1.0],dtype=np.float32)
+    has_preceeding_zero = False
+    has_preceeding_sig = False
+    isTauEvent = chain.nTruthJets > 0
+    for ijet in range(chain.nJets):
+                   
+        # Match jet to truth jet that minimizes angular distance
+        split_point = 0
+        nodes = []
+        tower_nodes = []
+        track_nodes = []
+        min_index = 0
+        if chain.nTruthJets > 0:
+            min_dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
+        for itruth in range(chain.nTruthJets):
+            dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[itruth])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
+            if dR < min_dR:
+                min_dR = dR
+                min_index = itruth
+        if chain.nTruthJets > 0 and min_dR < 0.4:
+            isTau = chain.TruthJetIsTautagged[min_index]
+        else:
+            isTau = 0
+        isTau = 0 if (isTau != 1 and isTau != 3) else isTau
+        
+        if ijet > 0:
+            continue
+            
+        if isTau:
+            has_preceeding_sig = True
+        else:
+            has_preceeding_zero = True
+        
+        if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+            continue
+        if signal and isTau == 0:
+            continue
         
         
-        for ijet in range(chain.nJets):
-            # Match jet to truth jet that minimizes angular distance
-            split_point = 0
-            nodes = []
-            tower_nodes = []
-            track_nodes = []
-            min_index = -1
-            if chain.nTruthJets > 0:
-                min_dR = 9999
-                for itruth in range(chain.nTruthJets):
-                    dR = math.sqrt(
-                        calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[itruth])**2 \
-                      + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
-                    if dR < min_dR:
-                        min_dR = dR
-                        min_index = itruth
-
-
-            if min_index >= 0 and min_dR < 0.4:
-                isTau = chain.TruthJetIsTautagged[min_index]
-            else:
-                isTau = 0
+            
+        if signal is not None and signal != 0 and signal != 10 and isTau != signal:
+            continue
+        elif signal == 0 and isTau:
+            continue
+        elif signal and (not isTau) and isTauEvent:
+            continue
+        elif not isTauEvent and background_dropoff != 0 and rand != None:
+            score = rand.random()
+            if score < background_dropoff:
+                continue
 
         ### Nodes ###
         for itower in range(chain.JetTowerN[ijet]):
@@ -169,15 +156,9 @@ class TauIdentificationDataset(DataSet):
         # Filtering out jets
         if n_nodes < 1:
             continue
-        if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
+        if signal and (has_preceeding_zero or has_preceeding_sig):
             continue
-        if signal != 0 and isTau == 0:
-            continue
-        elif signal == 0 and isTau:
-            continue
-        if signal != None and signal != 0 and signal != 10 and signal != isTau:
-            continue
-            
+        
         if debug:
             #print(nodes.shape)
             #print(n_nodes)
@@ -282,7 +263,7 @@ class TauIdentificationDataset(DataSet):
     return graph_list
 
 
-def read(filename, start_entry, nentries):
+def read(filename, start_entry=0, nentries=float('inf')):
     import ROOT
     chain = ROOT.TChain(tree_name, tree_name) # pylint: disable=maybe-no-member
     chain.Add(filename)
@@ -294,29 +275,25 @@ def read(filename, start_entry, nentries):
         chain.GetEntry(ientry + start_entry)
         yield chain
 
-class TauIdentificationDataset(DataSet):
+class Bad(DataSet):
     """
     Tau Identification dataset with heterogeneous nodes. The graph can be set to be fully-connected, fully-connected only among the same type of nodes (denoted as 'disconnected'), or KNN based. 
-    Each node in the graph is a vector of length 6, with components:
+    Each node in the graph is a vector of length 7, with components:
+        * 1 if track, 0 if tower
         * Pt of the jet
         * Et of tower/Pt of track
         * Eta of tower/track
         * Phi of tower/track
         * d0 of track, 0 if tower
         * z0 of track, 0 if tower
-    Each edge contains 4 edge features, delta, kT, z, mass square
+    Each edge is a vector of length 7, with components:
+        * one-hot encoding for the type of edges
+        * 4 edge features, delta, kT, z, mass square
     """
-    def __init__(self,
-                 use_cutoff=False,\
-                 track_limit=None,\
-                 tower_limit=None):
+    def __init__(self):
         super().__init__()
         self.read = read
         self.make_graph = make_graph
-        tower_lim=tower_limit
-        track_lim=track_limit
-        if use_cutoff:
-            cutoff=True
 
     def set_config_file(self,config):
         config = load_yaml(config)
@@ -331,3 +308,117 @@ class TauIdentificationDataset(DataSet):
         n_entries = chain.GetEntries()
         return n_entries
 
+    
+    def subprocess(self, ijob, n_evts_per_record, filename, outname, overwrite, debug, **kwargs):
+       
+        outname = "{}_{}.tfrec".format(outname, ijob)
+        if os.path.exists(outname) and not overwrite:
+            print(outname,"is there. skip...")
+            return 0, n_evts_per_record
+
+        ifailed = 0
+        all_graphs = []
+        start_entry = ijob * n_evts_per_record
+        
+        if debug:
+            print(">>> Debug 0", ijob)
+        
+        t0 = time.time()
+        jevt = 0
+        kgraphs = 0
+        for event in self.read(filename, start_entry, n_evts_per_record):
+            gen_graphs = self.make_graph(event, debug, **kwargs)
+            
+            if debug:
+                print(">>> Debug 1", ijob, jevt, kgraphs)
+            
+            if len(gen_graphs)==0 or gen_graphs[0][0] == None:
+                ifailed += 1
+                continue
+
+            all_graphs += gen_graphs
+            kgraphs += len(gen_graphs)
+            jevt += 1
+            
+        if debug:
+            print(">>> Debug 2", ijob)
+            
+        isaved = len(all_graphs)
+        if isaved > 0:
+            ex_input, ex_target = all_graphs[0]
+            input_dtype, input_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_input, with_padding=self.with_padding)
+            target_dtype, target_shape = graph.dtype_shape_from_graphs_tuple(
+                ex_target, with_padding=self.with_padding)
+            def generator():
+                for G in all_graphs:
+                    yield (G[0], G[1])
+            
+
+            dataset = tf.data.Dataset.from_generator(
+                generator,
+                output_types=(input_dtype, target_dtype),
+                output_shapes=(input_shape, target_shape),
+                args=None)
+            if debug:
+                print(">>> Debug 3", ijob)
+            writer = tf.io.TFRecordWriter(outname)
+            for data in dataset:
+                example = graph.serialize_graph(*data)
+                writer.write(example)
+            if debug:
+                print(">>> Debug 4", ijob)
+            writer.close()
+            t1 = time.time()
+            all_graphs = []
+            print(f">>> Job {ijob} Finished in {abs(t1-t0)/60:.2f} min")
+        else:
+            print(ijob, "all failed")
+        return ifailed, isaved
+
+    def process(self, filename, outname, n_evts_per_record,
+        debug, max_evts, num_workers=1, overwrite=False, **kwargs):
+        
+        rng = np.random.default_rng(12345)
+
+        now = time.time()
+
+        all_evts = self._num_evts(filename)
+        all_evts = max_evts if max_evts > 0 and all_evts > max_evts else all_evts
+
+        n_files = all_evts // n_evts_per_record
+        if all_evts%n_evts_per_record > 0:
+            n_files += 1
+
+        print("Total {:,} events are requested to be written to {:,} files with {:,} workers".format(all_evts, n_files, num_workers))
+        out_dir = os.path.abspath(os.path.dirname(outname))
+        os.makedirs(out_dir, exist_ok=True)
+        
+        if num_workers < 2:
+            ifailed, isaved=0, 0
+            for ijob in range(n_files):
+                n_failed, n_saved = self.subprocess(
+                    ijob, n_evts_per_record, filename, outname, 
+                    overwrite, debug, rand=rng, **kwargs)
+                ifailed += n_failed
+                isaved += n_saved
+        else:
+            with Pool(num_workers) as p:
+                process_fnc = partial(self.subprocess,
+                        n_evts_per_record=n_evts_per_record,
+                        filename=filename,
+                        outname=outname,
+                        overwrite=overwrite,
+                        debug=debug,
+                        rand=rng,
+                        **kwargs)
+                res = p.map(process_fnc, list(range(n_files)))
+
+            ifailed = sum([x[0] for x in res])
+            isaved = sum([x[1] for x in res])
+            
+        read_time = time.time() - now
+        print("{} added {:,} events, in {:.1f} mins".format(self.__class__.__name__,
+            isaved, read_time/60.))
+        print("{:,} events failed in being converted to graph".format(ifailed))
+        

@@ -54,6 +54,12 @@ setup(
         'root_gnn/scripts/split_files_for_nn',
         'root_gnn/scripts/view_checkpoint',
         'root_gnn/scripts/remove_empty_events',
-        'root_gnn/scripts/create_npz'
+        'root_gnn/scripts/create_npz',
+        'root_gnn/scripts/tauid_compare',
+        'root_gnn/scripts/plot_tauid',
+        'root_gnn/scripts/apply_rnn',
+        'root_gnn/scripts/evaluate_tauid',
+        'root_gnn/scripts/merge_npz',
+        'root_gnn/scripts/train_rnn'
     ],
 )
