@@ -1,5 +1,3 @@
-from operator import is_
-from numpy.lib.arraysetops import isin
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
 logging.set_verbosity("INFO")
@@ -15,8 +13,6 @@ logging.info("TF Version:{}".format(tf.__version__))
 import os
 import pprint
 import time
-import functools
-import argparse
 import tqdm
 
 import numpy as np
@@ -24,10 +20,8 @@ import numpy as np
 import sklearn.metrics
 
 from graph_nets import utils_tf
-from graph_nets import utils_np
 import sonnet as snt
 
-from root_gnn.utils import load_yaml
 from root_gnn.src.datasets import graph
 from root_gnn import losses
 from root_gnn import model as Models

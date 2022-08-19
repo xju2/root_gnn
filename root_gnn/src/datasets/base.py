@@ -9,7 +9,8 @@ from typing import Optional
 
 import tensorflow as tf
 from root_gnn.src.datasets import graph
-from root_gnn.src.datasets import hetero_graphs
+from root_gnn.utils import load_yaml
+
 
 def linecount(filename):
     return sum([1 for lin in open(filename)])
@@ -20,16 +21,9 @@ def linecount(filename):
     # return int(out.partition(b' ')[0])
 
 class DataSet(object):
-    def __init__(self, with_padding=False, n_graphs_per_evt=1):
-        self.input_dtype = None
-        self.input_shape = None
-        self.target_dtype = None
-        self.target_shape = None
+    def __init__(self, with_padding=False, name="DataSet"):
         self.with_padding = with_padding
-        self.n_files_saved = 0
-        self.graphs = []
-        self.n_graphs_per_evt = n_graphs_per_evt
-        self.n_evts = 0
+        self.name = name
 
     def read(self, filename, start_entry: Optional[int] = 0, nevts: Optional[int] = -1):
         """
@@ -43,14 +37,19 @@ class DataSet(object):
         """
         return sum([1 for _ in self.read(filename)])
 
-    def make_graph(self, event, debug, connectivity=None):
+    def make_graph(self, event, debug, **kwargs):
         """
         Convert the event into a graphs_tuple. 
         """
         raise NotImplementedError
 
+    def set_config_file(self, config_file: str):
+        """read configurations from a yaml file"""
+        self.config = load_yaml(config_file)
+        
+
     def subprocess(self, ijob, n_evts_per_record, filename, outname,
-            overwrite, debug, connectivity=None):
+            overwrite, debug, **kwargs):
        
         outname = "{}_{}.tfrec".format(outname, ijob)
         if os.path.exists(outname) and not overwrite:
@@ -68,7 +67,7 @@ class DataSet(object):
         jevt = 0
         kgraphs = 0
         for event in self.read(filename, start_entry, n_evts_per_record):
-            gen_graphs = self.make_graph(event, debug, connectivity=connectivity)
+            gen_graphs = self.make_graph(event, debug, **kwargs)
             
             if debug:
                 print(">>> Debug 1", ijob, jevt, kgraphs)
