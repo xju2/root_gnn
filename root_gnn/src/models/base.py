@@ -22,7 +22,7 @@ import sonnet as snt
 
 
 class MultiMLP(snt.Module):
-    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
+    def __init__(self, mlp_size, activation=tf.nn.relu, activate_final=False, dropout_rate=0.05):
         super(MultiMLP, self).__init__()
         self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)

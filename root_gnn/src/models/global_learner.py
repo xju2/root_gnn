@@ -9,7 +9,12 @@ from graph_nets import modules
 from graph_nets import blocks
 
 from root_gnn.src.models.base import MLPGraphNetwork
-from root_gnn.src.models.base import make_mlp_model, make_multi_mlp_model, make_concat_mlp_model, make_heterogeneous_edges_model, AttentionBlock, AttentionAggregator, GraphAttentionNetwork
+from root_gnn.src.models.base import make_mlp_model
+from root_gnn.src.models.base import make_multi_mlp_model
+from root_gnn.src.models.base import make_heterogeneous_edges_model
+from root_gnn.src.models.base import AttentionBlock
+from root_gnn.src.models.base import AttentionAggregator
+from root_gnn.src.models.base import GraphAttentionNetwork
 from functools import partial
 
 
@@ -23,23 +28,32 @@ class GlobalLearnerBase(snt.Module):
         core_size: list=None,
         name="GlobalLearnerBase",
         reducer=tf.math.unsorted_segment_sum,
-        encoder_fn = make_mlp_model,node_encoder_fn = make_mlp_model,edge_encoder_fn = make_mlp_model,
+        activation=tf.nn.relu,
+        node_encoder_fn = make_mlp_model,
+        edge_encoder_fn = make_mlp_model,
+        global_encoder_fn = make_mlp_model,
         global_in_nodes=None, global_in_edges=None,**kwargs):
         super(GlobalLearnerBase, self).__init__(name=name)
 
         if encoder_size is not None:
-            encoder_mlp_fn = partial(encoder_fn, mlp_size=encoder_size, name="EncoderMLP", **kwargs)
-            node_encoder_mlp_fn = partial(node_encoder_fn, mlp_size=encoder_size, name="NodeEncoderMLP", **kwargs)
-            edge_encoder_mlp_fn = partial(edge_encoder_fn, mlp_size=encoder_size, name="EdgeEncoderMLP", **kwargs)
+            node_encoder_mlp_fn = partial(node_encoder_fn, mlp_size=encoder_size, activations=activation, name="NodeEncoderMLP", **kwargs)
+            edge_encoder_mlp_fn = partial(edge_encoder_fn, mlp_size=encoder_size, activations=activation, name="EdgeEncoderMLP", **kwargs)
+            global_encoder_mlp_fn = partial(global_encoder_fn, mlp_size=encoder_size, activations=activation, name="GlobalEncoderMLP", **kwargs)
         else:
-            encoder_mlp_fn = partial(encoder_fn, name='EncoderMLP', **kwargs)
+            
             node_encoder_mlp_fn = partial(node_encoder_fn, name='NodeEncoderMLP', **kwargs)
             edge_encoder_mlp_fn = partial(edge_encoder_fn, name='EdgeEncoderMLP', **kwargs)
+            global_encoder_mlp_fn = partial(global_encoder_fn, activations=activation, name='GlobalEncoderMLP', **kwargs)
 
-        node_block_args=dict(use_received_edges=False, use_sent_edges=False, use_nodes=True, use_globals=False,received_edges_reducer=reducer,sent_edges_reducer=reducer)
-        edge_block_args=dict(use_edges=True, use_receiver_nodes=True, use_sender_nodes=True, use_globals=False)
-        global_block_args=dict(use_edges=True, use_nodes=True, use_globals=False,nodes_reducer=reducer,edges_reducer=reducer)
-        #print("Global Inputs?:",with_global_inputs)
+        node_block_args=dict(
+            use_received_edges=False, use_sent_edges=False,
+            use_nodes=True, use_globals=False,
+            received_edges_reducer=reducer,sent_edges_reducer=reducer)
+        edge_block_args=dict(use_edges=False, use_receiver_nodes=True, use_sender_nodes=True, use_globals=False)
+        global_block_args=dict(
+            use_edges=True, use_nodes=True, use_globals=False,
+            nodes_reducer=reducer,edges_reducer=reducer)
+
 
         if with_edge_inputs:
             edge_block_args['use_edges'] = True
@@ -51,8 +65,6 @@ class GlobalLearnerBase(snt.Module):
             node_block_args['use_nodes'] = False
         if with_global_inputs:
             global_block_args['use_globals'] = True
-            #global_block_args['use_nodes'] = False
-            #global_block_args['use_edges'] = False
             node_block_args['use_globals'] = True
             edge_block_args['use_globals'] = True
             
@@ -71,12 +83,12 @@ class GlobalLearnerBase(snt.Module):
             name='node_encoder_block', **node_block_args)
 
         self._global_block = blocks.GlobalBlock(
-            global_model_fn=encoder_mlp_fn, name='global_encoder_block', **global_block_args)
+            global_model_fn=global_encoder_mlp_fn, name='global_encoder_block', **global_block_args)
 
         if core_size is not None:
-            core_mlp_fn = partial(make_mlp_model, mlp_size=core_size, **kwargs)
+            core_mlp_fn = partial(make_mlp_model, mlp_size=core_size, activations=activation, **kwargs)
         else:
-            core_mlp_fn = partial(make_mlp_model, **kwargs)
+            core_mlp_fn = partial(make_mlp_model, activations=activation, **kwargs)
 
         self._core = MLPGraphNetwork(nn_fn=core_mlp_fn, reducer=reducer)
 
@@ -526,7 +538,9 @@ class HeterogeneousLearnerBase(snt.Module):
 class GlobalClassifierHeterogeneousNodes(HeterogeneousLearnerBase):
     def __init__(self,
         with_edge_inputs=True, with_node_inputs=True, with_global_inputs=False,
-        encoder_size: list=None, core_size: list=None, decoder_size: list=None,node_encoder_fn=make_multi_mlp_model, activation=tf.nn.relu,
+        encoder_size: list=None, core_size: list=None, decoder_size: list=None,
+        node_encoder_fn=make_multi_mlp_model,
+        activation=tf.nn.relu,
         name="GlobalClassifierHeterogeneousNodes", **kwargs):
 
         global_output_size = 1
@@ -553,7 +567,8 @@ class GlobalClassifierHeterogeneousNodes(HeterogeneousLearnerBase):
 class GlobalClassifierHeterogeneousEdges(HeterogeneousLearnerBase):
     def __init__(self,
         with_edge_inputs=True, with_node_inputs=True, with_global_inputs=False,
-        encoder_size: list=None, core_size: list=None, decoder_size: list=None,node_encoder_fn=make_multi_mlp_model, activation=tf.nn.relu,
+        encoder_size: list=None, core_size: list=None, decoder_size: list=None,
+        node_encoder_fn=make_multi_mlp_model, activation=tf.nn.relu,
         name="GlobalClassifierHeterogeneousEdges", **kwargs):
 
         global_output_size = 1
@@ -573,7 +588,10 @@ class GlobalClassifierHeterogeneousEdges(HeterogeneousLearnerBase):
             with_node_inputs=with_node_inputs,
             with_global_inputs=with_global_inputs,
             encoder_size=encoder_size, core_size=core_size,
-            name=name,node_encoder_fn = node_encoder_fn, edge_encoder_fn = make_heterogeneous_edges_model, activation=activation, **kwargs)
+            name=name,
+            node_encoder_fn=node_encoder_fn,
+            edge_encoder_fn=make_heterogeneous_edges_model,
+            activation=activation, **kwargs)
 
         
 class GlobalHeterogeneousAttentionClassifier(GlobalClassifierHeterogeneousEdges):
