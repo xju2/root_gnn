@@ -7,11 +7,12 @@ from root_gnn.utils import load_yaml
 from root_gnn import trainer
 from root_gnn import rep_trainer
 from root_gnn import homo_trainer
-from root_gnn import keras_trainer
 
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser(description='Train GNN')
+    parser = argparse.ArgumentParser(
+        description='Train GNN',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     add_arg = parser.add_argument
     add_arg("--num-batches", default=None, help='train number of batches')
 
@@ -46,9 +47,6 @@ if __name__ == "__main__":
     if 'trainer' in config and config['trainer'] == "rep":
         trnr = rep_trainer.EmbeddingTrainer(**config)
     elif 'trainer' in config and config['trainer'] == "het":
-        trnr = trainer.Trainer(**config)
-    elif 'trainer' in config and config['trainer'] == "keras":
-        trainer = keras_trainer
         trnr = trainer.Trainer(**config)
     else:
         trainer = homo_trainer

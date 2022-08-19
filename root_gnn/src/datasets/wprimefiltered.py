@@ -9,12 +9,12 @@ from root_gnn.src.datasets import graph
 from root_gnn.utils import load_model
 
 class WTaggerFilteredDataset(DataSet):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name="WTaggerFilteredDataset", *args, **kwargs):
         self.edge_cut = 0.5
         self.is_signal = False
-        super().__init__(*args, **kwargs)
+        super().__init__(name=name, *args, **kwargs)
 
-    def set_gnn_config(self, config):
+    def set_configuration(self, config):
         self.model, self.num_mp, self.batch_size = load_model(config)
 
     def signal(self, ss=True):

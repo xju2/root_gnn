@@ -21,7 +21,7 @@ def linecount(filename):
     # return int(out.partition(b' ')[0])
 
 class DataSet(object):
-    def __init__(self, with_padding=False, name="DataSet"):
+    def __init__(self, with_padding=False, name="DataSet", *args, **kwargs):
         self.with_padding = with_padding
         self.name = name
 
@@ -43,7 +43,7 @@ class DataSet(object):
         """
         raise NotImplementedError
 
-    def set_config_file(self, config_file: str):
+    def set_configuration(self, config_file: str):
         """read configurations from a yaml file"""
         self.config = load_yaml(config_file)
         
