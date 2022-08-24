@@ -7,6 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import activations
 import tensorflow_addons as tfa
@@ -366,7 +367,8 @@ class NodeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
         v = graph.nodes
         q = graph.globals
         #self._setup_MHA(k, q, v)
-                                       
+
+        print(f">>> k, {k}")                               
         node_keys = self.k_layer(k)
         node_values = self.v_layer(v)
         global_queries = self.q_layer(q)
@@ -387,7 +389,7 @@ class NodeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
             reducer=tf.math.unsorted_segment_sum)
         aggregated_attended_values = node_to_global_aggregator(
             graph.replace(nodes=attention_output))
-
+        print(">>> k after,", aggregated_attended_values)
         return aggregated_attended_values
     
     
@@ -422,3 +424,99 @@ class EdgeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
             graph.replace(edges=attention_output))
 
         return aggregated_attended_values
+
+
+
+class GlobalLSTMBlock(blocks.GlobalBlock):
+    def __init__(self,
+               global_model_fn,
+               node_embedding_dim=32,
+               edge_embedding_dim=64,
+               lstm_unit=32,
+               use_edges=True,
+               use_nodes=True,
+               use_globals=True,
+               name="global_lstm_block",
+               **kwargs):
+    
+        super(GlobalLSTMBlock, self).__init__(global_model_fn,
+                                                   use_edges=use_edges,
+                                                   use_nodes=use_nodes,
+                                                   use_globals=use_globals,
+                                                   name=name)
+        
+        if not (use_nodes or use_edges or use_globals):
+            raise ValueError("At least one of use_edges, "
+                           "use_nodes or use_globals must be True.")
+
+        self._use_edges = use_edges
+        self._use_nodes = use_nodes
+        self._use_globals = use_globals
+
+        with self._enter_variable_scope():
+            self._global_model = global_model_fn()
+            if self._use_edges:
+                self._edges_aggregator = EdgeToGlobalLSTMAggregator(lstm_unit, edge_embedding_dim)
+            if self._use_nodes:
+                self._nodes_aggregator = NodeToGlobalLSTMAggregator(lstm_unit, node_embedding_dim)
+
+
+
+class NodeToGlobalLSTMAggregator(snt.Module):
+    def __init__(self, lstm_unit=32, node_embedding_dim=32, 
+                 equal_length=True, name="NodeToGlobalLSTMAggregator"):
+        super(NodeToGlobalLSTMAggregator, self).__init__(name)
+        self.LSTM = layers.LSTM(lstm_unit, unroll=True, go_backwards=False)
+        self.num_nodes = None
+        self.batch_size = None
+        self.embedding_dim = node_embedding_dim
+        self.equal_length = equal_length
+
+    def __call__(self, graph, **kwargs):
+        nodes = graph.nodes
+        #print("nodes", nodes)
+        if self.num_nodes is None or self.batch_size is None or not self.equal_length:
+            self.batch_size = utils_tf.get_num_graphs(graph)
+            #self.num_nodes = blocks._get_static_num_nodes(graph) // self.batch_size
+            self.num_nodes = 16
+            
+        input_nodes = tf.reshape(nodes, [self.batch_size, self.num_nodes, self.embedding_dim])
+        #print("nodes", input_nodes)
+        aggregated_values = self.LSTM(input_nodes)
+        #print("nodes", aggregated_values)
+        return aggregated_values
+
+
+class EdgeToGlobalLSTMAggregator(snt.Module):
+    def __init__(self, lstm_unit=32, edge_embedding_dim=64,
+                 equal_length=True, name="EdgeToGlobalLSTMAggregator"):
+        super(EdgeToGlobalLSTMAggregator, self).__init__(name)
+        self.LSTM = layers.LSTM(lstm_unit, unroll=True, go_backwards=False)
+        self.num_edges = None
+        self.batch_size = None
+        self.embedding_dim = edge_embedding_dim
+        self.equal_length = equal_length
+
+    def __call__(self, graph, **kwargs):
+        edges = graph.edges
+        #print("edges", edges)
+        if self.num_edges is None or self.batch_size is None or not self.equal_length:
+            self.batch_size = utils_tf.get_num_graphs(graph)            
+            self.num_edges = 16 * 15 // 2
+            
+        input_edges = tf.reshape(edges, [self.batch_size, self.num_edges, self.embedding_dim])
+        #print("edges", edges)
+        aggregated_values = self.LSTM(input_edges)
+        #print("edges", aggregated_values)
+        return aggregated_values
+
+
+def make_rnn_mlp(input_shape,
+    dense_unit_1, dense_unit_2, lstm_1, lstm_2,
+    backwards=False, unroll=True, **kwargs):
+
+    return keras.Sequential([
+      layers.TimeDistributed(layers.Dense(dense_unit_1), input_shape=input_shape),
+      layers.TimeDistributed(layers.Dense(dense_unit_2)),
+      layers.LSTM(lstm_1, unroll=unroll, go_backwards=backwards, return_sequences=True),
+      layers.LSTM(lstm_2, unroll=unroll, go_backwards=backwards)])

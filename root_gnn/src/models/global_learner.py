@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import activations
 import tensorflow_addons as tfa
@@ -8,8 +9,9 @@ from graph_nets import utils_tf
 from graph_nets import modules
 from graph_nets import blocks
 
-from root_gnn.src.models.base import MLPGraphNetwork
-from root_gnn.src.models.base import make_mlp_model, make_multi_mlp_model, make_concat_mlp_model, make_heterogeneous_edges_model, AttentionBlock, AttentionAggregator, GraphAttentionNetwork
+from root_gnn.src.models.base import *
+#from root_gnn.src.models.base import make_mlp_model, make_multi_mlp_model, make_concat_mlp_model, make_heterogeneous_edges_model, AttentionBlock, AttentionAggregator, GraphAttentionNetwork, make_rnn_mlp
+#from root_gnn.src.models.base import GlobalLSTMBlock
 from functools import partial
 
 
@@ -927,3 +929,144 @@ class GlobalRGNGraphClassifier(snt.Module):
             #edge_block_args['use_globals'] = True
 
         return node_block_args, edge_block_args, global_block_args
+
+
+class GlobalGRNClassifier(snt.Module):
+    def __init__(self, hom_model=False,
+        with_edge_inputs=True, with_node_inputs=True, with_global_inputs=False,
+        encoder_size=None, core_size=None, decoder_size:list=[],
+        node_mlp_size: list=[64,64], edge_mlp_size: list=[64,64], global_mlp_size: list=[64,64], 
+        global_core_size: list=[64], core_mp_size: list=[64,64], lstm_unit=32,
+        reducer=tf.math.unsorted_segment_sum, activation=tf.nn.relu,
+        name="GlobalGRNClassifier", **kwargs):
+
+        super(GlobalGRNClassifier, self).__init__(name=name)
+
+        if core_size is None:
+            core_size = [64, 64]
+        if node_mlp_size is None:
+            print(">>> No node mlp size received, using default config!")
+            node_mlp_size = core_size
+        if edge_mlp_size is None:
+            edge_mlp_size = core_size
+        if global_mlp_size is None:
+            global_mlp_size = core_size
+        
+        if hom_model:
+            edge_enc_fn = partial(make_mlp_model, mlp_size=edge_mlp_size, activations=activation, name="EdgeMLP")
+            node_mlp = make_mlp_model
+        else:
+            edge_enc_fn = partial(make_heterogeneous_edges_model, mlp_size=edge_mlp_size, activations=activation, name="EdgeMLP")
+            node_mlp = make_multi_mlp_model
+
+        node_enc_fn = partial(node_mlp, mlp_size=node_mlp_size, activations=activation, name="NodeMLP")
+        global_enc_fn = partial(make_mlp_model, mlp_size=global_mlp_size, activations=activation, name="GlobalMLP")
+        global_core_fn = partial(make_mlp_model, mlp_size=global_core_size, dropout_rate=0., activations=activation, name="MergeMLP")
+        core_mlp_fn = partial(make_mlp_model, mlp_size=core_mp_size, activations=activation, name="CoreMLP")
+        
+        
+        node_block_args, edge_block_args, global_block_args = self.get_enc_args(with_edge_inputs, with_node_inputs, with_global_inputs, reducer)
+        self._enc = modules.GraphNetwork(edge_model_fn=edge_enc_fn,
+                                        node_model_fn=node_enc_fn,
+                                        global_model_fn=global_enc_fn,
+                                        edge_block_opt=edge_block_args,
+                                        node_block_opt=node_block_args,
+                                        global_block_opt=global_block_args)
+
+        self._merge = GlobalLSTMBlock(global_core_fn, lstm_unit=lstm_unit,
+                                      node_embedding_dim=node_mlp_size[-1],
+                                      edge_embedding_dim=edge_mlp_size[-1])
+
+        self._core = MLPGraphNetwork(nn_fn=core_mlp_fn, reducer=reducer)
+
+        global_output_size = 1
+        decoder_size += [global_output_size]
+        global_fn =lambda: snt.Sequential([
+            snt.nets.MLP(decoder_size,
+                        activation=activation, # default is relu
+                        name='global_classifier_output'),
+            tf.sigmoid])
+
+        self._output_transform = modules.GraphIndependent(None, None, global_fn)
+
+    def get_enc_args(self, with_edge_inputs, with_node_inputs, with_global_inputs, reducer):
+        node_block_args=dict(use_received_edges=False, 
+                            use_sent_edges=False, 
+                            use_nodes=True, 
+                            use_globals=False,
+                            received_edges_reducer=reducer,
+                            sent_edges_reducer=reducer)
+
+        edge_block_args=dict(use_edges=False, 
+                            use_receiver_nodes=True, 
+                            use_sender_nodes=True, 
+                            use_globals=False)
+
+        global_block_args=dict(use_edges=False, # default is encoding independently
+                            use_nodes=False, 
+                            use_globals=False,
+                            nodes_reducer=reducer,
+                            edges_reducer=reducer)
+
+        if with_edge_inputs:
+            edge_block_args['use_edges'] = True
+        if not with_node_inputs:
+            edge_block_args['use_receiver_nodes'] = False
+            edge_block_args['use_sender_nodes'] = False
+            node_block_args['use_nodes'] = False
+        if with_global_inputs:
+            global_block_args['use_globals'] = True
+
+        return node_block_args, edge_block_args, global_block_args
+
+    def __call__(self, input_op, num_processing_steps, is_training=True):
+        node_kwargs = edge_kwargs = global_kwargs = dict(is_training=is_training)
+
+        latent = self._enc(input_op, edge_kwargs, node_kwargs, global_kwargs)
+        latent0 = self._merge(latent)
+        #latent0 = latent
+
+        output_ops = []
+        for _ in range(num_processing_steps):
+            core_input = utils_tf.concat([latent0, latent], axis=1)
+            latent = self._core(core_input, edge_kwargs, node_kwargs, global_kwargs)
+            #latent = latent0
+            output_ops.append(self._output_transform(latent))
+
+        return output_ops
+
+
+class GlobalRNNClassifier(snt.Module):
+    def __init__(self, name="GlobalRNNClassifier", **kwargs):
+
+        super(GlobalRNNClassifier, self).__init__(name=name)
+        input_shape_1 = [10,6]
+        input_shape_2 = [6,4]
+        input_shape_3 = [8]
+
+        self.track_mlp = make_rnn_mlp(input_shape_1, 32, 32, 32, 32)
+        self.tower_mlp = make_rnn_mlp(input_shape_2, 32, 32, 32, 32)
+        self.hlv_mlp = keras.Sequential([layers.Dense(128, input_shape=input_shape_3),
+                                        layers.Dense(128),
+                                        layers.Dense(16)])
+        self._concat = layers.concatenate
+        self.merge_dense = keras.Sequential([layers.Dense(64),
+                                            layers.Dense(32),
+                                            layers.Dense(1)])
+
+
+    def __call__(self, input_op, _, is_training=True):
+        nodes = tf.reshape(input_op.nodes, [500, 16, 7])
+        hlv = tf.reshape(input_op.globals, [500, 8])
+
+        towers = nodes[:,:6,1:5]
+        tracks = nodes[:,6:,1:]
+
+        tower_output = self.tower_mlp(towers)
+        track_output = self.track_mlp(tracks)
+        hlv_output = self.hlv_mlp(hlv)
+
+        merged_input = self._concat([tower_output, track_output, hlv_output])
+        output = self.merge_dense(merged_input)
+        output_ops = [input_op.replace(globals=output)]
+        return output_ops

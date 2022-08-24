@@ -19,6 +19,9 @@ from sklearn.neighbors import NearestNeighbors
 
 tree_name = "output"
 
+def pad_array(arr,size,n_attrs):
+        arr.extend([[0.]*n_attrs]*(size-len(arr)))
+
 def make_graph(chain, debug=False, connectivity=None, 
                signal=None, with_edge_features=False, with_node_type=True, 
                with_hlv_features=False, use_delta_angles=True,
@@ -55,8 +58,10 @@ def make_graph(chain, debug=False, connectivity=None,
         
 
         ### Nodes ###
+        len_tower_attr = 7
         for itower in range(chain.JetTowerN[ijet]):
             if(not cutoff or chain.JetTowerEt[tower_idx] >= 1.0):
+                
                 if use_delta_angles:
                     deta = chain.JetEta[ijet]-chain.JetTowerEta[tower_idx]
                     dphi = calc_dphi(chain.JetPhi[ijet],chain.JetTowerPhi[tower_idx])
@@ -75,8 +80,10 @@ def make_graph(chain, debug=False, connectivity=None,
                                      0.0]
                 if not use_jetPt:
                     tower_feature = [tower_feature[0]] + tower_feature[2:]
+                    len_tower_attr -= 1
                 if not with_node_type:
                     tower_feature = tower_feature[1:]
+                    len_tower_attr -= 1
                 
                 tower_nodes.append(tower_feature)
 
@@ -85,11 +92,15 @@ def make_graph(chain, debug=False, connectivity=None,
         tower_nodes.sort(reverse=True)
         if tower_lim != None:
             tower_nodes = tower_nodes[0:min(len(tower_nodes),tower_lim)]
+            pad_array(tower_nodes, tower_lim, len_tower_attr)
+            
 
         split_point = len(tower_nodes)
         
+        len_track_attr = 7
         for itrack in range(chain.JetGhostTrackN[ijet]):
             ghost_track_idx = chain.JetGhostTrackIdx[track_idx]
+            
             if(not cutoff or chain.TrackPt[ghost_track_idx] >= 1.0):
                 deta = chain.JetEta[ijet]-chain.TrackEta[ghost_track_idx]
                 dphi = calc_dphi(chain.JetPhi[ijet],chain.TrackPhi[ghost_track_idx])
@@ -113,14 +124,18 @@ def make_graph(chain, debug=False, connectivity=None,
                                      d0]
                 if not use_jetPt:
                     track_feature = [track_feature[0]] + track_feature[2:]
+                    len_track_attr -= 1
                 if not with_node_type:
                     track_feature = track_feature[1:]
+                    len_track_attr -= 1
                 track_nodes.append(track_feature)
             track_idx+=1
 
         track_nodes.sort(reverse=True)
         if track_lim != None:
             track_nodes = track_nodes[0:min(len(track_nodes),track_lim)]
+            pad_array(track_nodes,track_lim,len_track_attr)
+            
 
         nodes = np.array(tower_nodes + track_nodes,dtype=np.float32)
         node_type = np.array([0] * len(tower_nodes) + [1] * len(track_nodes), dtype=np.int8)
@@ -138,7 +153,8 @@ def make_graph(chain, debug=False, connectivity=None,
             continue
         if signal != None and signal != 0 and signal != 10 and signal != isTau:
             continue
-            
+        
+
         if debug:
             #print(nodes.shape)
             #print(n_nodes)
@@ -236,7 +252,8 @@ def make_graph(chain, debug=False, connectivity=None,
         input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
         target_graph = utils_tf.data_dicts_to_graphs_tuple([target_datadict])
         graph_list.append((input_graph, target_graph))
-
+    #print(target_graph)
+    #exit()
     if len(graph_list) == 0:
         return [(None, None)]
     

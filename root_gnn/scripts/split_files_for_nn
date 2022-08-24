@@ -30,7 +30,7 @@ def split(input_dir, output_dir, pattern, no_shuffle, **kwargs):
     #train_frac, val_frac = 0.8, 0.1
     train_frac, val_frac = 0.88, 0.12 # Testing files are already splitted out from the root file 
 
-    n_train = int(train_frac*n_files)
+    n_train = round(train_frac*n_files) + 1
     n_val = int(val_frac*n_files)
     n_test = n_files - n_train - n_val
     

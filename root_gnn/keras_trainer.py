@@ -1,7 +1,10 @@
 from operator import is_
+from ipykernel import kernel_protocol_version
 from numpy.lib.arraysetops import isin
 import tensorflow as tf
 from tensorflow.compat.v1 import logging
+from tensorflow.keras import Model
+from keras.models import load_model
 logging.set_verbosity("INFO")
 logging.info("TF Version:{}".format(tf.__version__))
 # try:
@@ -95,7 +98,7 @@ def get_signature(
     )
     if with_bool:
         input_signature = input_signature + (tf.TensorSpec(shape=[], dtype=tf.bool), )
-        
+
     return input_signature
 
 
@@ -134,25 +137,10 @@ def add_args(parser):
     add_arg("--agument-type", help='type of augmentation for representation learning', default='rotation')
     add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
     add_arg("--decay-steps", help='Steps for cosine decay in learning rate', default=0)
-    add_arg("--use-node-attn", help='Use node attention', default=False)
-    add_arg("--use-global-attn", help='Use global attention', default=False)
-    add_arg("--node-mlp-size", help="MLP size for nodes", default=None)
-    add_arg("--edge-mlp-size", help="MLP size for edge", default=None)
-    add_arg("--global-mlp-size", help="MLP size for global", default=None)
-    add_arg("--num-attn-heads", help="Number of Attention Heads", default=8)
-    add_arg("--num-attn-blocks", help="Number of Attention Blocks", default=2)
-    add_arg("--num-attn-layers", help="Number of Attention Layers", default=1)
-    add_arg("--manual-ngraph", help="Manually set the number of graphs", default=0, type=int)
-    add_arg("--hom-model", help="Use homogeneous model for GlobalHetGraphClassifier", default=False)
-    add_arg('--global-in-nodes', help='Put global attributes in nodes if with global inputs', type=bool, default=None)
-    add_arg('--global-in-edges', help='Put global attributes in edges if with global inputs', type=bool, default=None)
-    add_arg("--core-mp-size", help="MLP size for RGN MP", default=[64,64])
-    add_arg("--attn-layer-size", help="MLP sizes of Attention Layers", default=[64,64])
-    add_arg("--lstm-unit", help="Hidden size for LSTM aggregation layer", type=int, default=32)
-    add_arg("--global-core-size", help="MLP sizes for global LSTM merging block", default=[64])
-    
+
+
 class Trainer(snt.Module):
-    
+
     """
     The class to implement a simple trainer and model.
     
@@ -180,7 +168,6 @@ class Trainer(snt.Module):
                 val_batches=50,
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
-                manual_ngraph=0,
                 encoder_size=None, core_size=None, decoder_size=None,
                 with_edge_inputs=False, with_edges=False, 
                 with_global_inputs=False, with_globals=False,
@@ -208,7 +195,6 @@ class Trainer(snt.Module):
         self.data_test = None
         self.file_pattern = file_pattern
         self.evts_per_file = evts_per_file
-        self.manual_ngraph = manual_ngraph
         self.batch_size = batch_size
         self.shuffle_size = shuffle_size
         self.read_all_data()
@@ -218,34 +204,32 @@ class Trainer(snt.Module):
         self.output_size = output_size
         self.num_transformation = num_transformation
         self.augment_type = augment_type
-        
+
         self.cosine_decay = cosine_decay
         self.decay_steps = decay_steps
-        
+
         if isinstance(activation, str):
             activation = getattr(tf.nn, activation)
-            
+
         if isinstance(model, str):
             if "regression" in model or "Regression" in model:
                 self.model = getattr(Models, model)(
                     self.output_size,
                     with_edge_inputs=with_edges,
-                    with_global_inputs=with_globals,
+                    with_global_inputs=with_global_inputs,
                     encoder_size=encoder_size,
                     core_size=core_size,
                     decoder_size=decoder_size,
-                    activation=activation,
-                    **kwargs
+                    activation=activation
                     )
             else:
                 self.model = getattr(Models, model)(
                     with_edge_inputs=with_edges,
-                    with_global_inputs=with_globals,
+                    with_global_inputs=with_global_inputs,
                     encoder_size=encoder_size,
                     core_size=core_size,
                     decoder_size=decoder_size,
-                    activation=activation,
-                    **kwargs
+                    activation=activation
                     )
         elif isinstance(model, snt.Module):
             self.model = model
@@ -261,22 +245,15 @@ class Trainer(snt.Module):
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
-            
-        if not self.cosine_decay:
-            if isinstance(optimizer, snt.Optimizer):
-                self.optimizer = optimizer
-            elif isinstance(optimizer, float):
-                self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
-            elif isinstance(optimizer, str):
-                self.optimizer = getattr(snt.optimizers, optimizer)(learning_rate=learning_rate)
-            else:
-                self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
-        else:
-            self.lr_base = 0.0001
-            self.get_lr = lambda n_steps: 0.5*(1+math.cos(math.pi*n_steps/decay_steps))
-            self.lr = tf.Variable(self.lr_base, trainable=False, name='lr', dtype=tf.float32)
-            self.optimizer = snt.optimizers.Adam(learning_rate=self.lr)
 
+        if isinstance(optimizer, snt.Optimizer):
+            self.optimizer = optimizer
+        elif isinstance(optimizer, float):
+            self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+        elif isinstance(optimizer, str):
+            self.optimizer = getattr(snt.optimizers, optimizer)(learning_rate=learning_rate)
+        else:
+            self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
 
 
         self.mode = mode.split(',')
@@ -313,13 +290,7 @@ class Trainer(snt.Module):
         """
         The training step.
         """
-        self._setup_training_loop()
-        self.make_checkpoints()
-        
-        if self.manual_ngraph != 0:
-            ngraphs = self.manual_ngraph
-        else:
-            ngraphs = self.ngraphs_train
+        ngraphs = self.ngraphs_train
         train_data = self.data_train
         batch_size = self.batch_size
         steps_per_epoch = ngraphs // batch_size
@@ -334,143 +305,24 @@ class Trainer(snt.Module):
         print(f"Training starts with {ngraphs} graphs with batch size of {batch_size} for {max_epochs} epochs")
         print(f"runing {tot_steps} steps, {steps_per_epoch} steps per epoch, and stop on variable {stop_on}")
 
+        #if self.output_dir is not None and os.path.exists(self.output_dir):
+            #self.gnn_model = load_model(self.output_dir)
+        #else:
+        self.gnn_model = Model(self.model)
 
-        disable_tqdm = self.disable_tqdm
+        self.gnn_model.compile(optimizer='adam',loss=self.loss_fcn, metrics=[tf.keras.metrics.AUC()])
+        self.es = tf.keras.callbacks.EarlyStopping(monitor='val_auc', patience=10)
+        self.ckpt = tf.keras.callbacks.ModelCheckpoint(monitor='val_auc', filepath=self.output_dir, save_best_only=True)
+        #self.gnn_model.summary()
+        counter = 1000
+        x, y = [], []
+        for _ in tqdm.trange(counter):
+            i, j = next(train_data)
+            x.append(i)
+            y.append(j)
 
-        total_loss = 0
-        with tqdm.trange(tot_steps, disable=disable_tqdm) as t0:
-            for step_num in t0:
-                inputs_tr, targets_tr = next(train_data)
-                total_loss += self.training_step(inputs_tr, targets_tr).numpy()
-
-                if step_num == 0:
-                    print(">>>{:,} trainable parameters<<<".format(
-                        sum([tf.size(v) for v in self.model.trainable_variables])))
-
-                if step_num and (step_num % self.log_freq == 0):
-                    self.step_count.assign(step_num)
-                    # perform validation tests
-                    self.metric_dict['loss'] = total_loss / self.log_freq
-                    total_loss = 0
-                    is_better = self.validation()
-                    t0.set_postfix(**self.metric_dict)
-                    if is_better:
-                        # current validation test is better
-                        # save the model
-                        self.ckpt_manager.save()
-                        self.attempts = 0
-                    else:
-                        if self.attempts >= self.patiences:
-                            print("Reached maximum failed attempts: "\
-                                "{} attempts. Stopping training".format(self.patiences))
-                            break
-                        else:
-                            #self.ckpt_manager.save()
-                            self.attempts += 1
-
-    def validation(self):
-        """
-        Performs validation steps, record performance metrics.
-        All is based on `mode`. 
-        """
-        val_data = self.data_val
-
-        total_loss = 0.
-        predictions, truth_info = [], []
-        for _ in range(self.val_batches):
-            inputs, targets = next(val_data)
-            outputs = self.model(inputs, self.num_iters, is_training=False)
-            total_loss += (tf.math.reduce_sum(
-                self.loss_fcn(targets, outputs))/tf.constant(
-                    self.num_iters, dtype=tf.float32)).numpy()
-            if type(outputs) == list or len(outputs) >= 1:
-                outputs = outputs[-1]
-            #if type(outputs) == list or len(outputs) > 1:
-                #outputs = outputs[-1]
-
-            if "globals" in self.mode:
-                predictions.append(outputs.globals)
-                truth_info.append(targets.globals)
-            elif 'edges' in self.mode:
-                predictions.append(outputs.edges)
-                truth_info.append(targets.edges)
-            else:
-                raise ValueError("currently " + self.mode + " is not supported")
-
-        predictions = np.concatenate(predictions, axis=0)
-        truth_info = np.concatenate(truth_info, axis=0)
-
-
-        if 'clf' in self.mode:
-            threshold = 0.5
-            y_true, y_pred = (truth_info > threshold), (predictions > threshold)
-            try:
-                fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
-            except:
-                #print(f"pred, true: {[_ for _ in zip(y_pred, y_true)]}")
-                print('len(predictions) =', len(predictions))
-                print('len(pred[0]) =', len(predictions[0]))
-                fpr, tpr, _ = sklearn.metrics.roc_curve(y_true, predictions)
-            self.metric_dict['auc'] = sklearn.metrics.auc(fpr, tpr)
-            self.metric_dict['acc'] = sklearn.metrics.accuracy_score(y_true, y_pred)
-            self.metric_dict['pre'] = sklearn.metrics.precision_score(y_true, y_pred)
-            self.metric_dict['rec'] = sklearn.metrics.recall_score(y_true, y_pred)
-        elif 'rgr' in self.mode:
-            self.metric_dict['pull'] = np.mean((predictions - truth_info) / truth_info)
-        else:
-            raise ValueError("currently " + self.mode + " is not supported")
-
-        self.metric_dict['val_loss'] = total_loss / self.val_batches
-
-        with self.metric_writer.as_default():
-            for key,val in self.metric_dict.items():
-                tf.summary.scalar(key, val, step=self.step_count)
-
-
-        current_metric = self.metric_dict[self.stop_on]
-        is_better = (self.should_max_metric and current_metric > self.best_metric) \
-            or (not self.should_max_metric and current_metric < self.best_metric)
-        if is_better: # changed to avoid impacts from outlier validations
-            self.best_metric = current_metric
-        return is_better
-
-    # Prediction
-    # --------------------  
-    def predict(self, test_data):
-        """
-        Uses the current model/loss to generate predictions on test_data
-        """
-        predictions, truth_info = [], []
-        for data in test_data:
-            inputs, targets = data
-            outputs = self.model(inputs, self.num_iters, is_training=False)
-            output = outputs[-1]
-            predictions.append(output)
-            truth_info.append(truth_info)
-
-        return predictions, truth_info
-
-    def _meet_stop_condition(self):
-        """
-        Helper function to check whether, given self.early_stop
-        and self.should_max_metric, training should stop at the
-        current moment.
-        """
-        current_metric = self.metric_dict[self.stop_on]
-        if  (self.should_max_metric and current_metric < self.best_metric) \
-            or (not self.should_max_metric and current_metric > self.best_metric):
-            print("Current metric {} {:.4f} is {} than best {:.4f}.".format(
-                self.stop_on, current_metric, "higher" if self.should_max_metric else "lower",
-                self.best_metric))
-
-            if self.attempts >= self.patiences:
-                print("Reached maximum failed attempts: {} attempts. Stopping training".format(self.max_attempts))
-                return True
-            self.attempts += 1
-        else:
-            self.best_metric = current_metric
-        return False
-
+        self.gnn_model.fit(x, y, batch_size=batch_size, epochs=10, validation_split=0.11, callbacks=[self.es, self.ckpt])
+        self.gnn_model.save(self.output_dir)
 
     def _setup_training_loop(self):
         """
@@ -490,31 +342,10 @@ class Trainer(snt.Module):
 
         input_signature = get_signature(self.data_train)
 
-        def update_step(inputs, targets):
-            print("Tracing update_step")
-            with tf.GradientTape() as tape:
-                output_ops = self.model(inputs, self.num_iters)
-                #print(output_ops)
-                loss_ops_tr = self.loss_fcn(targets, output_ops)
-                loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
-            gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
-            
-            #receive learning rate from schedule
-            if self.cosine_decay:
-                lr_mult = self.get_lr(step)
-                self.lr.assign(self.lr_base * lr_mult)
-                if step % self.decay_steps == 0 and step / self.decay_steps > 0:
-                    ckpt_n = step / self.decay_steps
-                    ckpt_dir = os.path.join(output_dir, "one-shot-checkpoints/{ckpt_n}")
-                    self.checkpoint = tf.train.Checkpoint(optimizer=optimizer,model=model)
-            
-            self.optimizer.apply(gradients, self.model.trainable_variables)
-            return loss_op_tr
 
-        self.training_step = tf.function(update_step, input_signature=input_signature)
-        
-    def calc_num_trainable(self):
-        return sum([tf.size(v) for v in self.model.trainable_variables])
+
+
+
 
     def load_data(self, dirname):
         """
@@ -532,7 +363,7 @@ class Trainer(snt.Module):
 
         if shuffle_size > 0:
             tfdata = tfdata.shuffle(
-                shuffle_size, reshuffle_each_iteration=True) # changed to True bc plateaus observed
+                shuffle_size, seed=12345, reshuffle_each_iteration=False)
 
         tfdatasets = tfdata.repeat().prefetch(AUTO)
         tfdata = loop_dataset(tfdatasets, self.batch_size)
@@ -565,25 +396,3 @@ class Trainer(snt.Module):
     def read_all_data(self):
         self.load_training_data()
         self.load_validating_data()
-
-    def make_checkpoints(self, is_training=True):
-        if self.ckpt_manager:
-            return
-
-        output_dir = self.output_dir
-        model = self.model
-        optimizer = self.optimizer
-        ckpt_dir = os.path.join(output_dir, "checkpoints")
-        self.checkpoint = tf.train.Checkpoint(
-            optimizer=optimizer,
-            model=model
-            )
-        self.ckpt_manager = tf.train.CheckpointManager(
-            self.checkpoint, directory=ckpt_dir,
-            max_to_keep=20, keep_checkpoint_every_n_hours=1)
-        logging.info("Loading latest checkpoint from: {}".format(ckpt_dir))
-        if not is_training:
-            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint).expect_partial()
-        else:
-            _ = self.checkpoint.restore(self.ckpt_manager.latest_checkpoint)
-        self.ckpt_dir = ckpt_dir

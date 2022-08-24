@@ -13,7 +13,7 @@ from root_gnn.src.models.global_learner import GlobalRegression
 from root_gnn.src.models.global_learner import GlobalSetClassifier
 from root_gnn.src.models.global_learner import GlobalAttentionClassifier
 from root_gnn.src.models.global_learner import GlobalClassifierHeterogeneousEdges, GlobalClassifierHeterogeneousNodes, GlobalHeterogeneousAttentionClassifier
-from root_gnn.src.models.global_learner import GlobalHetGraphClassifier, GlobalRGNGraphClassifier
+from root_gnn.src.models.global_learner import GlobalHetGraphClassifier, GlobalRGNGraphClassifier, GlobalGRNClassifier, GlobalRNNClassifier
 
 __all__ = (
     "EdgeClassifier",
@@ -26,5 +26,7 @@ __all__ = (
     "GlobalClassifierHeterogeneousNodes",
     "GlobalHeterogeneousAttentionClassifier",
     "GlobalHetGraphClassifier"
-    "GlobalRGNGraphClassifier"
+    "GlobalRGNGraphClassifier",
+    "GlobalGRNClassifier",
+    "GlobalRNNClassifier"
 )
