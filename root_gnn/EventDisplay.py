@@ -112,12 +112,9 @@ def evt_display(filename,  evt_id, title, output, jet_idxs = 'None'):
             plot_jet_rings(chain.JetEta[jet_idx],chain.JetPhi[jet_idx], chain.TruthJetIsTautagged[jet_idx])
             
             pt = list(tower_Et[jet_idx]) + list(track_pt[jet_idx])
-            print(pt)
             mini, maxi = min(pt), max(pt)
             norm = plt.Normalize(mini, maxi)
             cm = plt.cm.get_cmap('Blues_r')
-            print(tower_Et[jet_idx])
-            print(track_pt[jet_idx])
             plt.scatter(tower_eta[jet_idx],tower_phi[jet_idx],  marker ='o', linewidths = 0.5, s=36, norm=norm, c=tower_Et[jet_idx], cmap=cm, label = 'towers')
             plt.scatter(track_eta[jet_idx],track_phi[jet_idx],   marker ='x', norm=norm, s=36, c=track_pt[jet_idx], cmap=cm, label = 'tracks')
 
