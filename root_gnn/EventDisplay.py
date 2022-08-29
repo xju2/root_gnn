@@ -131,5 +131,5 @@ def evt_display(filename,  evt_id, title, output, jet_idxs = 'None'):
 if __name__ == "__main__":
     filename_tau_pileup = '/global/cfs/cdirs/m3443/data/TauStudies/v4/Ntuple_ditau_PU_processed.root'
     filename_qcd_pileup = '/global/cfs/cdirs/m3443/data/TauStudies/v4/Ntuple_qcd_processed_PU.root'
-    evt_display(filename_tau_pileup,'tau with pileup', 4, 'Jet from Hadronically Decayed Tau', 'tau_jet.pdf',[0])
-    evt_display_color(filename_qcd_pileup,'qcd with pileup', 4, 'QCD Jet', 'qcd_jet.pdf',[0])
+    evt_display(filename_tau_pileup, 4, 'Jet from Hadronically Decayed Tau', 'tau_jet.pdf',[0])
+    evt_display(filename_qcd_pileup, 4, 'QCD Jet', 'qcd_jet.pdf',[0])
