@@ -45,10 +45,14 @@ class TauIdentificationDataset(DataSet):
     def read(self, filename, start_entry, nentries):
         import uproot
         tree = uproot.open(f"{filename}:{tree_name}")
+        tot_entries = tree.num_entries
+        nentries = nentries if (start_entry + nentries) <= tot_entries\
+            else tot_entries - start_entry
 
-        for batch in tree.iterate(self.branches, step_size=1, library="np"):
+        for ientry in range(nentries):
+            batch = tree.arrays(self.branches, library='np',
+                entry_start=start_entry+ientry, entry_stop=start_entry+ientry+1)
             yield batch
-
     
     def make_graph(self, chain, debug=False,
                     connectivity="disconnected",
