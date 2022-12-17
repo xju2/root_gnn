@@ -1,0 +1,265 @@
+#!/usr/bin/env python
+import numpy as np
+import argparse
+
+#import sonnet as snt
+from random import shuffle
+from tensorflow.keras.layers import Input, Dense, Masking, LSTM, concatenate, TimeDistributed, MultiHeadAttention, Embedding, Softmax, Layer
+#from keras_nlp.layers import SinePositionEncoding
+from tensorflow import keras
+from tensorflow.keras import Model, losses
+from keras.models import load_model
+import tensorflow as tf
+
+#from graph_nets import modules
+#from graph_nets import utils_tf
+#from functools import partial
+import itertools
+#from root_gnn.src.models.base import MLPGraphNetwork
+
+
+def positional_encoding(length, depth):
+    depth = depth/2
+
+    positions = np.arange(length)[:, np.newaxis]     # (seq, 1)
+    depths = np.arange(depth)[np.newaxis, :]/depth   # (1, depth)
+
+    angle_rates = 1 / (10000**depths)         # (1, depth)
+    angle_rads = positions * angle_rates      # (pos, depth)
+
+    pos_encoding = np.concatenate(
+      [np.sin(angle_rads), np.cos(angle_rads)],
+      axis=-1) 
+
+    return tf.cast(pos_encoding, dtype=tf.float32)
+
+
+class PositionalEmbedding(Layer):
+    """
+    Positional Embedding layer adpated from keras
+    """
+    def __init__(self, length, d_model):
+        super().__init__()
+        self.d_model = d_model
+        self.length = length
+        #self.embedding = Embedding(vocab_size, d_model, mask_zero=True) 
+        self.pos_encoding = positional_encoding(length=2048, depth=d_model)
+
+    def call(self, x):
+        #length = tf.shape(x)[1]
+        #x = self.embedding(x)
+        length = self.length
+        # This factor sets the relative scale of the embedding and positonal_encoding.
+        x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
+        x = x + self.pos_encoding[tf.newaxis, :length, :]
+        return x
+
+                        
+        
+class LogLoss(losses.BinaryCrossentropy):
+    """
+    The loss function with customized loss weight
+    """
+    def __init__(self, real_global_weight=5, fake_global_weight=1, **kwargs):
+        super(LogLoss, self).__init__(**kwargs)
+        self.w_global_real = real_global_weight
+        self.w_global_fake = fake_global_weight
+    
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        global_weights = y_true * self.w_global_real \
+            + (1 - y_true) * self.w_global_fake
+        return super(LogLoss, self).__call__(y_true, y_pred, sample_weight=global_weights)
+        
+    
+def RecurrentEncoder(
+        input_shape_1, input_shape_2, input_shape_3,
+        dense_units_1_1=32, dense_units_1_2=32,
+        lstm_units_1_1=32, lstm_units_1_2=32,
+        dense_units_2_1=32, dense_units_2_2=32,
+        lstm_units_2_1=32, lstm_units_2_2=32,
+        dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16,
+        merge_dense_units_1=64, merge_dense_units_2=32,
+        backwards=False, mask_value=0.0, unroll=True, incl_clusters=True):
+    """
+    TODO: Documentation
+    """
+    # Branch 1
+    x_1 = Input(shape=input_shape_1)
+    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x_1)
+    shared_dense_1_2 = Dense(dense_units_1_2, activation="relu")(shared_dense_1_1)
+    lstm_1_1 = LSTM(lstm_units_1_1, unroll=unroll, go_backwards=backwards,
+                    activation="relu", return_sequences=True)(shared_dense_1_2)
+    lstm_1_2 = LSTM(lstm_units_1_2, unroll=unroll, go_backwards=backwards,
+                    activation="relu")(lstm_1_1)
+
+    # Branch 2
+    if incl_clusters:
+        x_2 = Input(shape=input_shape_2)
+        shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x_2)
+        shared_dense_2_2 = Dense(dense_units_2_2, activation="relu")(shared_dense_2_1)
+        lstm_2_1 = LSTM(lstm_units_2_1, unroll=unroll, go_backwards=backwards,
+                        activation="relu", return_sequences=True)(shared_dense_2_2)
+        lstm_2_2 = LSTM(lstm_units_2_2, unroll=unroll, go_backwards=backwards,
+                        activation="relu")(lstm_2_1)
+
+    # Branch 3
+    x_3 = Input(shape=input_shape_3)
+    dense_3_1 = Dense(dense_units_3_1, activation="relu")(x_3)
+    dense_3_2 = Dense(dense_units_3_2, activation="relu")(dense_3_1)
+    dense_3_3 = Dense(dense_units_3_3, activation="relu")(dense_3_2)
+
+    # Merge
+    if incl_clusters:
+        merged_branches = concatenate([lstm_1_2, lstm_2_2, dense_3_3])
+    else:
+        merged_branches = concatenate([lstm_1_2, dense_3_3])
+
+    merge_dense_1 = Dense(merge_dense_units_1, activation="relu")(
+        merged_branches)
+    merge_dense_2 = Dense(merge_dense_units_2, activation="relu")(
+        merge_dense_1)
+    y = Dense(1, activation="sigmoid")(merge_dense_2)
+
+    if incl_clusters:
+        return Model(inputs=[x_1, x_2, x_3], outputs=y)
+    else:
+        return Model(inputs=[x_1, x_3], outputs=y)
+    
+    
+
+
+
+
+def AttentionEncoder(
+        input_shape_1, input_shape_2, input_shape_3,
+        dense_units_1_1=32, dense_units_1_2=32,
+        lstm_units_1_1=32, lstm_units_1_2=32,
+        dense_units_2_1=32, dense_units_2_2=32,
+        lstm_units_2_1=32, lstm_units_2_2=32,
+        dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16,
+        merge_dense_units_1=64, merge_dense_units_2=32,
+        backwards=False, mask_value=0.0, unroll=True, incl_clusters=True,
+        position_encoding=False):
+    """
+    The attention encoder model. Architecture is the same as the LSTM encoder, except the LSTM layers are replaced with MultiHeadAttention Blocks.
+    """
+    # Branch 1
+    x_1 = Input(shape=input_shape_1)
+    #x_1 = Embedding(input_shape_1[-1], input_shape_1[-1])(x_1)
+    #x_1 = x_1
+    if position_encoding:
+        x1 =  PositionalEmbedding(*input_shape_1)(x_1)
+    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x1)
+    shared_dense_1_2 = Dense(dense_units_1_2, activation="relu")(shared_dense_1_1)
+    self_attn_1 = MultiHeadAttention(8, lstm_units_1_1)(shared_dense_1_2, shared_dense_1_2)
+    glb_attn_1 = MultiHeadAttention(8, lstm_units_1_2)
+
+    # Branch 2
+    x_2 = Input(shape=input_shape_2)
+    #x_2 = Embedding(input_shape_2[-1], input_shape_2[-1])(x_2)
+    #x_2 = x2
+    if position_encoding:
+        x2 =  PositionalEmbedding(*input_shape_2)(x_2)
+    shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x2)
+    shared_dense_2_2 = Dense(dense_units_2_2, activation="relu")(shared_dense_2_1)
+    self_attn_2 = MultiHeadAttention(8, lstm_units_2_1)(shared_dense_2_2, shared_dense_2_2)
+    glb_attn_2 = MultiHeadAttention(8, lstm_units_2_2)
+
+
+    # Branch 3
+    x_3 = Input(shape=input_shape_3)
+    #x_3 = Embedding(input_shape_3, input_shape_3[-1])(x_3)
+    dense_3_1 = Dense(dense_units_3_1, activation="relu")(x_3)
+    dense_3_2 = Dense(dense_units_3_2, activation="relu")(dense_3_1)
+    dense_3_3 = Dense(dense_units_3_3, activation="relu")(dense_3_2)
+
+    # Merge
+    glb_embedding = tf.expand_dims(dense_3_3, axis=1)
+    #glb_embedding = tf.expand_dims(Embedding(16, 32)(dense_3_3), axis=1)
+    track_out = tf.reduce_sum(glb_attn_1(query=glb_embedding, value=self_attn_1, key=self_attn_1), axis=1)
+    tower_out = tf.reduce_sum(glb_attn_2(query=glb_embedding, value=self_attn_2, key=self_attn_2), axis=1)
+    merged_branches = concatenate([track_out, tower_out, dense_3_3])
+
+    merge_dense_1 = Dense(merge_dense_units_1, activation="relu")(
+        merged_branches)
+    merge_dense_2 = Dense(merge_dense_units_2, activation="relu")(
+        merge_dense_1)
+    y = Dense(1, activation="sigmoid")(merge_dense_2)
+
+    if incl_clusters:
+        return Model(inputs=[x_1, x_2, x_3], outputs=y)
+    else:
+        return Model(inputs=[x_1, x_3], outputs=y)
+    
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Create sequences for RNN')
+    parser.add_argument('ditau_path')
+    parser.add_argument('qcd_path')
+#    parser.add_argument('--prongs',default='1', choices=['1','3'], help='Number of prongs')
+    parser.add_argument('--model-path','-o',default=None, help='Model path')
+    parser.add_argument('--loss-weights', '-l', default=None, type=int, help='Loss weight')
+    parser.add_argument('--name', '-n', default=None, help='model name')
+#    parser.add_argument('--prefix','-p',default=None, help='Physics process or prefix')
+#    parser.add_argument('--inclusive', action='store_true')
+#    parser.add_argument('--pileup', choices=['','_PU','_HL'])
+    args = parser.parse_args()
+
+    Higgs_ditau='Ntuple_Higgs_ditau_processed.root'
+    Z_ditau='Ntuple_Z_ditau_processed.root'
+    ditau_PU='Ntuple_ditau_PU_processed.root'
+    ditau='Ntuple_ditau_processed.root'
+    qcd='Ntuple_qcd_processed.root'
+    ttbar_PU='Ntuple_ttbar_PU_processed.root'
+    ttbar='Ntuple_ttbar_processed.root'
+    src='/global/cscratch1/sd/lreed'
+
+
+    input_shape_1 = (10,6)
+    input_shape_2 = (6,4)
+    input_shape_3 = (8)
+
+    ditau_data = np.load(args.ditau_path)
+    qcd_data = np.load(args.qcd_path)
+    
+    len_data = len(ditau_data['track_info']) + len(qcd_data['track_info'])
+    len_train = int(len_data * 0.88 // 500 * 500)
+    len_val = int(len_data // 500 * 500)
+    x = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']]),np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']]),np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])]
+    y = np.concatenate([ditau_data['labels'],qcd_data['labels']])
+    x_train = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[:len_train],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[:len_train],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[:len_train]]
+    y_train = np.concatenate([ditau_data['labels'],qcd_data['labels']])[:len_train]
+    
+    x_val = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[len_train:len_val],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[len_train:len_val],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[len_train:len_val]]
+    y_val = np.concatenate([ditau_data['labels'],qcd_data['labels']])[len_train:len_val]
+
+
+    if args.model_path is None:
+        rnn_model = load_model(args.model_path)
+    else:
+        if args.name is None:
+            rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
+        elif args.name == 'attn_inv':
+            rnn_model = AttentionEncoder(input_shape_1, input_shape_2, input_shape_3, position_encoding=False)
+        elif args.name == 'attn_pos':
+            rnn_model = AttentionEncoder(input_shape_1, input_shape_2, input_shape_3, position_encoding=True)
+             
+    
+    filepath = args.model_path
+    #if args.inclusive:
+        #filepath = args.model_path+f'/rnn_{args.prongs}prong_inc{pileup}'
+    #else:
+        #filepath = args.model_path+f'/rnn_{args.prongs}prong{pileup}'
+    if args.loss_weights is not None:
+        loss = LogLoss(args.loss_weights, 1)
+    else:
+        loss='binary_crossentropy'
+
+    rnn_model.compile(optimizer='adam', loss=loss, metrics=[tf.keras.metrics.AUC()])
+    es = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)
+    ckpt = tf.keras.callbacks.ModelCheckpoint(monitor='val_loss', filepath=filepath, save_best_only=True)
+
+    rnn_model.fit(x,y,batch_size=500,epochs=500,shuffle=True,validation_split=0.12,callbacks=[es,ckpt])
+    #rnn_model.fit(x_train,y_train,batch_size=500,epochs=500,shuffle=True,validation_data=(x_val, y_val),callbacks=[es,ckpt])
+    rnn_model.save(filepath)
+

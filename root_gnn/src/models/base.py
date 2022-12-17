@@ -22,6 +22,7 @@ from functools import partial
 import sonnet as snt
 
 
+
 class MultiMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
         super(MultiMLP, self).__init__()
@@ -29,6 +30,19 @@ class MultiMLP(snt.Module):
         self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
     def __call__(self,x,is_training=True):
         return self.tower_mlp(tf.reshape(x[:,1:],[len(x), len(x[0])-1]))*tf.reshape(x[:,0],[len(x),1])+self.track_mlp(tf.reshape(x[:,1:],[len(x), len(x[0])-1]))*(1.-tf.reshape(x[:,0],[len(x),1]))
+
+class MultiMLPKeras(snt.Module):
+    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False, batch_size=500*16, feature_size=7, dropout_rate=0.05):
+        super(MultiMLPKeras, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)#,dropout_rate=dropout_rate)
+        self.batch_size = batch_size
+        self.feature_size = feature_size
+    def __call__(self,x,is_training=True):
+        batch_size = self.batch_size
+        feature_size = self.feature_size
+        return self.tower_mlp(tf.reshape(x[:,1:],[batch_size, feature_size-1]))*tf.reshape(x[:,0],[batch_size,1])+ \
+            self.track_mlp(tf.reshape(x[:,1:],[batch_size, feature_size-1]))*(1.-tf.reshape(x[:,0],[batch_size,1]))
     
 class ConcatMLP(snt.Module):
     def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False,dropout_rate=0.05):
@@ -46,15 +60,23 @@ class EdgeMLP(snt.Module):
         self.mix_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
     def __call__(self,x,is_training=True):
         return self.tower_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,0],[len(x),1])+self.mix_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,1],[len(x),1])+self.track_mlp(tf.reshape(x[:,3:],[len(x), len(x[0])-3]))*tf.reshape(x[:,2],[len(x),1])
-
-"""
-class NodeKerasMLP(layers.Layer):
     
-    def __init__(self, mlp_size, activation="relu"):
-        all_layers = []
-        for size in mlp_size:
-            all_layers.append(layers.Dense(size, activation=activation))
-"""
+class EdgeMLPKeras(snt.Module):
+    def __init__(self,mlp_size,activation=tf.nn.relu,activate_final=False, batch_size=500*8*15, feature_size=5, dropout_rate=0.05):
+        super(EdgeMLPKeras, self).__init__()
+        self.tower_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+        self.track_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+        self.mix_mlp = snt.nets.MLP(mlp_size,activation=activation,activate_final=activate_final)
+        self.batch_size = batch_size
+        self.feature_size = feature_size
+
+    def __call__(self,x,is_training=True):
+        batch_size = self.batch_size
+        feature_size = self.feature_size
+        return self.tower_mlp(tf.reshape(x[:,3:],[batch_size, feature_size-3]))*tf.reshape(x[:,0],[batch_size,1])+ \
+            self.mix_mlp(tf.reshape(x[:,3:],[batch_size, feature_size-3]))*tf.reshape(x[:,1],[batch_size,1])+ \
+                self.track_mlp(tf.reshape(x[:,3:],[batch_size, feature_size-3]))*tf.reshape(x[:,2],[batch_size,1])
+
         
 
 def make_multi_mlp_model(
@@ -195,6 +217,8 @@ class InteractionNetwork(snt.Module):
         return self._edge_block(self._node_block(graph, node_model_kwargs), edge_model_kwargs)
 
     
+### Experimental Attention Modules ###
+
 class AttentionBlock(snt.Module):
     """
     The attention block inspired by https://arxiv.org/pdf/2202.03772.pdf
@@ -368,7 +392,7 @@ class NodeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
         q = graph.globals
         #self._setup_MHA(k, q, v)
 
-        print(f">>> k, {k}")                               
+        #print(f">>> k, {k}")                               
         node_keys = self.k_layer(k)
         node_values = self.v_layer(v)
         global_queries = self.q_layer(q)
@@ -389,7 +413,7 @@ class NodeToGlobalAttAggregator(GlobalAttentionAggregatorBase):
             reducer=tf.math.unsorted_segment_sum)
         aggregated_attended_values = node_to_global_aggregator(
             graph.replace(nodes=attention_output))
-        print(">>> k after,", aggregated_attended_values)
+        #print(">>> k after,", aggregated_attended_values)
         return aggregated_attended_values
     
     
@@ -510,13 +534,108 @@ class EdgeToGlobalLSTMAggregator(snt.Module):
         #print("edges", aggregated_values)
         return aggregated_values
 
+    
 
+### LSTM Encoder Functions ###
+    
+class rnn_mlp_snt(snt.Module):
+    def __init__(self, input_shape, dense_shape, lstm_1, lstm_2,
+                       name='rnn_mlp', activation=tf.nn.relu, **kwargs):
+        super(rnn_mlp_snt, self).__init__(name)
+        self.mlp = snt.nets.MLP(dense_shape, activation=activation)
+        self.LSTM1 = snt.UnrolledLSTM(lstm_1)
+        self.LSTM2 = snt.UnrolledLSTM(lstm_2)
+        self.lstm_1_init = self.LSTM1.initial_state(500) # batch_size = 500
+        self.lstm_2_init = self.LSTM2.initial_state(500)
+        #print(tf.shape(self.lstm_1_init))
+        #exit()
+    
+    def __call__(self, input_seq):
+        mlp_out = self.mlp(input_seq)
+        lstm_out = self.LSTM1(mlp_out, self.lstm_1_init)[0] # 0 is the seq, 1 is final state, final state is (hidden, cell)
+        return self.LSTM2(lstm_out, self.lstm_2_init)[1][0]
+
+    
+    
 def make_rnn_mlp(input_shape,
     dense_unit_1, dense_unit_2, lstm_1, lstm_2,
-    backwards=False, unroll=True, **kwargs):
+    backwards=False, unroll=True, mask_value=0.0, **kwargs):
 
     return keras.Sequential([
-      layers.TimeDistributed(layers.Dense(dense_unit_1), input_shape=input_shape),
+      layers.Input(shape=input_shape),
+      layers.Masking(mask_value=mask_value),
+      layers.TimeDistributed(layers.Dense(dense_unit_1)),
       layers.TimeDistributed(layers.Dense(dense_unit_2)),
       layers.LSTM(lstm_1, unroll=unroll, go_backwards=backwards, return_sequences=True),
       layers.LSTM(lstm_2, unroll=unroll, go_backwards=backwards)])
+
+def keras_two_layer(input_shape, dense_unit_1, dense_unit_2, mask_value=0.0,):
+    return keras.Sequential([
+      layers.Input(shape=input_shape),
+      layers.Masking(mask_value=mask_value),
+      layers.TimeDistributed(layers.Dense(dense_unit_1)),
+      layers.TimeDistributed(layers.Dense(dense_unit_2))])
+
+
+
+### Attention Encoder Blocks ###
+
+def positional_encoding(length, depth):
+    depth = depth/2
+
+    positions = np.arange(length)[:, np.newaxis]     # (seq, 1)
+    depths = np.arange(depth)[np.newaxis, :]/depth   # (1, depth)
+
+    angle_rates = 1 / (10000**depths)         # (1, depth)
+    angle_rads = positions * angle_rates      # (pos, depth)
+
+    pos_encoding = np.concatenate(
+      [np.sin(angle_rads), np.cos(angle_rads)],
+      axis=-1) 
+
+    return tf.cast(pos_encoding, dtype=tf.float32)
+
+
+class PositionalEmbedding(Layer):
+    def __init__(self, length, d_model):
+        super().__init__()
+        self.d_model = d_model
+        self.length = length
+        #self.embedding = Embedding(vocab_size, d_model, mask_zero=True) 
+        self.pos_encoding = positional_encoding(length=2048, depth=d_model)
+
+    def call(self, x):
+        #length = tf.shape(x)[1]
+        #x = self.embedding(x)
+        length = self.length
+        # This factor sets the relative scale of the embedding and positonal_encoding.
+        x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
+        x = x + self.pos_encoding[tf.newaxis, :length, :]
+        return x
+    
+class AttentionEncoder(snt.Module):
+    def __init__(self, input_shape, dense_shape, attn_1, attn_2, 
+                 position_encoding=False, name='attn_mlp', 
+                 activation=tf.nn.relu, **kwargs):
+        super(rnn_mlp_snt, self).__init__(name)
+        
+        if position_encoding:
+            self.embedding = PositionalEmbedding(*input_shape)
+        else:
+            self.embedding = None
+        self.mlp = snt.nets.MLP(dense_shape, activation=activation)
+        self.self_attn = layers.MultiHeadAttention(8, attn_1)
+        self.glb_attn = layers.MultiHeadAttention(8, attn_2)
+    
+    
+    def __call__(self, input_seq, glb_embedding):
+        
+        if self.embedding is not None:
+            input_seq = self.embedding(input_seq)
+        mlp_out = self.mlp(input_seq)
+        attn_out = self.self_attn(mlp_out, mlp_out)
+        return tf.reduce_sum(self.glb_attn(query=glb_embedding, value=attn_out, key=attn_out), axis=1)
+    
+
+    
+    

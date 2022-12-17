@@ -78,7 +78,7 @@ merge_npz --output-path ${outPath}/ditau_train_inclusive --npz ${basePath}/ditau
 input_path=/global/cscratch1/sd/andrish/training_data/graphs/rnn
 model_path=/global/cscratch1/sd/andrish/training_data/rnn
 
-train_rnn ${input_path}/ditau_train_inclusive.npz ${input_path}/qcd_train_inclusive.npz --model_path ${model_path} -l 5
+train_keras ${input_path}/ditau_train_inclusive.npz ${input_path}/qcd_train_inclusive.npz --model-path ${model_path} -l 5
 
 ### Inference ###
 
@@ -92,8 +92,8 @@ create_npz ${test_root_dir}/ditau_test.root ${test_npz_dir}/rnn_test_ditau --sig
 create_npz ${test_root_dir}/qcd_test.root ${test_npz_dir}/rnn_test_qcd --signal
 
 # Apply on testing files
-apply_rnn ${model_dir} -i ${test_npz_dir}/rnn_test_ditau_inclusive.npz -o ${out_dir}/rnn_inclusive_ditau.npz -l 5
-apply_rnn ${model_dir} -i ${test_npz_dir}/rnn_test_qcd_other.npz -o ${out_dir}/rnn_inclusive_qcd1.npz -l 5
+apply_keras ${model_dir} -i ${test_npz_dir}/rnn_test_ditau_inclusive.npz -o ${out_dir}/rnn_inclusive_ditau.npz -l 5
+apply_keras ${model_dir} -i ${test_npz_dir}/rnn_test_qcd_other.npz -o ${out_dir}/rnn_inclusive_qcd1.npz -l 5
 
 ### Evalutaion ###
 out_dir=/global/cscratch1/sd/andrish/results/tauid_final/rnn

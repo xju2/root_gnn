@@ -160,6 +160,8 @@ def add_args(parser):
     add_arg("--agument-type", help='type of augmentation for representation learning', default='rotation')
     add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
     add_arg("--decay-steps", help='Steps for cosine decay in learning rate', default=0)
+    add_arg("--reducer", help='Aggregation Function', default="unsorted_segment_sum")
+    add_arg("--position-encoding", help='Whether to use positional encodings for the attention encoder', default=False)
 
 
     
@@ -190,12 +192,14 @@ class Trainer(snt.Module):
                 stop_on='val_loss', patiences=2,
                 shuffle_size=-1, log_freq=100,
                 val_batches=50,
+                reducer="unsorted_segment_sum",
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
                 encoder_size=None, core_size=None, decoder_size=None,
                 with_edge_inputs=False, with_edges=False, with_global_inputs=False,
                 output_size=1, num_transformation=1, augment_type="rotation", 
                 cosine_decay=False, decay_steps=0,
+                position_encoding=False,
                 verbose="INFO", name='Trainer', **kwargs):
         """
         Trainer constructor, which initializes configurations, hyperparameters,

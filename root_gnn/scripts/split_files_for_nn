@@ -38,15 +38,15 @@ def split(input_dir, output_dir, pattern, no_shuffle, **kwargs):
     dropout_train = kwargs['dropout_train']
     dropout_val = kwargs['dropout_val']
     upweight = kwargs['upweight']
+    for file_name in all_files[:n_train]:
+        if dropout_train != 0 and 'qcd' in file_name:
+            if random.random() < dropout_train:
+                continue
+        dest = os.path.join(outdirs.train, os.path.basename(f'{file_name[:-6]}.tfrec'))
+        my_copy(file_name, dest)
+        i_train += 1
+        
     for w in range(upweight):
-        for file_name in all_files[:n_train]:
-            if dropout_train != 0 and 'qcd' in file_name:
-                if random.random() < dropout_train:
-                    continue
-            dest = os.path.join(outdirs.train, os.path.basename(f'{file_name[:-6]}_{w}.tfrec'))
-            my_copy(file_name, dest)
-            i_train += 1
-
         for file_name in all_files[n_train:n_train+n_val]:
             if dropout_val != 0 and 'qcd' in file_name:
                 if random.random() < dropout_val:
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     add_arg("--no-shuffle", help='shuffle input files', action='store_true')
     add_arg("--dropout-train", "-pt", type=float, help="Percentage of background files that will be deleted for training", default=0.)
     add_arg("--dropout-val", "-pv", type=float, help="Percentage of background files that will be deleted for validation", default=0.)
-    add_arg("--upweight", "-u", type=int, help='Ratio that the signal will be upweighted by', default=1)
+    add_arg("--upweight", "-u", type=int, help='Ratio (int) that the signal in validation will be upweighted by', default=1)
     args = parser.parse_args()
     
     random.seed(12345)

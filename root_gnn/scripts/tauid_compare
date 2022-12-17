@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-from ROOT import TChain, AddressOf, std
+#from ROOT import TChain, AddressOf, std
 
 import matplotlib.pyplot as plt
 
@@ -27,12 +27,10 @@ parser.add_argument('--no-log', action='store_true', help='Do not use Log Scale'
 parser.add_argument('-y','--y', help='Quantity to use on y-axis for rejection plot', default='Rejection')
 parser.add_argument('--log-x', help="Use log scale for x-axis", action='store_true')
 parser.add_argument('--log-x-roc', help="Use log scale for x-axis for ROC", action='store_true')
-parser.add_argument('--title', help='title for the plot', default=None)
-parser.add_argument('--num-params', nargs='+', default=None, help='Number of trainable params')
 args = parser.parse_args()
 
 small = 10
-medium = 12
+medium = 13.5
 large = 15
 
 efficiencies_3prong = [0.45,0.60,0.75,0.95]
@@ -114,9 +112,6 @@ if __name__ == "__main__":
         args.styles = ['solid'] * n_plots
     if args.prongs is None:
         args.prongs = ['inclusive'] * n_plots
-    if args.num_params is None:
-        args.num_params = ['N/A'] * n_plots
-        
     print(">>> Start Plotting ROC!")
     plt.figure(figsize=(12, 8))
     plt.title('Receiver Operating Characteristic')
@@ -127,7 +122,7 @@ if __name__ == "__main__":
     all_auc = []
     for idx in range(0,n_plots):
         roc_auc=buildROC(target[idx],predictions[idx],args.colors[idx],args.styles[idx])
-        #args.legend[idx] += f" (AUC {roc_auc:.4f})"
+        args.legend[idx] += f" [AUC: {roc_auc:.4f}]"
         all_auc.append(roc_auc)
     
     plt.legend(args.legend,loc='lower right')
@@ -140,20 +135,20 @@ if __name__ == "__main__":
         plt.yscale('log')
     if args.log_x:
         plt.xscale('log')
-    plt.ylabel(r'Fake $ \tau_{\mathrm{had-vis}}$ ' + str(args.y))
-    plt.xlabel(r'True $ \tau_{\mathrm{had-vis}}$ Efficiency')
+    plt.ylabel(r'Fake $ \tau_{\mathrm{had}}$ ' + str(args.y))
+    plt.xlabel(r'True $ \tau_{\mathrm{had}}$ Efficiency')
     plt.grid()
     rejections = []
     efficiencies = []
     with open(args.prefix+'_table.csv',"w") as t:
         if all([i != '1' for i in args.prongs]):
             eff = efficiencies_3prong
-            column_string = f"Model/{args.y},AUC,Number of Trainable Params,{working_ponts[0]} ({eff[0]}),{working_ponts[1]} ({eff[1]}),{working_ponts[2]} ({eff[2]}),{working_ponts[3]} ({eff[3]})\n"
+            column_string = f"Model/{args.y},AUC,{working_ponts[0]} ({eff[0]}),{working_ponts[1]} ({eff[1]}),{working_ponts[2]} ({eff[2]}),{working_ponts[3]} ({eff[3]})\n"
         else:
-            column_string = f"Model/{args.y},AUC,Number of Trainable Params,{working_ponts[0]},{working_ponts[1]},{working_ponts[2]},{working_ponts[3]}\n"
+            column_string = f"Model/{args.y},AUC,{working_ponts[0]},{working_ponts[1]},{working_ponts[2]},{working_ponts[3]}\n"
         t.write(column_string)
         for idx in range(0,n_plots):
-            table_str = f"{args.legend[idx]},{all_auc[idx]:.4f},{args.num_params[idx]},"
+            table_str = f"{args.legend[idx]},{all_auc[idx]:.4f},"
 
             efficiency,rejection=buildRejection(target[idx],
                                                 predictions[idx],
@@ -170,8 +165,6 @@ if __name__ == "__main__":
             t.write(table_str+"\n")
         for idx in range(0,n_plots):
             plt.plot(efficiencies[idx],rejections[idx],color=args.colors[idx],marker='o',linestyle='')
-    if not args.title is None:
-        plt.title(args.title)
     plt.legend(args.legend,loc='lower left')
     plt.savefig(args.prefix+'_rejection.pdf')
     plt.close()

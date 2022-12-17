@@ -150,6 +150,8 @@ def add_args(parser):
     add_arg("--attn-layer-size", help="MLP sizes of Attention Layers", default=[64,64])
     add_arg("--lstm-unit", help="Hidden size for LSTM aggregation layer", type=int, default=32)
     add_arg("--global-core-size", help="MLP sizes for global LSTM merging block", default=[64])
+    add_arg("--use-MP", help="Use message passing in GRN", default=True)
+    add_arg("--reducer", help='Aggregation Function', default="unsorted_segment_sum")
     
 class Trainer(snt.Module):
     
@@ -178,6 +180,7 @@ class Trainer(snt.Module):
                 stop_on='val_loss', patiences=2,
                 shuffle_size=-1, log_freq=100,
                 val_batches=50,
+                reducer="unsorted_segment_sum",
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
                 manual_ngraph=0,
@@ -255,18 +258,24 @@ class Trainer(snt.Module):
         if isinstance(loss_fcn, str):
             loss_config = loss_fcn.split(',')
             loss_name = loss_config[0]
+
+            #if loss_name == 'keras':
+            #    self.loss_fcn = lambda tar, out: tf.keras.losses.BinaryCrossentropy()(tar.globals, out[-1].globals)
             if len(loss_config) > 1:
                 self.loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config[1:]])
             else:
                 self.loss_fcn = getattr(losses, loss_name)
         else:
             self.loss_fcn = loss_fcn
-            
+        self.is_keras_adam = False
         if not self.cosine_decay:
             if isinstance(optimizer, snt.Optimizer):
                 self.optimizer = optimizer
             elif isinstance(optimizer, float):
                 self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
+            elif isinstance(optimizer, str) and optimizer == 'keras_adam':
+                self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+                self.is_keras_adam = True
             elif isinstance(optimizer, str):
                 self.optimizer = getattr(snt.optimizers, optimizer)(learning_rate=learning_rate)
             else:
@@ -497,18 +506,14 @@ class Trainer(snt.Module):
                 #print(output_ops)
                 loss_ops_tr = self.loss_fcn(targets, output_ops)
                 loss_op_tr = tf.math.reduce_sum(loss_ops_tr) / tf.constant(self.num_iters, dtype=tf.float32)
-            gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
-            
-            #receive learning rate from schedule
-            if self.cosine_decay:
-                lr_mult = self.get_lr(step)
-                self.lr.assign(self.lr_base * lr_mult)
-                if step % self.decay_steps == 0 and step / self.decay_steps > 0:
-                    ckpt_n = step / self.decay_steps
-                    ckpt_dir = os.path.join(output_dir, "one-shot-checkpoints/{ckpt_n}")
-                    self.checkpoint = tf.train.Checkpoint(optimizer=optimizer,model=model)
-            
-            self.optimizer.apply(gradients, self.model.trainable_variables)
+                
+            if self.is_keras_adam:
+                grad = self.optimizer.get_gradients(loss_op_tr, self.model.trainable_variables)
+                weights_list = list(self.model.trainable_variables)
+                self.optimizer.apply_gradients(zip(grad, weights_list))
+            else:
+                gradients = tape.gradient(loss_op_tr, self.model.trainable_variables)
+                self.optimizer.apply(gradients, self.model.trainable_variables)
             return loss_op_tr
 
         self.training_step = tf.function(update_step, input_signature=input_signature)

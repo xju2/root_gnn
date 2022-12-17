@@ -143,7 +143,9 @@ def make_graph(chain, debug=False, connectivity=None,
         n_nodes = len(nodes)
         
         # Filtering out jets
-        if n_nodes < 1:
+        if n_nodes <= 1:
+            continue
+        if n_nodes == 2 and split_point < 1:
             continue
         if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
             continue
@@ -168,6 +170,8 @@ def make_graph(chain, debug=False, connectivity=None,
             nbrs = NearestNeighbors(n_neighbors=3).fit(nodes)
             distances, indices = nbrs.kneighbors(nodes)
             all_edges = indices
+        elif connectivity == 'sequential':
+            all_edges = [(i, i+1) for i in range(split_point-1)] + [(i, i+1) for i in range(split_point, n_nodes-1)]
         else:
             all_edges = list(itertools.combinations(range(n_nodes), 2))
         senders = np.array([x[0] for x in all_edges])

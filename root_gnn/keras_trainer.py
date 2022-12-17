@@ -137,6 +137,27 @@ def add_args(parser):
     add_arg("--agument-type", help='type of augmentation for representation learning', default='rotation')
     add_arg("--cosine-decay",help='learning rate schedule function.',default=False)
     add_arg("--decay-steps", help='Steps for cosine decay in learning rate', default=0)
+    add_arg("--use-node-attn", help='Use node attention', default=False)
+    add_arg("--use-global-attn", help='Use global attention', default=False)
+    add_arg("--node-mlp-size", help="MLP size for nodes", default=None)
+    add_arg("--edge-mlp-size", help="MLP size for edge", default=None)
+    add_arg("--global-mlp-size", help="MLP size for global", default=None)
+    add_arg("--num-attn-heads", help="Number of Attention Heads", default=8)
+    add_arg("--num-attn-blocks", help="Number of Attention Blocks", default=2)
+    add_arg("--num-attn-layers", help="Number of Attention Layers", default=1)
+    add_arg("--manual-ngraph", help="Manually set the number of graphs", default=0, type=int)
+    add_arg("--hom-model", help="Use homogeneous model for GlobalHetGraphClassifier", default=False)
+    add_arg('--global-in-nodes', help='Put global attributes in nodes if with global inputs', type=bool, default=None)
+    add_arg('--global-in-edges', help='Put global attributes in edges if with global inputs', type=bool, default=None)
+    add_arg("--core-mp-size", help="MLP size for RGN MP", default=[64,64])
+    add_arg("--attn-layer-size", help="MLP sizes of Attention Layers", default=[64,64])
+    add_arg("--lstm-unit", help="Hidden size for LSTM aggregation layer", type=int, default=32)
+    add_arg("--global-core-size", help="MLP sizes for global LSTM merging block", default=[64])
+    add_arg("--use-MP", help="Use message passing in GRN", default=True)
+    add_arg("--core-model", help="The core model name", default="MLPGN")
+    add_arg("--use-edge-encoder", help="Use edge encoder for GRN model", default=False)
+    add_arg("--global-shape", help="Global feature shape", default=[1,8])
+    add_arg("--node-shape", help="Node feature shape", default=[16,7])
 
 
 class Trainer(snt.Module):
@@ -168,7 +189,7 @@ class Trainer(snt.Module):
                 val_batches=50,
                 file_pattern='*', #distributed=False,
                 disable_tqdm=False,
-                encoder_size=None, core_size=None, decoder_size=None,
+                encoder_size=None, core_size=None, decoder_size=[],
                 with_edge_inputs=False, with_edges=False, 
                 with_global_inputs=False, with_globals=False,
                 activation=tf.nn.relu, learning_rate=0.005, 
@@ -197,7 +218,7 @@ class Trainer(snt.Module):
         self.evts_per_file = evts_per_file
         self.batch_size = batch_size
         self.shuffle_size = shuffle_size
-        self.read_all_data()
+        #self.read_all_data()
 
         self.ckpt_manager = None
         self.output_dir = output_dir
@@ -225,174 +246,70 @@ class Trainer(snt.Module):
             else:
                 self.model = getattr(Models, model)(
                     with_edge_inputs=with_edges,
-                    with_global_inputs=with_global_inputs,
+                    with_global_inputs=with_globals,
                     encoder_size=encoder_size,
                     core_size=core_size,
                     decoder_size=decoder_size,
-                    activation=activation
+                    activation=activation,
+                    **kwargs
                     )
         elif isinstance(model, snt.Module):
             self.model = model
         else:
             raise RuntimeError("model:", model, "is not supported")
-
-        if isinstance(loss_fcn, str):
-            loss_config = loss_fcn.split(',')
-            loss_name = loss_config[0]
-            if len(loss_config) > 1:
-                self.loss_fcn = getattr(losses, loss_name)(*[float(x) for x in loss_config[1:]])
-            else:
-                self.loss_fcn = getattr(losses, loss_name)
-        else:
-            self.loss_fcn = loss_fcn
-
-        if isinstance(optimizer, snt.Optimizer):
-            self.optimizer = optimizer
-        elif isinstance(optimizer, float):
-            self.optimizer = snt.optimizers.Adam(learning_rate=optimizer)
-        elif isinstance(optimizer, str):
-            self.optimizer = getattr(snt.optimizers, optimizer)(learning_rate=learning_rate)
-        else:
-            self.optimizer = snt.optimizers.Adam(learning_rate=0.0005)
-
-
-        self.mode = mode.split(',')
+        self.patience = patiences
+        print(">>> Using keras Trainer")
         self.num_iters = num_iters
-
-        # training hyperparameters
-        self.log_freq = log_freq
-        self.val_batches = val_batches
-        self.num_epochs = tf.constant(num_epochs, dtype=tf.int32)
-        self.step_count = tf.Variable(0, trainable=False, name='step_count', dtype=tf.int64)
-        # self.lr = tf.Variable(0.0005, trainable=False, name='lr', dtype=tf.float32)
-
-        # self.distributed = distributed
-        self.extra_configs = kwargs
-        self.disable_tqdm = disable_tqdm
-
-        ## setup monitoring issues
-        self.stop_on = stop_on
-        self.attempts = 0
-        self.patiences = patiences
-        self.metric_dict = dict()
-        time_stamp = time.strftime('%Y%m%d-%H%M%S', time.localtime())
-        self.metric_writer = tf.summary.create_file_writer(
-            os.path.join(self.output_dir, "logs/{}/metrics".format(time_stamp)))
-
-        if "loss" in stop_on or "pull" in stop_on:
-            self.should_max_metric = False
-            self.best_metric = float('inf')
+        self.loss_fcn = 'binary_crossentropy'
+        self.num_epochs = num_epochs
+        self.optimizer = tf.keras.optimizers.Adam(optimizer)
+        print(">>> Loading data")
+        self.load_npz()
+        
+        
+        if os.path.exists(self.output_dir):
+            print(f">>> Loading model at {self.output_dir}")
+            self.gnn_model = tf.keras.models.load_model(self.output_dir)
         else:
-            self.should_max_metric = True
-            self.best_metric = 0.0
+            print(">>> Creating new model")
+            self.gnn_model = Models.kerasClassifier(self.model, **kwargs)
+            self.gnn_model.compile(optimizer=self.optimizer,loss=self.loss_fcn, metrics=[tf.keras.metrics.AUC()])
+        self.es = tf.keras.callbacks.EarlyStopping(monitor='val_auc', patience=self.patience)
+        self.ckpt = tf.keras.callbacks.ModelCheckpoint(monitor='val_auc', filepath=self.output_dir, save_best_only=True)
 
+    
     def train(self, num_steps: int = None, stop_on: str = None, epochs: int = None):
         """
         The training step.
         """
-        ngraphs = self.ngraphs_train
-        train_data = self.data_train
-        batch_size = self.batch_size
-        steps_per_epoch = ngraphs // batch_size
-        max_epochs = self.num_epochs
-        if epochs is not None and num_steps is not None:
-            raise RuntimeError("Please either use `num_steps` or `epochs`")
-
-        tot_steps = num_steps if num_steps else epochs*steps_per_epoch if epochs else self.num_epochs * steps_per_epoch
-        self.stop_on = stop_on if stop_on else self.stop_on
-        stop_on = self.stop_on
-
-        print(f"Training starts with {ngraphs} graphs with batch size of {batch_size} for {max_epochs} epochs")
-        print(f"runing {tot_steps} steps, {steps_per_epoch} steps per epoch, and stop on variable {stop_on}")
-
-        #if self.output_dir is not None and os.path.exists(self.output_dir):
-            #self.gnn_model = load_model(self.output_dir)
-        #else:
-        self.gnn_model = Model(self.model)
-
-        self.gnn_model.compile(optimizer='adam',loss=self.loss_fcn, metrics=[tf.keras.metrics.AUC()])
-        self.es = tf.keras.callbacks.EarlyStopping(monitor='val_auc', patience=10)
-        self.ckpt = tf.keras.callbacks.ModelCheckpoint(monitor='val_auc', filepath=self.output_dir, save_best_only=True)
-        #self.gnn_model.summary()
-        counter = 1000
-        x, y = [], []
-        for _ in tqdm.trange(counter):
-            i, j = next(train_data)
-            x.append(i)
-            y.append(j)
-
-        self.gnn_model.fit(x, y, batch_size=batch_size, epochs=10, validation_split=0.11, callbacks=[self.es, self.ckpt])
+        self.gnn_model.fit(x=self.x_train, y=self.y_train, batch_size=self.batch_size, 
+                           shuffle=True, epochs=self.num_epochs, validation_data=self.data_val,
+                           callbacks=[self.es, self.ckpt])
         self.gnn_model.save(self.output_dir)
 
-    def _setup_training_loop(self):
-        """
-        Sets up training step for the optimizer using tf.function
-        and tf.GradientTape. Optionally, the user can pass in a
-        model and loss_fcn to replace the current model and loss_fcn
-        attributes of TrainerBase.
+
+
+    def load_npz(self):
+        train_input = os.path.join(self.input_dir, "train.npz")
+        val_input = os.path.join(self.input_dir, "val.npz")
+
+        train_data = np.load(train_input)
+        val_data = np.load(val_input)
+
+        graph_attr = ['n_node', 'n_edge', 'nodes', 'edges', 'senders', 'receivers', 'globals']
+        y_train = train_data['labels']
+        n_train = len(y_train) // self.batch_size * self.batch_size # FIXME: currently cannot deal with tail case
+        y_train = y_train[:n_train]
+        x_train = [train_data[key][:n_train] for key in graph_attr]
         
-        Parameters
-        ----------
-        model: The model class to use for training
+
+        self.x_train = x_train
+        self.y_train = y_train
+
+        y_val = val_data['labels']
+        n_val = len(y_val) // self.batch_size * self.batch_size
+        x_val = [val_data[key][:n_val] for key in graph_attr]
+        y_val = y_val[:n_val]
         
-        loss_fcn: The loss function class to use for training
-        """
-        if self.training_step:
-            return 
-
-        input_signature = get_signature(self.data_train)
-
-
-
-
-
-
-    def load_data(self, dirname):
-        """
-        Loads, shuffles, and sets up training data from the train directory
-        """
-        _input_dir = os.path.join(self.input_dir, dirname)
-        _files = tf.io.gfile.glob(os.path.join(_input_dir, self.file_pattern))
-        if (not os.path.exists(_input_dir)) or len(_files) < 1:
-            raise RuntimeError(f"{_input_dir} directory does not contain data.")
-
-        tfdata, ngraphs = read_dataset(_files, self.evts_per_file)
-        shuffle_size = self.shuffle_size
-        if shuffle_size > ngraphs:
-            shuffle_size = ngraphs
-
-        if shuffle_size > 0:
-            tfdata = tfdata.shuffle(
-                shuffle_size, seed=12345, reshuffle_each_iteration=False)
-
-        tfdatasets = tfdata.repeat().prefetch(AUTO)
-        tfdata = loop_dataset(tfdatasets, self.batch_size)
-        return tfdata, ngraphs
-
-    def load_training_data(self):
-        """
-        Loads, shuffles, and sets up training data from the train directory
-        """
-        if self.data_train is not None:
-            return 
-        self.data_train, self.ngraphs_train = self.load_data('train')
-
-    def load_validating_data(self):
-        """
-        Loads, shuffles, and sets up validation data from the val directory.
-        """
-        if self.data_val is not None:
-            return 
-        self.data_val, self.ngraphs_val = self.load_data('val')
-
-    def load_testing_data(self):
-        """
-        Loads, shuffles, and sets up testing data from the test directory.
-        """
-        if self.data_test is not None:
-            return 
-        self.data_test, self.ngraphs_test = self.load_data('test')
-
-    def read_all_data(self):
-        self.load_training_data()
-        self.load_validating_data()
+        self.data_val = (x_val, y_val)
+        

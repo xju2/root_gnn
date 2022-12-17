@@ -40,7 +40,8 @@ if __name__ == "__main__":
 
     #data = [_ for _ in zip(data['track_info'],data['cluster_info'],data['hlv_info'], data['labels'])]
     #np.random.shuffle(data)
-    predictions = model.predict([data['track_info'],data['cluster_info'],data['hlv_info']])
+    len_data = len(data['track_info'])//500*500
+    predictions = model.predict([data['track_info'][:len_data],data['cluster_info'][:len_data],data['hlv_info'][:len_data]], batch_size=500)
     #track = np.array([i[0] for i in data])
     #cluster = np.array([i[1] for i in data])
     #hlv = np.array([i[2] for i in data])

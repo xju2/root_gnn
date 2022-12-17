@@ -109,6 +109,7 @@ if __name__ == "__main__":
     add_arg("--use-jetPt", help='use JetPt in the nodes', action='store_true')
     add_arg("--use-jetVar", help='use Jet vector variables in global', action='store_true')
     add_arg("--signal-only", help='only use signals from this file', action='store_true')
+    add_arg("--batch-size", help='batch size for inference', type=int, default=100000)
 
     args = parser.parse_args()
     
@@ -117,6 +118,7 @@ if __name__ == "__main__":
     threshold = args.threshold
 
     data = getattr(DataSets, args.type)()
+    print(f">>> Inference on {ntuple_in}")
     graph_config = {"connectivity": args.connectivity if args.connectivity is not None else "Fully-Connected",
                     "signal": args.signal,
                     "with_edge_features": args.with_edge_features,
@@ -158,7 +160,7 @@ if __name__ == "__main__":
     truth_3prong = []
     truth_other = []
 
-    batch_size = gnn_model[3]
+    batch_size = min(gnn_model[3], args.batch_size)
     graphs_1p = []
     graphs_3p = []
     graphs_qcd = []
@@ -175,11 +177,14 @@ if __name__ == "__main__":
                 prediction_1prong.extend(result_pred)
                 truth_1prong.extend(result_tru)
                 graphs_1p = graphs_1p[batch_size:]
-                
-            if ientry == (num_eval - 1):
-                result_pred, result_tru = get_prediction(graphs_1p, gnn_model)
-                prediction_1prong.extend(result_pred)
-                truth_1prong.extend(result_tru)
+            
+            try:
+                if ientry == (num_eval - 1):
+                    result_pred, result_tru = get_prediction(graphs_1p, gnn_model)
+                    prediction_1prong.extend(result_pred)
+                    truth_1prong.extend(result_tru)
+            except:
+                pass
 
             # 3-prong
             graph_config['signal'] = 3
@@ -190,11 +195,14 @@ if __name__ == "__main__":
                 prediction_3prong.extend(result_pred)
                 truth_3prong.extend(result_tru)
                 graphs_3p = graphs_3p[batch_size:]
-                
-            if ientry == (num_eval - 1):
-                result_pred, result_tru = get_prediction(graphs_3p, gnn_model)
-                prediction_3prong.extend(result_pred)
-                truth_3prong.extend(result_tru)
+            
+            try:
+                if ientry == (num_eval - 1):
+                    result_pred, result_tru = get_prediction(graphs_3p, gnn_model)
+                    prediction_3prong.extend(result_pred)
+                    truth_3prong.extend(result_tru)
+            except:
+                pass
 
         else:
             # QCD
@@ -207,11 +215,13 @@ if __name__ == "__main__":
                 truth_other.extend(result_tru)
                 graphs_qcd = graphs_qcd[batch_size:]
             
-            if ientry == (num_eval - 1):
-                result_pred, result_tru = get_prediction(graphs_qcd, gnn_model)
-                prediction_other.extend(result_pred)
-                truth_other.extend(result_tru)
-
+            try:
+                if ientry == (num_eval - 1):
+                    result_pred, result_tru = get_prediction(graphs_qcd, gnn_model)
+                    prediction_other.extend(result_pred)
+                    truth_other.extend(result_tru)
+            except:
+                pass
             
 
     
