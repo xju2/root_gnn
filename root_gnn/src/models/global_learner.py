@@ -621,7 +621,7 @@ class GlobalAttentionClassifier(snt.Module):
         
 
     
-class GlobalLearnerBaseEdgesFirst(snt.Module)
+class GlobalLearnerBaseEdgesFirst(snt.Module):
     def __init__(self,
         global_fn,
         with_edge_inputs=False,

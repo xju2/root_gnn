@@ -5,7 +5,7 @@ import numpy as np
 
 from tensorflow.keras import Model, losses
 from keras.models import load_model
-#from train_rnn import LogLoss
+from root_gnn.utils import pad_input
 
 # npz in, npz out, model in
 
@@ -14,6 +14,7 @@ parser.add_argument('model_path', default=None)
 parser.add_argument('--input','-i',default=None)
 parser.add_argument('--output','-o',default=None)
 parser.add_argument('-l', default=1)
+parser.add_argument('--pfn', action='store_true')
     
     
 if __name__ == "__main__":
@@ -33,19 +34,16 @@ if __name__ == "__main__":
     try:
         model=load_model(args.model_path)
     except:
-        #loss = LogLoss(5, 1)
         model=load_model(args.model_path, custom_objects={'LogLoss': LogLoss})
         # FIXME: pass in config without manually set the weights
     model.summary()
 
-    #data = [_ for _ in zip(data['track_info'],data['cluster_info'],data['hlv_info'], data['labels'])]
-    #np.random.shuffle(data)
+    
     len_data = len(data['track_info'])//500*500
-    predictions = model.predict([data['track_info'][:len_data],data['cluster_info'][:len_data],data['hlv_info'][:len_data]], batch_size=500)
-    #track = np.array([i[0] for i in data])
-    #cluster = np.array([i[1] for i in data])
-    #hlv = np.array([i[2] for i in data])
-    #predictions = model.predict([track, cluster, hlv])
+    if args.pfn:
+        predictions = model.predict(pad_input(data['track_info'][:len_data],data['cluster_info'][:len_data]), batch_size=500)[:,1]
+    else:
+        predictions = model.predict([data['track_info'][:len_data],data['cluster_info'][:len_data],data['hlv_info'][:len_data]], batch_size=500)
+    
     truth_info = data['labels']
-    #truth_info = np.array([i[3] for i in data])
     np.savez(args.output,predictions=predictions,truth_info=truth_info)

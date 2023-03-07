@@ -596,7 +596,7 @@ def positional_encoding(length, depth):
     return tf.cast(pos_encoding, dtype=tf.float32)
 
 
-class PositionalEmbedding(Layer):
+class PositionalEmbedding(layers.Layer):
     def __init__(self, length, d_model):
         super().__init__()
         self.d_model = d_model

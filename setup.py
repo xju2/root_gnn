@@ -36,6 +36,7 @@ setup(
         "sklearn",
         'pyyaml>=5.1',
         'tqdm',
+        'energyflow'
     ],
     package_data = {
         "root_gnn": ["config/*.yaml"]

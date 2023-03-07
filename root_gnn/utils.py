@@ -145,3 +145,12 @@ def load_model(config):
     batch_size = config['batch_size']
     
     return (model, num_processing_steps, batch_size)
+
+
+def pad_input(trk, twr):
+    """
+    Zero pad the inputs to be the same length.
+    """
+    padding = np.zeros((np.shape(twr)[0], np.shape(twr)[1], abs(np.shape(trk)[-1] - np.shape(twr)[-1])))
+    twr_pad = np.concatenate([twr, padding], axis=-1)
+    return np.concatenate([trk, twr_pad], axis=1)

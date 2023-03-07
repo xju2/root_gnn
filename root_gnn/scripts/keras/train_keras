@@ -2,20 +2,19 @@
 import numpy as np
 import argparse
 
-#import sonnet as snt
 from random import shuffle
 from tensorflow.keras.layers import Input, Dense, Masking, LSTM, concatenate, TimeDistributed, MultiHeadAttention, Embedding, Softmax, Layer
-#from keras_nlp.layers import SinePositionEncoding
 from tensorflow import keras
 from tensorflow.keras import Model, losses
 from keras.models import load_model
 import tensorflow as tf
-
-#from graph_nets import modules
-#from graph_nets import utils_tf
-#from functools import partial
 import itertools
-#from root_gnn.src.models.base import MLPGraphNetwork
+
+from energyflow.utils import to_categorical
+from energyflow.archs import PFN
+
+
+from root_gnn.utils import pad_input
 
 
 def positional_encoding(length, depth):
@@ -53,8 +52,7 @@ class PositionalEmbedding(Layer):
         x *= tf.math.sqrt(tf.cast(self.d_model, tf.float32))
         x = x + self.pos_encoding[tf.newaxis, :length, :]
         return x
-
-                        
+                     
         
 class LogLoss(losses.BinaryCrossentropy):
     """
@@ -125,10 +123,6 @@ def RecurrentEncoder(
     else:
         return Model(inputs=[x_1, x_3], outputs=y)
     
-    
-
-
-
 
 def AttentionEncoder(
         input_shape_1, input_shape_2, input_shape_3,
@@ -148,8 +142,8 @@ def AttentionEncoder(
     #x_1 = Embedding(input_shape_1[-1], input_shape_1[-1])(x_1)
     #x_1 = x_1
     if position_encoding:
-        x1 =  PositionalEmbedding(*input_shape_1)(x_1)
-    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x1)
+        x_1 =  PositionalEmbedding(*input_shape_1)(x_1)
+    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x_1)
     shared_dense_1_2 = Dense(dense_units_1_2, activation="relu")(shared_dense_1_1)
     self_attn_1 = MultiHeadAttention(8, lstm_units_1_1)(shared_dense_1_2, shared_dense_1_2)
     glb_attn_1 = MultiHeadAttention(8, lstm_units_1_2)
@@ -159,8 +153,8 @@ def AttentionEncoder(
     #x_2 = Embedding(input_shape_2[-1], input_shape_2[-1])(x_2)
     #x_2 = x2
     if position_encoding:
-        x2 =  PositionalEmbedding(*input_shape_2)(x_2)
-    shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x2)
+        x_2 =  PositionalEmbedding(*input_shape_2)(x_2)
+    shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x_2)
     shared_dense_2_2 = Dense(dense_units_2_2, activation="relu")(shared_dense_2_1)
     self_attn_2 = MultiHeadAttention(8, lstm_units_2_1)(shared_dense_2_2, shared_dense_2_2)
     glb_attn_2 = MultiHeadAttention(8, lstm_units_2_2)
@@ -190,6 +184,7 @@ def AttentionEncoder(
         return Model(inputs=[x_1, x_2, x_3], outputs=y)
     else:
         return Model(inputs=[x_1, x_3], outputs=y)
+
     
     
 if __name__ == "__main__":
@@ -227,11 +222,11 @@ if __name__ == "__main__":
     len_val = int(len_data // 500 * 500)
     x = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']]),np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']]),np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])]
     y = np.concatenate([ditau_data['labels'],qcd_data['labels']])
-    x_train = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[:len_train],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[:len_train],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[:len_train]]
-    y_train = np.concatenate([ditau_data['labels'],qcd_data['labels']])[:len_train]
+    #x_train = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[:len_train],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[:len_train],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[:len_train]]
+    #y_train = np.concatenate([ditau_data['labels'],qcd_data['labels']])[:len_train]
     
-    x_val = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[len_train:len_val],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[len_train:len_val],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[len_train:len_val]]
-    y_val = np.concatenate([ditau_data['labels'],qcd_data['labels']])[len_train:len_val]
+    #x_val = [np.concatenate([ditau_data['track_info'],qcd_data['track_info']])[len_train:len_val],np.concatenate([ditau_data['cluster_info'],qcd_data['cluster_info']])[len_train:len_val],np.concatenate([ditau_data['hlv_info'],qcd_data['hlv_info']])[len_train:len_val]]
+    #y_val = np.concatenate([ditau_data['labels'],qcd_data['labels']])[len_train:len_val]
 
 
     if args.model_path is None:
@@ -243,6 +238,13 @@ if __name__ == "__main__":
             rnn_model = AttentionEncoder(input_shape_1, input_shape_2, input_shape_3, position_encoding=False)
         elif args.name == 'attn_pos':
             rnn_model = AttentionEncoder(input_shape_1, input_shape_2, input_shape_3, position_encoding=True)
+        elif args.name == 'pfn':
+            x = pad_input(x[0], x[1])
+            y = to_categorical(y, num_classes=2)
+            feature_shape = (input_shape_1[0] + input_shape_2[0], max(input_shape_1[1], input_shape_2[1]))
+            Phi_sizes=(100, 128, 128)
+            F_sizes = (100, 100, 100)
+            rnn_model = PFN(input_dim=feature_shape[-1], Phi_sizes=Phi_sizes, F_sizes=F_sizes)
              
     
     filepath = args.model_path
@@ -255,7 +257,8 @@ if __name__ == "__main__":
     else:
         loss='binary_crossentropy'
 
-    rnn_model.compile(optimizer='adam', loss=loss, metrics=[tf.keras.metrics.AUC()])
+    if not args.name == 'pfn':
+        rnn_model.compile(optimizer='adam', loss=loss, metrics=[tf.keras.metrics.AUC()])
     es = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)
     ckpt = tf.keras.callbacks.ModelCheckpoint(monitor='val_loss', filepath=filepath, save_best_only=True)
 
