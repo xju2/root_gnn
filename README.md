@@ -22,18 +22,18 @@ Download the W' and QCD data from [https://zenodo.org/record/3981290#.XzQs5zVlAU
 ## Graph Construction
 Construct signal and background jets in to graphs and store them in `.tfrec` files. The command is in the following format:
 ```
-create_tfrecord <Input ROOT file path> <Output path>
-                --max-evts <INT: Maximum number of events to process> 
-                --evts-per-record <INT: Number of events per output file>
-                --type TauIdentificationDataset 
-                --num-workers <INT: Number of threads>
-                --signal [0: Background only | 1: 1-prong signals only | 3: 3-prong signals only | 10: 1-prong and 3-prong inclusive signals]
-                --use-jetPt (Optional: Include jet Pt as node features)
-                --use-jetVar (Optional: Include jet variables as global features)
-                --use-delta-angles (Optional: Use delta eta and phi for the node variables)
-                --with-node-type (Optional: Add in one-hot encodings for node and edge types)
-                --with-hlv-features (Optional: Add high-level variables to globals)
-                --tower-lim <Optional INT: Limits on the number of towers>
+create_tfrecord <Input ROOT file path> <Output path> \
+                --max-evts <INT: Maximum number of events to process> \
+                --evts-per-record <INT: Number of events per output file> \
+                --type TauIdentificationDataset \
+                --num-workers <INT: Number of threads> \
+                --signal [0: Background only | 1: 1-prong signals only | 3: 3-prong signals only | 10: 1-prong and 3-prong inclusive signals] \
+                --use-jetPt (Optional: Include jet Pt as node features) \
+                --use-jetVar (Optional: Include jet variables as global features) \
+                --use-delta-angles (Optional: Use delta eta and phi for the node variables) \
+                --with-node-type (Optional: Add in one-hot encodings for node and edge types) \
+                --with-hlv-features (Optional: Add high-level variables to globals) \
+                --tower-lim <Optional INT: Limits on the number of towers> \
                 --track-lim <Optional INT: Limits on the number of tracks>
 ```
 
@@ -83,18 +83,18 @@ Usable models include:
 Inference time could vary depending on the batch size. Usually takes
 2h to finish 100k di-tau events and 3h to finish 40k QCD events. Inference can be done using the following command:
 ```
-evaluate_tauid -i <Path to test ROOT file>
-               -o <Path to output directory>
-               --num-events <INT: Number of events to process>
-               --config <config_name.yaml>
-               --type TauIdentificationDataset
-               --use-jetPt (Optional: Include jet Pt as node features)
-               --use-jetVar (Optional: Include jet variables as global features)
-               --use-delta-angles (Optional: Use delta eta and phi for the node variables)
-               --with-node-type (Optional: Add in one-hot encodings for node and edge types)
-               --with-hlv-features (Optional: Add high-level variables to globals)
-               --tower-lim <Optional INT: Limits on the number of towers>
-               --track-lim <Optional INT: Limits on the number of tracks>
+evaluate_tauid -i <Path to test ROOT file> \
+               -o <Path to output directory> \
+               --num-events <INT: Number of events to process> \
+               --config <config_name.yaml> \
+               --type TauIdentificationDataset \
+               --use-jetPt (Optional: Include jet Pt as node features) \
+               --use-jetVar (Optional: Include jet variables as global features) \
+               --use-delta-angles (Optional: Use delta eta and phi for the node variables) \
+               --with-node-type (Optional: Add in one-hot encodings for node and edge types) \
+               --with-hlv-features (Optional: Add high-level variables to globals) \
+               --tower-lim <Optional INT: Limits on the number of towers> \
+               --track-lim <Optional INT: Limits on the number of tracks> \
                --signal-only (Optional: Use signals only)
 ```
 
@@ -108,14 +108,14 @@ plot_tauid <Path to directory that stores inferences>
 ```
 Results from different models can also be compared using:
 ```
-tauid_compare --npz <Inference from Model 1> <Inference from Model 2> ...
-              --qcd <Optional: Inference on qcd jets if stored separately>
-              --others <Optional: Other inference results if stored separately>
-              --colors <Optional STR: Colors to plot with>
-              --styles <Optional STR: Line styles e.g. 'solid' 'dashed' 'dotted'>
-              --legend <Optional STR: Labels to use in the plot legends>
-              --prefix <Optional STR: Prefix for the output files>
-              --efficiencies <Optional List of FLOATS: Find rejection power associated with interesting efficiencies and place them in a table>
+tauid_compare --npz <Inference from Model 1> <Inference from Model 2> ... \
+              --qcd <Optional: Inference on qcd jets if stored separately> \
+              --others <Optional: Other inference results if stored separately> \
+              --colors <Optional STR: Colors to plot with> \
+              --styles <Optional STR: Line styles e.g. 'solid' 'dashed' 'dotted'> \
+              --legend <Optional STR: Labels to use in the plot legends> \
+              --prefix <Optional STR: Prefix for the output files> \
+              --efficiencies <Optional List of FLOATS: Find rejection power associated with interesting efficiencies and place them in a table> \
               --no-log (Optional: Do not use Log scale)
 ```
 The command above will draw the ROC and rejection curves for all the models listed and create an Excel table summarizing the rejection and AUC values.
@@ -129,23 +129,23 @@ The implementation are the same as the respective ones using sonnet modules. Thi
 
 The inputs need to be first stored in `.npz` files for efficiency, using:
 ```
-create_npz <input ROOT file> <output file name> 
-           -n <number of events to process> 
-           --initial-event <index of starting event>
+create_npz <input ROOT file> <output file name> \
+           -n <number of events to process> \
+           --initial-event <index of starting event> \
            --signal (Optional: only use signal jets in the event)
 ```
 The command can be ran in parallel to process multiple files at a time. The files can then be merged using
 ```
-merge_npz --output-path <output file name>
-          --npz <list of files to merge>
+merge_npz --output-path <output file name> \
+          --npz <list of files to merge> \
 ```
 The signals and backgrounds need to be stored in separate files.
 
 The model can then be trained using 
 ```
-train_keras <input npz file for signals> <input npz file for backgrounds>
-            --model-path <path to store the model>
-            -l <loss weight for signal>
+train_keras <input npz file for signals> <input npz file for backgrounds> \
+            --model-path <path to store the model> \
+            -l <loss weight for signal> \
             -n [Model name, options: None (default to `RecurrentEncoder`) | attn_inv (`AttentionEncoder`) | attn_pos (`AttentionEncoder` with positional encoding)]
 ```
 
