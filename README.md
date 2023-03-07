@@ -21,7 +21,7 @@ Download the W' and QCD data from [https://zenodo.org/record/3981290#.XzQs5zVlAU
 
 ## Graph Construction
 Construct signal and background jets in to graphs and store them in `.tfrec` files. The command is in the following format:
-```bash
+```
 create_tfrecord <Input ROOT file path> <Output path>
                 --max-evts <INT: Maximum number of events to process> 
                 --evts-per-record <INT: Number of events per output file>
@@ -39,17 +39,17 @@ create_tfrecord <Input ROOT file path> <Output path>
 
 The graphs then need to be splitted into different sets for training and validation, using the following command:
 
-```bash
+```
 split_files_for_nn <Graph Path> <Destination>
 ```
 
 ## Training
 Training usually takes 12-16h on Cori GPU for model to converge. Training can be done using the following command:
-```bash
+```
 train_gnn config <config_name.yaml>
 ```
 The configuration file should be in the format:
-```bash
+```
 input_dir: <input directory>
 evts_per_file: <number of events per file>
 output_dir: <output directory>
@@ -82,7 +82,7 @@ Usable models include:
 ## Inference
 Inference time could vary depending on the batch size. Usually takes
 2h to finish 100k di-tau events and 3h to finish 40k QCD events. Inference can be done using the following command:
-```bash
+```
 evaluate_tauid -i <Path to test ROOT file>
                -o <Path to output directory>
                --num-events <INT: Number of events to process>
@@ -103,11 +103,11 @@ The optional flags should match the graph construction flags to ensure that the 
 
 ## Evaluation
 The inference result can then be evaluated by plotting the prediction socres and related metrics using:
-```bash
+```
 plot_tauid <Path to directory that stores inferences>
 ```
 Results from different models can also be compared using:
-```bash
+```
 tauid_compare --npz <Inference from Model 1> <Inference from Model 2> ...
               --qcd <Optional: Inference on qcd jets if stored separately>
               --others <Optional: Other inference results if stored separately>
@@ -128,21 +128,21 @@ The following models are also implemented in the Keras framework, as it has pote
 The implementation are the same as the respective ones using sonnet modules. This framework can be used with the following procedures:
 
 The inputs need to be first stored in `.npz` files for efficiency, using:
-```bash
+```
 create_npz <input ROOT file> <output file name> 
            -n <number of events to process> 
            --initial-event <index of starting event>
            --signal (Optional: only use signal jets in the event)
 ```
 The command can be ran in parallel to process multiple files at a time. The files can then be merged using
-```bash
+```
 merge_npz --output-path <output file name>
           --npz <list of files to merge>
 ```
 The signals and backgrounds need to be stored in separate files.
 
 The model can then be trained using 
-```bash
+```
 train_keras <input npz file for signals> <input npz file for backgrounds>
             --model-path <path to store the model>
             -l <loss weight for signal>
@@ -150,7 +150,7 @@ train_keras <input npz file for signals> <input npz file for backgrounds>
 ```
 
 The inference can then be done using
-```bash
+```
 apply_keras <model directory> -i <input test npz file> -l <loss weight used>
 ```
 
