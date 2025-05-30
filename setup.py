@@ -20,11 +20,12 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "tensorflow==2.6",
-        "keras==2.6",
+        "tensorflow==2.6.0",
+        "keras==2.6.0",
         "tensorflow_addons",
         "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
+        "ncps",
         "networkx",
         "numpy",
         "scipy",
@@ -33,7 +34,7 @@ setup(
         "setuptools",
         "six",
         "matplotlib",
-        "sklearn",
+        "scikit-learn",
         'pyyaml>=5.1',
         'tqdm',
         'energyflow'

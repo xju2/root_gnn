@@ -9,6 +9,8 @@ import argparse
 from root_gnn.utils import calc_dphi
 import time
 
+print("Creating npz files")
+
 
 parser = argparse.ArgumentParser(description='Create sequences for RNN')
 parser.add_argument('input_path', help='Input root file')
@@ -31,7 +33,7 @@ data = getattr(DataSets, args.type)()
 def pad_array(arr,size,n_attrs):
     arr.extend([[0.]*n_attrs]*(size-len(arr)))
 
-parent_path = "/global/cfs/cdirs/m3443/data/TauStudies/v4/"
+# parent_path = "/global/cfs/cdirs/m3443/data/TauStudies/v4/"
 
 output_path = args.output_path
 input_path = args.input_path
@@ -59,7 +61,7 @@ if args.num_events is not None:
 else:
     final_event = n_entries
 
-for chain in data.read(input_path, int(args.initial_event), final_event):
+for chain in data.read(input_path, int(args.initial_event), final_event): # looping over file event by event
     isTau = 0
     scale_factors = np.array([1.0e-3,1.0/3.0,1.0/math.pi],dtype=np.float32)
     #global_factors = np.array([1.0,5.0,0.2,5.0,0.2],dtype=np.float32)
@@ -67,16 +69,16 @@ for chain in data.read(input_path, int(args.initial_event), final_event):
     tower_idx = 0
     graph_list = []
     isTauEvent = len([i for i in chain.TruthJetIsTautagged if i > 0]) > 0
-    for ijet in range(chain.nJets):
+    for ijet in range(chain.nJets): # looping over jets in the event
         #if chain.JetPt[ijet] < 30 or abs(chain.JetEta[ijet]) > 3:
             #continue
-        n_core_tracks = 0
+        n_core_tracks = 0 # look at paper for explanation
         nodes = []
-        tower_nodes = []
-        track_nodes = []
+        tower_nodes = [] # energy deposit in calorimeter
+        track_nodes = [] # particle trajectory in detector (pT, eta, phi, z0, d0)
         # Match jet to truth jet that minimizes angular distance
         min_index = 0
-        if chain.nTruthJets > 0:
+        if chain.nTruthJets > 0: # truth jet reconstructed from truth information; want to see if reconstructed jet matches to a truth jet from a tau lepton
             min_dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[0])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[0])**2)
         for itruth in range(chain.nTruthJets):
             dR = math.sqrt(calc_dphi(chain.JetPhi[ijet],chain.TruthJetPhi[itruth])**2 + (chain.JetEta[ijet]-chain.TruthJetEta[itruth])**2)
@@ -89,7 +91,7 @@ for chain in data.read(input_path, int(args.initial_event), final_event):
             isTau = 0
             
         n_core_tracks = isTau
-        if isTauEvent and (n_core_tracks != 1 and n_core_tracks != 3):
+        if isTauEvent and (n_core_tracks != 1 and n_core_tracks != 3): # if a track is lost or have a different decay mode
             continue
         
 
@@ -140,35 +142,34 @@ for chain in data.read(input_path, int(args.initial_event), final_event):
                    chain.JetNumISOTracks[ijet],chain.JetMaxDRInCore[ijet],chain.JetTrackMass[ijet]]
         
         
-        if isTau or not args.signal:
-            if args.inclusive:
+        if args.inclusive:
+            track__info.append(track_nodes)
+            cluster__info.append(tower_nodes)
+            hlv__info.append(globals)
+            labels_.append( 1.0 if isTau else 0.0 )
+        else:
+            if n_core_tracks == 1:
+                track1_info.append(track_nodes)
+                cluster1_info.append(tower_nodes)
+                hlv1_info.append(globals)
+                labels1.append( 1.0 if isTau else 0.0 )
+            elif n_core_tracks == 3:
+                track3_info.append(track_nodes)
+                cluster3_info.append(tower_nodes)
+                hlv3_info.append(globals)
+                labels3.append( 1.0 if isTau else 0.0 )
+            else:
                 track__info.append(track_nodes)
                 cluster__info.append(tower_nodes)
                 hlv__info.append(globals)
                 labels_.append( 1.0 if isTau else 0.0 )
-            else:
-                if n_core_tracks == 1:
-                    track1_info.append(track_nodes)
-                    cluster1_info.append(tower_nodes)
-                    hlv1_info.append(globals)
-                    labels1.append( 1.0 if isTau else 0.0 )
-                elif n_core_tracks == 3:
-                    track3_info.append(track_nodes)
-                    cluster3_info.append(tower_nodes)
-                    hlv3_info.append(globals)
-                    labels3.append( 1.0 if isTau else 0.0 )
-                else:
-                    track__info.append(track_nodes)
-                    cluster__info.append(tower_nodes)
-                    hlv__info.append(globals)
-                    labels_.append( 1.0 if isTau else 0.0 )
-            
+        
 np.savez(output_path+"_inclusive.npz",track_info=np.array(track__info+track3_info+track1_info),\
     cluster_info=np.array(cluster__info+cluster3_info+cluster1_info),\
         hlv_info=np.array(hlv__info+hlv3_info+hlv1_info),labels=np.array(labels_+labels3+labels1))
-np.savez(output_path+"_3prong.npz",track_info=np.array(track3_info),cluster_info=np.array(cluster3_info),hlv_info=np.array(hlv3_info),labels=np.array(labels3))
-np.savez(output_path+"_1prong.npz",track_info=np.array(track1_info),cluster_info=np.array(cluster1_info),hlv_info=np.array(hlv1_info),labels=np.array(labels1))
-np.savez(output_path+"_other.npz",track_info=np.array(track__info),cluster_info=np.array(cluster__info),hlv_info=np.array(hlv__info),labels=np.array(labels_))
+#np.savez(output_path+"_3prong.npz",track_info=np.array(track3_info),cluster_info=np.array(cluster3_info),hlv_info=np.array(hlv3_info),labels=np.array(labels3))
+#np.savez(output_path+"_1prong.npz",track_info=np.array(track1_info),cluster_info=np.array(cluster1_info),hlv_info=np.array(hlv1_info),labels=np.array(labels1))
+#np.savez(output_path+"_other.npz",track_info=np.array(track__info),cluster_info=np.array(cluster__info),hlv_info=np.array(hlv__info),labels=np.array(labels_))
 
 t1 = time.time()
 print(f">>> Finished writing into {output_path} in {(t1-t0)/60:.2f}min.")

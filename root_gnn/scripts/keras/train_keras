@@ -10,10 +10,6 @@ from keras.models import load_model
 import tensorflow as tf
 import itertools
 
-from energyflow.utils import to_categorical
-from energyflow.archs import PFN
-
-
 from root_gnn.utils import pad_input
 
 
@@ -28,7 +24,7 @@ def positional_encoding(length, depth):
 
     pos_encoding = np.concatenate(
       [np.sin(angle_rads), np.cos(angle_rads)],
-      axis=-1) 
+      axis=-1)
 
     return tf.cast(pos_encoding, dtype=tf.float32)
 
@@ -185,6 +181,120 @@ def AttentionEncoder(
     else:
         return Model(inputs=[x_1, x_3], outputs=y)
 
+
+def LiquidEncoder (
+        input_shape_1, input_shape_2, input_shape_3,
+        dense_units_1_1=32, dense_units_1_2=32,
+        ltc_units_1_1=32, ltc_units_1_2=32,
+        dense_units_2_1=32, dense_units_2_2=32,
+        ltc_units_2_1=32, ltc_units_2_2=32,
+        dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16,
+        merge_dense_units_1=64, merge_dense_units_2=32,
+        backwards=False, mask_value=0.0, unroll=True, incl_clusters=True):
+    """
+    TODO: Documentation
+    """
+    from ncps.tf import LTC
+
+    # Branch 1
+    x_1 = Input(shape=input_shape_1)
+    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x_1)
+    shared_dense_1_2 = Dense(dense_units_1_2, activation="relu")(shared_dense_1_1)
+    ltc_1_1 = LTC(ltc_units_1_1, unroll=unroll, go_backwards=backwards,
+                    activation="relu", return_sequences=True)(shared_dense_1_2)
+    ltc_1_2 = LTC(ltc_units_1_2, unroll=unroll, go_backwards=backwards,
+                    activation="relu")(ltc_1_1)
+
+    # Branch 2
+    if incl_clusters:
+        x_2 = Input(shape=input_shape_2)
+        shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x_2)
+        shared_dense_2_2 = Dense(dense_units_2_2, activation="relu")(shared_dense_2_1)
+        ltc_2_1 = LTC(ltc_units_2_1, unroll=unroll, go_backwards=backwards,
+                        activation="relu", return_sequences=True)(shared_dense_2_2)
+        ltc_2_2 = LTC(ltc_units_2_2, unroll=unroll, go_backwards=backwards,
+                        activation="relu")(ltc_2_1)
+
+    # Branch 3
+    x_3 = Input(shape=input_shape_3)
+    dense_3_1 = Dense(dense_units_3_1, activation="relu")(x_3)
+    dense_3_2 = Dense(dense_units_3_2, activation="relu")(dense_3_1)
+    dense_3_3 = Dense(dense_units_3_3, activation="relu")(dense_3_2)
+
+    # Merge
+    if incl_clusters:
+        merged_branches = concatenate([ltc_1_2, ltc_2_2, dense_3_3])
+    else:
+        merged_branches = concatenate([ltc_1_2, dense_3_3])
+
+    merge_dense_1 = Dense(merge_dense_units_1, activation="relu")(
+        merged_branches)
+    merge_dense_2 = Dense(merge_dense_units_2, activation="relu")(
+        merge_dense_1)
+    y = Dense(1, activation="sigmoid")(merge_dense_2)
+
+    if incl_clusters:
+        return Model(inputs=[x_1, x_2, x_3], outputs=y)
+    else:
+        return Model(inputs=[x_1, x_3], outputs=y)
+
+
+def AutoWiredLiquidEncoder (
+        input_shape_1, input_shape_2, input_shape_3,
+        dense_units_1_1=32, dense_units_1_2=32,
+        ltc_units_1_1=32, ltc_units_1_2=32,
+        dense_units_2_1=32, dense_units_2_2=32,
+        ltc_units_2_1=32, ltc_units_2_2=32,
+        dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16,
+        merge_dense_units_1=64, merge_dense_units_2=32,
+        backwards=False, mask_value=0.0, unroll=True, incl_clusters=True):
+    """
+    TODO: Documentation
+    """
+    from ncps.wirings import AutoNCP
+    from ncps.tf import LTC
+
+    # Branch 1
+    x_1 = Input(shape=input_shape_1)
+    shared_dense_1_1 = Dense(dense_units_1_1, activation="relu")(x_1)
+    shared_dense_1_2 = Dense(dense_units_1_2, activation="relu")(shared_dense_1_1)
+    ltc_1_1 = LTC(AutoNCP(ltc_units_1_1, ltc_units_1_1*0.3), unroll=unroll, go_backwards=backwards,
+                    activation="relu", return_sequences=True)(shared_dense_1_2)
+    ltc_1_2 = LTC(AutoNCP(ltc_units_1_2, ltc_units_1_2*0.3), unroll=unroll, go_backwards=backwards,
+                    activation="relu")(ltc_1_1)
+
+    # Branch 2
+    if incl_clusters:
+        x_2 = Input(shape=input_shape_2)
+        shared_dense_2_1 = Dense(dense_units_2_1, activation="relu")(x_2)
+        shared_dense_2_2 = Dense(dense_units_2_2, activation="relu")(shared_dense_2_1)
+        ltc_2_1 = LTC(AutoNCP(ltc_units_2_1, ltc_units_2_1*0.3), unroll=unroll, go_backwards=backwards,
+                        activation="relu", return_sequences=True)(shared_dense_2_2)
+        ltc_2_2 = LTC(AutoNCP(ltc_units_2_2, ltc_units_2_2*0.3), unroll=unroll, go_backwards=backwards,
+                        activation="relu")(ltc_2_1)
+
+    # Branch 3
+    x_3 = Input(shape=input_shape_3)
+    dense_3_1 = Dense(dense_units_3_1, activation="relu")(x_3)
+    dense_3_2 = Dense(dense_units_3_2, activation="relu")(dense_3_1)
+    dense_3_3 = Dense(dense_units_3_3, activation="relu")(dense_3_2)
+
+    # Merge
+    if incl_clusters:
+        merged_branches = concatenate([ltc_1_2, ltc_2_2, dense_3_3])
+    else:
+        merged_branches = concatenate([ltc_1_2, dense_3_3])
+
+    merge_dense_1 = Dense(merge_dense_units_1, activation="relu")(
+        merged_branches)
+    merge_dense_2 = Dense(merge_dense_units_2, activation="relu")(
+        merge_dense_1)
+    y = Dense(1, activation="sigmoid")(merge_dense_2)
+
+    if incl_clusters:
+        return Model(inputs=[x_1, x_2, x_3], outputs=y)
+    else:
+        return Model(inputs=[x_1, x_3], outputs=y)
     
     
 if __name__ == "__main__":
@@ -239,12 +349,19 @@ if __name__ == "__main__":
         elif args.name == 'attn_pos':
             rnn_model = AttentionEncoder(input_shape_1, input_shape_2, input_shape_3, position_encoding=True)
         elif args.name == 'pfn':
+            from energyflow.utils import to_categorical
+            from energyflow.archs import PFN
+
             x = pad_input(x[0], x[1])
             y = to_categorical(y, num_classes=2)
             feature_shape = (input_shape_1[0] + input_shape_2[0], max(input_shape_1[1], input_shape_2[1]))
             Phi_sizes=(100, 128, 128)
             F_sizes = (100, 100, 100)
             rnn_model = PFN(input_dim=feature_shape[-1], Phi_sizes=Phi_sizes, F_sizes=F_sizes)
+        elif args.name == 'ltc':
+            rnn_model = LiquidEncoder(input_shape_1, input_shape_2, input_shape_3)
+        elif args.name == 'auto_wired_ltc':
+            rnn_model = AutoWiredLiquidEncoder(input_shape_1, input_shape_2, input_shape_3)
              
     
     filepath = args.model_path

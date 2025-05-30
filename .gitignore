@@ -8,3 +8,7 @@
 */*.eps
 trained_results
 backup
+build
+*.out
+*.npz
+*/read_test_npz.py

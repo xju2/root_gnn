@@ -14,12 +14,13 @@ parser.add_argument('model_path', default=None)
 parser.add_argument('--input','-i',default=None)
 parser.add_argument('--output','-o',default=None)
 parser.add_argument('-l', default=1)
-parser.add_argument('--pfn', action='store_true')
-    
+parser.add_argument('--pfn', action='store_true') 
     
 if __name__ == "__main__":
     args = parser.parse_args()
+    print(args.input)
     data = np.load(args.input)
+
     class LogLoss(losses.BinaryCrossentropy):
         def __init__(self, real_global_weight=args.l, fake_global_weight=1, **kwargs):
             super(LogLoss, self).__init__(**kwargs)
@@ -38,12 +39,16 @@ if __name__ == "__main__":
         # FIXME: pass in config without manually set the weights
     model.summary()
 
-    
-    len_data = len(data['track_info'])//500*500
+    batch_size = 500
+    if len(data['track_info']) < batch_size:
+        batch_size = len(data['track_info'])
+
+    len_data = len(data['track_info'])//batch_size*batch_size
+
     if args.pfn:
-        predictions = model.predict(pad_input(data['track_info'][:len_data],data['cluster_info'][:len_data]), batch_size=500)[:,1]
+        predictions = model.predict(pad_input(data['track_info'][:len_data],data['cluster_info'][:len_data]), batch_size=batch_size)[:,1]
     else:
-        predictions = model.predict([data['track_info'][:len_data],data['cluster_info'][:len_data],data['hlv_info'][:len_data]], batch_size=500)
+        predictions = model.predict([data['track_info'][:len_data],data['cluster_info'][:len_data],data['hlv_info'][:len_data]], batch_size=batch_size)
     
     truth_info = data['labels']
     np.savez(args.output,predictions=predictions,truth_info=truth_info)
