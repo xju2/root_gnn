@@ -14,8 +14,6 @@ def plot_pred(name):
     other_npz = f'{name}_qcd2.npz'
     other2_npz = f'{name}_qcd3.npz'
     output_npz = f'{name}.npz'
-    DITAU_npz = f'{name}_DITAU.npz'
-    QCD_npz = f'{name}_QCD.npz'
     has_other = False
 
     ditau_file = np.load(ditau_npz)
