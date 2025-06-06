@@ -3,7 +3,6 @@ import numpy as np
 import argparse
 import os
 
-
 parser = argparse.ArgumentParser(description='Combine npz files for RNN classifier')
 parser.add_argument('--npz', nargs='+', help='npz files to merge')
 parser.add_argument('--output-path','-o', help='Path name for the output file')

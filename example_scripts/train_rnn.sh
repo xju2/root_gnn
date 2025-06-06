@@ -6,11 +6,11 @@
 root_dir=/global/cfs/cdirs/m3443/data/TauStudies/v5
 npz_dir=/global/cfs/cdirs/m3443/usr/akaul/tau_id/rnn_1/npz 
 
-# create_npz ${root_dir}/ditau_train_final2.root ${npz_dir}/ditau --signal --inclusive
-# create_npz ${root_dir}/qcd_train.root ${npz_dir}/qcd --inclusive
+create_npz ${root_dir}/ditau_train_final2.root ${npz_dir}/ditau --signal --inclusive
+create_npz ${root_dir}/qcd_train.root ${npz_dir}/qcd --inclusive
 
-# split_npz ${npz_dir}/ditau_inclusive.npz 0.2
-# split_npz ${npz_dir}/qcd_inclusive.npz 0.2
+split_npz ${npz_dir}/ditau_inclusive.npz 0.2
+split_npz ${npz_dir}/qcd_inclusive.npz 0.2
 
 # echo "Testing files created"
 

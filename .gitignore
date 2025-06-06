@@ -12,3 +12,5 @@ build
 *.out
 *.npz
 */read_test_npz.py
+wandb
+keras_models

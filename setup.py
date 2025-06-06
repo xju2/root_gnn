@@ -20,9 +20,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "tensorflow==2.6.0",
-        "keras==2.6.0",
-        "tensorflow_addons",
+        "torch",
         "graph_nets@ https://github.com/deepmind/graph_nets/tarball/master",
         "future",
         "ncps",
@@ -37,7 +35,9 @@ setup(
         "scikit-learn",
         'pyyaml>=5.1',
         'tqdm',
-        'energyflow'
+        'energyflow', 
+        'wandb',
+        'torchmetrics'
     ],
     package_data = {
         "root_gnn": ["config/*.yaml"]

@@ -64,7 +64,6 @@ class LogLoss(losses.BinaryCrossentropy):
             + (1 - y_true) * self.w_global_fake
         return super(LogLoss, self).__call__(y_true, y_pred, sample_weight=global_weights)
         
-    
 def RecurrentEncoder(
         input_shape_1, input_shape_2, input_shape_3,
         dense_units_1_1=32, dense_units_1_2=32,
