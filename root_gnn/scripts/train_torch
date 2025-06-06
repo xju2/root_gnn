@@ -10,6 +10,7 @@ from torch.nn.utils import rnn
 from sklearn.model_selection import train_test_split
 from ncps.torch import LTC
 from ncps.wirings import AutoNCP
+import wandb
 
  
 class RecurrentEncoder(torch.nn.Module):
@@ -102,8 +103,20 @@ if __name__ == "__main__":
     parser.add_argument('--loss_weights', '-l', default=None, type=int, help='Loss weight')
     parser.add_argument('--name', '-n', default=None, help='model name')
     parser.add_argument('--batch_size', '-b', default=500, type=int, help='Batch size')
+    parser.add_argument('--patience', '-p', default=10, type=int, help='Patience')
 
     args = parser.parse_args()
+
+
+    config = {
+        "learning_rate": 1e-3,
+        "batch_size": args.batch_size,
+        "loss_weights": args.loss_weights,
+        "name": args.name,
+        "patience": args.patience,
+    }
+    train_run = wandb.init(project="root-gnn", config=config, notes="First train run", tags=["torch", "ltc", "run1", "train"])
+    val_run = wandb.init(project="root-gnn", config=config, notes="First run", tags=["torch", "ltc", "run1", "val"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_shape_1 = (10,6)
@@ -114,7 +127,7 @@ if __name__ == "__main__":
     qcd_data = np.load(args.qcd_path)
     all_data = np.concatenate([ditau_data, qcd_data])
     
-    len_data = len()
+    len_data = len(all_data['track_info'])
     track_info = all_data['track_info']
     cluster_info = all_data['cluster_info']
     hlv_info = all_data['hlv_info']
@@ -148,31 +161,33 @@ if __name__ == "__main__":
     train_dataset = TensorDataset(track_train_tensor, cluster_train_tensor, hlv_train_tensor, y_train_tensor)
     val_dataset = TensorDataset(track_val_tensor, cluster_val_tensor, hlv_val_tensor, y_val_tensor)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=True)
 
 
-    if args.model_path is not None:
-        rnn_model = torch.load(args.model_path)
+    if config['model_path'] is not None:
+        rnn_model = torch.load(config['model_path'])
     else:
-        if args.name is None:
+        if config['name'] is None:
             rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
-        elif args.name == 'ltc':
+        elif config['name'] == 'ltc':
             rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=LTC)
 
     rnn_model.to(device)
 
-    filepath = args.model_path
     # TODO: Let an already trained model be loaded and continue training
-    if args.loss_weights is not None:
-        loss = nn.BCELoss(pos_weight=torch.tensor([args.loss_weights], device=device))
+    if config['loss_weights'] is not None:
+        loss = nn.BCELoss(pos_weight=torch.tensor([config['loss_weights']], device=device))
     else:
         loss = nn.BCELoss()
     
-    optimizer = optim.Adam(rnn_model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(rnn_model.parameters(), lr=config['learning_rate'])
 
     train_auroc_metric = AUROC(task='binary').to(device)
     val_auroc_metric = AUROC(task='binary').to(device)
+
+    train_run.watch(rnn_model, log_freq=100)
+    val_run.watch(rnn_model, log_freq=100)
 
     # Training Loop
     best_val_loss = float('inf') # for early stopping
@@ -192,12 +207,14 @@ if __name__ == "__main__":
             running_loss += loss_value.item()
             train_auroc_metric.update(outputs, y_batch.int())
 
-            if batch_idx % 20 == 0:
+            if batch_idx % 100 == 0:
                 print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {running_loss/20:.4f}, Train AUROC: {train_auroc_metric.compute():.4f}")
+
             
         avg_train_loss = running_loss / len(train_loader)
         epoch_train_auroc = train_auroc_metric.compute().item()
-        print() # New line after batch logs
+        print(f"Epoch {epoch+1}, Train Loss: {avg_train_loss:.4f}, Train AUROC: {epoch_train_auroc:.4f}")
+        train_run.log({"train_loss": avg_train_loss, "train_auroc": epoch_train_auroc})
 
         rnn_model.eval()
         val_running_loss = 0.0
@@ -212,13 +229,13 @@ if __name__ == "__main__":
                 val_auroc_metric.update(val_outputs, y_batch.int())
                 val_running_loss += val_loss_value.item()
 
-                if batch_idx % 20 == 0:
+                if batch_idx % 100 == 0:
                     print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Val Loss: {val_running_loss/20:.4f}, Val AUROC: {val_auroc_metric.compute():.4f}")
 
         avg_val_loss = val_running_loss / len(val_loader)
         epoch_val_auroc = val_auroc_metric.compute().item()
-        print(f"Epoch {epoch+1}, Train Loss: {avg_train_loss:.4f}, Train AUROC: {epoch_train_auroc:.4f}, Val Loss: {avg_val_loss:.4f}, Val AUROC: {epoch_val_auroc:.4f}")
-
+        print(f"Epoch {epoch+1}, Val Loss: {avg_val_loss:.4f}, Val AUROC: {epoch_val_auroc:.4f}")
+        val_run.log({"val_loss": avg_val_loss, "val_auroc": epoch_val_auroc})
 
         # model checkpointing (save the best model)
         if avg_val_loss < best_val_loss:
@@ -239,6 +256,10 @@ if __name__ == "__main__":
     print(f"Best validation loss: {best_val_loss:.4f}")
     if args.model_path is not None:
         print(f"Model saved to {args.model_path}")
+        train_run.log_artifact(args.model_path)
     else:
         print("Model not saved")
+
+    train_run.finish()
+    val_run.finish()
 

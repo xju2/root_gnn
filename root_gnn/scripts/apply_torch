@@ -18,9 +18,11 @@ from train_torch import RecurrentEncoder
 
 from torch.nn import LSTM
 from ncps import LTC
+import wandb
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 from torchmetrics import AUROC, Accuracy
+
 
 # npz in, npz out, model in
 
@@ -73,6 +75,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     data = np.load(args.input)
 
+
+    config = {
+        "name": args.name,
+        "model_path": args.model_path,
+        "input": args.input,
+        "output": args.output,
+    }
+    run = wandb.init(project="root-gnn", config=config, notes="First run", tags=["torch", "ltc", "run1", "apply"])
+
     input_shape_1 = (10, 6)
     input_shape_2 = (6, 4)
     input_shape_3 = (8, )
@@ -117,3 +128,4 @@ if __name__ == "__main__":
     print(f"  Test AUROC:    {metrics.get('auroc', 'N/A'):.4f}")
     print("--------------------------\n") 
     np.savez(args.output,predictions=predictions,truth_info=labels_tensor.cpu().numpy())
+    run.finish()
