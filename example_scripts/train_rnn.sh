@@ -12,7 +12,7 @@ create_npz ${root_dir}/qcd_train.root ${npz_dir}/qcd --inclusive
 split_npz ${npz_dir}/ditau_inclusive.npz 0.2
 split_npz ${npz_dir}/qcd_inclusive.npz 0.2
 
-# echo "Testing files created"
+# echo "Testing files created
 
 echo "Training RNN"
 

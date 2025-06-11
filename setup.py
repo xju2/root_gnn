@@ -63,6 +63,8 @@ setup(
         'root_gnn/scripts/keras/create_npz',
         'root_gnn/scripts/keras/merge_npz',
         'root_gnn/scripts/keras/train_keras',
-        'root_gnn/scripts/keras/apply_keras'
+        'root_gnn/scripts/keras/apply_keras',
+        'root_gnn/scripts/pytorch/train_torch.py',
+        'root_gnn/scripts/pytorch/apply_torch.py'
     ],
 )

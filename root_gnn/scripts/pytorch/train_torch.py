@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from ncps.torch import LTC
 from ncps.wirings import AutoNCP
 import wandb
+import os
 
  
 class RecurrentEncoder(torch.nn.Module):
@@ -45,7 +46,7 @@ class RecurrentEncoder(torch.nn.Module):
         total_input_size = lstm_units_1_2 + dense_units_3_3
         total_input_size += lstm_units_2_2 if incl_clusters else 0
 
-        self.merge_branches = torch.nn.Linear(total_input_size, merge_dense_units_1)
+        self.merge_branches_1 = torch.nn.Linear(total_input_size, merge_dense_units_1)
         self.merge_branches_2 = torch.nn.Linear(merge_dense_units_1, merge_dense_units_2)
         self.merge_branches_3 = torch.nn.Linear(merge_dense_units_2, 1)
 
@@ -63,9 +64,9 @@ class RecurrentEncoder(torch.nn.Module):
 
         merged_hidden_states = torch.cat(all_features, dim=1)
         
-        output = nn.functional.relu(self.merge_dense_1(merged_hidden_states))
-        output = nn.functional.relu(self.merge_dense_2(output))
-        output = torch.sigmoid(self.output_layer(output))
+        output = nn.functional.relu(self.merge_branches_1(merged_hidden_states))
+        output = nn.functional.relu(self.merge_branches_2(output))
+        output = torch.sigmoid(self.merge_branches_3(output))
 
         return output
     
@@ -92,21 +93,19 @@ class RecurrentEncoder(torch.nn.Module):
         hidden_state = nn.functional.relu(self.dense_3_3(hidden_state))
         return hidden_state
 
-    def merge_branches(self, out_branch_1, out_branch_2, out_branch_3):
-        return nn.functional.relu(self.merge_dense_1(torch.cat([out_branch_1, out_branch_2, out_branch_3], dim=1)))
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create sequences for RNN')
     parser.add_argument('ditau_path')
     parser.add_argument('qcd_path')
-    parser.add_argument('--model_path','-o',default=None, help='Model path')
+    parser.add_argument('--model-path','-m',default=None, help='Model path')
     parser.add_argument('--loss_weights', '-l', default=None, type=int, help='Loss weight')
     parser.add_argument('--name', '-n', default=None, help='model name')
     parser.add_argument('--batch_size', '-b', default=500, type=int, help='Batch size')
     parser.add_argument('--patience', '-p', default=10, type=int, help='Patience')
+    parser.add_argument('--epochs', default=100, type=int, help='Number of epochs')
 
     args = parser.parse_args()
-
 
     config = {
         "learning_rate": 1e-3,
@@ -125,7 +124,9 @@ if __name__ == "__main__":
 
     ditau_data = np.load(args.ditau_path)
     qcd_data = np.load(args.qcd_path)
-    all_data = np.concatenate([ditau_data, qcd_data])
+    all_data = {key: np.concatenate([ditau_data[key], qcd_data[key]]) for key in ditau_data.files}
+    ditau_data.close()
+    qcd_data.close()
     
     len_data = len(all_data['track_info'])
     track_info = all_data['track_info']
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     print(f"Data loaded: {len_data} events")
 
     train_val_split = 0.12
-    indices = np.arange(all_data.shape[0])
+    indices = np.arange(len_data)
     train_indices, val_indices = train_test_split(indices, test_size=train_val_split, shuffle=True)
 
     track_train, track_val = track_info[train_indices], track_info[val_indices]
@@ -165,13 +166,16 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=True)
 
 
-    if config['model_path'] is not None:
-        rnn_model = torch.load(config['model_path'])
-    else:
-        if config['name'] is None:
-            rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
-        elif config['name'] == 'ltc':
-            rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=LTC)
+    if config['name'] == 'rnn':
+        rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
+    elif config['name'] == 'ltc':
+        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=LTC)
+
+    if args.model_path:
+        model_file = os.path.join(args.model_path, "model.pt")
+        if os.path.isfile(model_file):
+            print(f"Loading model from {model_file}")
+            rnn_model.load_state_dict(torch.load(model_file, map_location=device))
 
     rnn_model.to(device)
 
@@ -191,6 +195,7 @@ if __name__ == "__main__":
 
     # Training Loop
     best_val_loss = float('inf') # for early stopping
+    epochs_no_improve = 0
     for epoch in range(args.epochs):
         rnn_model.train()
         running_loss = 0.0
@@ -201,14 +206,15 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
             outputs = rnn_model(track_batch, hlv_batch, cluster_batch)
-            loss_value = loss(outputs, y_batch)
+            loss_value = loss(outputs, y_batch.unsqueeze(1))
             loss_value.backward()
             optimizer.step()
             running_loss += loss_value.item()
             train_auroc_metric.update(outputs, y_batch.int())
 
-            if batch_idx % 100 == 0:
-                print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {running_loss/20:.4f}, Train AUROC: {train_auroc_metric.compute():.4f}")
+            if batch_idx > 0 and batch_idx % 100 == 0:
+                print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Train Loss: {running_loss/100:.4f}, Train AUROC: {train_auroc_metric.compute():.4f}")
+                running_loss = 0.0
 
             
         avg_train_loss = running_loss / len(train_loader)
@@ -225,12 +231,13 @@ if __name__ == "__main__":
                 track_batch, cluster_batch, hlv_batch, y_batch = track_batch.to(device), cluster_batch.to(device), hlv_batch.to(device), y_batch.to(device)
 
                 val_outputs = rnn_model(track_batch, hlv_batch, cluster_batch)
-                val_loss_value = loss(val_outputs, y_batch)
+                val_loss_value = loss(val_outputs, y_batch.unsqueeze(1))
                 val_auroc_metric.update(val_outputs, y_batch.int())
                 val_running_loss += val_loss_value.item()
 
-                if batch_idx % 100 == 0:
-                    print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Val Loss: {val_running_loss/20:.4f}, Val AUROC: {val_auroc_metric.compute():.4f}")
+                if batch_idx > 0 and batch_idx % 100 == 0:
+                    print(f"Epoch {epoch+1}, Batch {batch_idx+1}, Val Loss: {val_running_loss/100:.4f}, Val AUROC: {val_auroc_metric.compute():.4f}")
+                    val_running_loss = 0.0
 
         avg_val_loss = val_running_loss / len(val_loader)
         epoch_val_auroc = val_auroc_metric.compute().item()
@@ -241,7 +248,11 @@ if __name__ == "__main__":
         if avg_val_loss < best_val_loss:
             print(f"Validation loss improved from {best_val_loss:.4f} to {avg_val_loss:.4f}. Saving model to {args.model_path}")
             best_val_loss = avg_val_loss
-            torch.save(rnn_model.state_dict(), args.model_path)
+            if args.model_path:
+                if not os.path.isdir(args.model_path):
+                    os.makedirs(args.model_path)
+                model_file = os.path.join(args.model_path, "model.pt")
+                torch.save(rnn_model.state_dict(), model_file)
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -256,7 +267,9 @@ if __name__ == "__main__":
     print(f"Best validation loss: {best_val_loss:.4f}")
     if args.model_path is not None:
         print(f"Model saved to {args.model_path}")
-        train_run.log_artifact(args.model_path)
+        model_file = os.path.join(args.model_path, "model.pt")
+        if os.path.exists(model_file):
+            train_run.log_artifact(model_file, name='model', type='model')
     else:
         print("Model not saved")
 

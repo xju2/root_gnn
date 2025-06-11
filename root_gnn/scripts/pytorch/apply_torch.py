@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
+from train_torch import RecurrentEncoder
+print("Imported RecurrentEncoder")
+
 import argparse
 import numpy as np
-
-# had an import error with train_torch.py, so I added this to fix the import error
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 import torch
@@ -14,10 +13,9 @@ from torch import tensor
 from torch import load
 from torch.nn import BCELoss
 from torch.utils.data import DataLoader, TensorDataset
-from train_torch import RecurrentEncoder
 
 from torch.nn import LSTM
-from ncps import LTC
+from ncps.torch import LTC
 import wandb
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument('model_path', default=None)
     parser.add_argument('--input','-i',default=None)
     parser.add_argument('--output','-o',default=None)
-    parser.add_argument('-l', default=1)
+    parser.add_argument('--loss_weights','-l', default=1)
     parser.add_argument('--name', '-n', default="rnn")
 
     args = parser.parse_args()
@@ -94,7 +92,8 @@ if __name__ == "__main__":
         lstm_block = LSTM
 
     model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=lstm_block)
-    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model_file = os.path.join(args.model_path, "model.pt")
+    model.load_state_dict(torch.load(model_file, map_location=device))
 
     model.to(device)
 
