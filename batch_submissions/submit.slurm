@@ -9,7 +9,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --qos=regular
 
-bash train_rnn.sh
+bash rnn.sh
 
 SCRIPT_EXIT_CODE=$?
 
