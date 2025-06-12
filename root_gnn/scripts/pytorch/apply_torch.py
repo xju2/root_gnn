@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     input_shape_1 = (10, 6)
     input_shape_2 = (6, 4)
-    input_shape_3 = (8, )
+    input_shape_3 =  8
 
     if args.name == "ltc":
         lstm_block = LTC
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     inference_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     if args.loss_weights is not None:
-        loss_func = torch.nn.BCELoss(pos_weight=torch.tensor([args.loss_weights], device=device))
+        loss_func = torch.nn.BCELoss(weight=torch.tensor([args.loss_weights], device=device))
     else:
         loss_func = torch.nn.BCELoss()
 

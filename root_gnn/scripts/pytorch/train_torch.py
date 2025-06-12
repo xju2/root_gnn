@@ -39,7 +39,7 @@ class RecurrentEncoder(torch.nn.Module):
             self.lstm_2_1 = nn.LSTM(input_size=dense_units_2_2, hidden_size=lstm_units_2_1, num_layers=1, batch_first=True)
             self.lstm_2_2 = nn.LSTM(input_size=lstm_units_2_1, hidden_size=lstm_units_2_2, num_layers=1, batch_first=True)
 
-        self.dense_3_1 = nn.Linear(input_shape_3[0], dense_units_3_1)
+        self.dense_3_1 = nn.Linear(input_shape_3, dense_units_3_1)
         self.dense_3_2 = nn.Linear(dense_units_3_1, dense_units_3_2)
         self.dense_3_3 = nn.Linear(dense_units_3_2, dense_units_3_3)
 
@@ -181,7 +181,7 @@ if __name__ == "__main__":
 
     # TODO: Let an already trained model be loaded and continue training
     if config['loss_weights'] is not None:
-        loss = nn.BCELoss(pos_weight=torch.tensor([config['loss_weights']], device=device))
+        loss = nn.BCELoss(weight=torch.tensor([config['loss_weights']], device=device))
     else:
         loss = nn.BCELoss()
     
