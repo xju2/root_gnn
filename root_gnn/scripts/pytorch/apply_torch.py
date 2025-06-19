@@ -24,7 +24,7 @@ from torchmetrics import AUROC, Accuracy
 
 # npz in, npz out, model in
 
-def evaluate(model, dataloader, device, loss_func, incl_clusters=True):
+def evaluate(model, dataloader, device, loss_func, incl_clusters=True, run=None):
     model.eval()
 
     total_loss = 0
@@ -54,6 +54,9 @@ def evaluate(model, dataloader, device, loss_func, incl_clusters=True):
             all_predictions.append(outputs.cpu().numpy())
             all_labels.append(labels_info.cpu().numpy())
 
+            if run is not None:
+                run.log({"test_loss": loss.item(), "test_auroc": auroc.compute().item(), "test_accuracy": accuracy.compute().item()})
+
     avg_loss = total_loss / len(dataloader)
     final_metrics = {'loss': avg_loss, 'auroc': auroc.compute().item(), 'accuracy': accuracy.compute().item()}
 
@@ -67,8 +70,8 @@ if __name__ == "__main__":
     parser.add_argument('model_path', default=None)
     parser.add_argument('--input','-i',default=None)
     parser.add_argument('--output','-o',default=None)
-    parser.add_argument('--loss_weights','-l', default=1)
-    parser.add_argument('--name', '-n', default="rnn")
+    parser.add_argument('--loss_weights','-l', default=1, type=float)
+    parser.add_argument('--name', '-n', default="lstm")
 
     args = parser.parse_args()
     data = np.load(args.input)
@@ -91,7 +94,7 @@ if __name__ == "__main__":
     else:
         lstm_block = LSTM
 
-    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=lstm_block)
+    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=lstm_block)
     model_file = os.path.join(args.model_path, "model.pt")
     model.load_state_dict(torch.load(model_file, map_location=device))
 
@@ -118,7 +121,7 @@ if __name__ == "__main__":
     else:
         loss_func = torch.nn.BCELoss()
 
-    predictions, metrics = evaluate(model, inference_loader, device, loss_func)
+    predictions, metrics = evaluate(model, inference_loader, device, loss_func, run=run)
 
 
     print("\n--- Evaluation Results ---")
@@ -126,5 +129,5 @@ if __name__ == "__main__":
     print(f"  Test Accuracy: {metrics.get('accuracy', 'N/A'):.4f}")
     print(f"  Test AUROC:    {metrics.get('auroc', 'N/A'):.4f}")
     print("--------------------------\n") 
-    np.savez(args.output,predictions=predictions,truth_info=labels_tensor.cpu().numpy())
+    np.savez(args.output,track=track_tensor.cpu().numpy(), cluster=cluster_tensor.cpu().numpy(), hlv=hlv_tensor.cpu().numpy(), predictions=predictions,truth_info=labels_tensor.cpu().numpy())
     run.finish()

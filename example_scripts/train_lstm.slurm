@@ -9,7 +9,8 @@
 #SBATCH --mail-type=ALL
 #SBATCH --qos=regular
 
-bash train_torch.sh
+# edit this line to change which model is being used
+bash train_torch.sh "lstm"
 
 SCRIPT_EXIT_CODE=$?
 

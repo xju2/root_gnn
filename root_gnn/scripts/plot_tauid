@@ -10,20 +10,13 @@ def plot_pred(name):
     if os.path.exists(name):
         name = f"{name}"
     ditau_npz = f'{name}_ditau.npz'
-    qcd_npz = f'{name}_qcd1.npz'
-    other_npz = f'{name}_qcd2.npz'
-    other2_npz = f'{name}_qcd3.npz'
+    qcd_npz = f'{name}_qcd.npz'
     output_npz = f'{name}.npz'
-    has_other = False
 
     ditau_file = np.load(ditau_npz)
     
 
     qcd_file = np.load(qcd_npz)
-    if os.path.exists(other_npz) and os.path.exists(other2_npz):
-        other_file = np.load(other_npz)
-        other2_file = np.load(other2_npz)
-        has_other = True
     n_ditau = len(ditau_file['predictions'])
     #n_ditau = 7937
     ditau_pred = [] 
@@ -45,16 +38,6 @@ def plot_pred(name):
 
 
     n_qcd = len(qcd_file['predictions'])
-    # if has_other:
-        # n_qcd += len(other_file['predictions']) + len(other2_file['predictions'])
-        # ori_qcd_pred = np.concatenate([qcd_file['predictions'], 
-                                       # other_file['predictions'],
-                                       # other2_file['predictions']]) 
-        # ori_qcd_truth = np.concatenate([qcd_file['truth_info'],
-                                        # other_file['truth_info'],
-                                        # other2_file['truth_info']])
-    # else:
-        # print(">>> Dataset only has 1 ditau and 1 qcd file!")
     ori_qcd_pred = qcd_file['predictions'].squeeze()
     ori_qcd_truth = qcd_file['truth_info']
 

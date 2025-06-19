@@ -22,7 +22,7 @@ class RecurrentEncoder(torch.nn.Module):
         lstm_units_2_1=32, lstm_units_2_2=32, \
         dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16, \
         merge_dense_units_1=64, merge_dense_units_2=32, \
-        incl_clusters=True, lstm_block=nn.LSTM, wirings=False):
+        incl_clusters=True, rnn_block=nn.LSTM, wirings=False, ltc_block=False):
         super(RecurrentEncoder, self).__init__()
         self.incl_clusters = incl_clusters
 
@@ -30,14 +30,24 @@ class RecurrentEncoder(torch.nn.Module):
         self.shared_dense_1_2 = torch.nn.Linear(dense_units_1_1, dense_units_1_2)
 
         #TODO: Add conditional for wirings with AutoNCP    
-        self.lstm_1_1 = lstm_block(input_size=dense_units_1_2, hidden_size=lstm_units_1_1, num_layers=1, batch_first=True)
-        self.lstm_1_2 = lstm_block(input_size=lstm_units_1_1, hidden_size=lstm_units_1_2, num_layers=1, batch_first=True)
+        if ltc_block:
+            self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, units=lstm_units_1_1, num_layers=1, batch_first=True)
+            self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, units=lstm_units_1_2, num_layers=1, batch_first=True)
+        else:
+            self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, hidden_size=lstm_units_1_1, num_layers=1, batch_first=True)
+            self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, hidden_size=lstm_units_1_2, num_layers=1, batch_first=True)
+
 
         if incl_clusters:
             self.shared_dense_2_1 = torch.nn.Linear(input_shape_2[1], dense_units_2_1)
             self.shared_dense_2_2 = torch.nn.Linear(dense_units_2_1, dense_units_2_2)
-            self.lstm_2_1 = nn.LSTM(input_size=dense_units_2_2, hidden_size=lstm_units_2_1, num_layers=1, batch_first=True)
-            self.lstm_2_2 = nn.LSTM(input_size=lstm_units_2_1, hidden_size=lstm_units_2_2, num_layers=1, batch_first=True)
+
+            if ltc_block:
+                self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, units=lstm_units_2_1, num_layers=1, batch_first=True)
+                self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, units=lstm_units_2_2, num_layers=1, batch_first=True)
+            else:
+                self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, hidden_size=lstm_units_2_1, num_layers=1, batch_first=True)
+                self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, hidden_size=lstm_units_2_2, num_layers=1, batch_first=True)
 
         self.dense_3_1 = nn.Linear(input_shape_3, dense_units_3_1)
         self.dense_3_2 = nn.Linear(dense_units_3_1, dense_units_3_2)
@@ -68,22 +78,22 @@ class RecurrentEncoder(torch.nn.Module):
         output = nn.functional.relu(self.merge_branches_2(output))
         output = torch.sigmoid(self.merge_branches_3(output))
 
-        return output
+        return output.squeeze(-1)
     
     def apply_branch_1(self, x1):
         hidden_state = nn.functional.relu(self.shared_dense_1_1(x1))
         hidden_state = nn.functional.relu(self.shared_dense_1_2(hidden_state))
-        hidden_state, _ = self.lstm_1_1(hidden_state)
+        hidden_state, _ = self.rnn_1_1(hidden_state)
         hidden_state_relu = nn.functional.relu(hidden_state)
-        hidden_state, _ = self.lstm_1_2(hidden_state_relu)
+        hidden_state, _ = self.rnn_1_2(hidden_state_relu)
         return nn.functional.relu(hidden_state[:, -1, :]).squeeze(0)
 
     def apply_branch_2(self, x2):
         hidden_state = nn.functional.relu(self.shared_dense_2_1(x2))
         hidden_state = nn.functional.relu(self.shared_dense_2_2(hidden_state))
-        hidden_state, _ = self.lstm_2_1(hidden_state)
+        hidden_state, _ = self.rnn_2_1(hidden_state)
         hidden_state_relu = nn.functional.relu(hidden_state)
-        hidden_state, _ = self.lstm_2_2(hidden_state_relu)
+        hidden_state, _ = self.rnn_2_2(hidden_state_relu)
         hidden_state_relu = nn.functional.relu(hidden_state)
         return nn.functional.relu(hidden_state_relu[:, -1, :]).squeeze(0)
 
@@ -166,10 +176,10 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=True)
 
 
-    if config['name'] == 'rnn':
+    if config['name'] == 'ltc':
+        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=LTC, ltc_block=True)
+    else:
         rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
-    elif config['name'] == 'ltc':
-        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, lstm_block=LTC)
 
     if args.model_path:
         model_file = os.path.join(args.model_path, "model.pt")
@@ -206,7 +216,7 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
             outputs = rnn_model(track_batch, hlv_batch, cluster_batch)
-            loss_value = loss(outputs, y_batch.unsqueeze(1))
+            loss_value = loss(outputs, y_batch)
             loss_value.backward()
             optimizer.step()
             running_loss += loss_value.item()
@@ -231,7 +241,7 @@ if __name__ == "__main__":
                 track_batch, cluster_batch, hlv_batch, y_batch = track_batch.to(device), cluster_batch.to(device), hlv_batch.to(device), y_batch.to(device)
 
                 val_outputs = rnn_model(track_batch, hlv_batch, cluster_batch)
-                val_loss_value = loss(val_outputs, y_batch.unsqueeze(1))
+                val_loss_value = loss(val_outputs, y_batch)
                 val_auroc_metric.update(val_outputs, y_batch.int())
                 val_running_loss += val_loss_value.item()
 
