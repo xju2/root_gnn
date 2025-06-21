@@ -14,9 +14,9 @@ npz_dir=/global/cfs/cdirs/m3443/usr/akaul/tau_id/rnn_1/npz
 
 # echo "Testing files created
 
-echo "Training RNN"
+echo "Training $1"
 
-model_path=/global/cfs/cdirs/m3443/usr/akaul/torch/ltc_1/model
+model_path=/global/cfs/cdirs/m3443/usr/akaul/torch/rnn_1/model
 train_torch.py ${npz_dir}/ditau_inclusive_train_val.npz ${npz_dir}/qcd_inclusive_train_val.npz --m ${model_path} -l 10 -n $1
 
 echo "Training complete"
@@ -24,7 +24,7 @@ echo "Training complete"
 ### Inference ###
 
 # Create testing files
-out_dir=/global/cfs/cdirs/m3443/usr/akaul/torch/ltc_1
+out_dir=/global/cfs/cdirs/m3443/usr/akaul/torch/rnn_1
 
 # Apply on testing files
 apply_torch.py ${model_path} -i ${npz_dir}/ditau_inclusive_test.npz -o ${out_dir}/output_ditau.npz -l 5 -n $1
@@ -38,7 +38,11 @@ plot_tauid ${out_dir}/output
 
 echo "Evaluation complete"
 
-echo "Starting data analysis"
 
 # Only include this line if you want to plot the distributions of the features, to see why the model might be acting weird
-# python analyze_inclusive.py --data_path ${out_dir} --output_dir ${out_dir}
+if [ $1 == "lstm" ]; then
+    echo "Starting data analysis"
+    analyze_inclusive.py --data_path ${out_dir} --output_dir ${out_dir}
+else
+    echo "Invalid model type"
+fi

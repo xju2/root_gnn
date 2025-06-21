@@ -91,10 +91,12 @@ if __name__ == "__main__":
 
     if args.name == "ltc":
         lstm_block = LTC
+        ltc_block = True
     else:
         lstm_block = LSTM
+        ltc_block = False
 
-    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=lstm_block)
+    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=lstm_block, ltc_block=ltc_block)
     model_file = os.path.join(args.model_path, "model.pt")
     model.load_state_dict(torch.load(model_file, map_location=device))
 

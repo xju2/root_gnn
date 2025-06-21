@@ -60,10 +60,8 @@ setup(
         'root_gnn/scripts/tauid_compare',
         'root_gnn/scripts/plot_tauid',
         'root_gnn/scripts/evaluate_tauid',
-        'root_gnn/scripts/keras/create_npz',
-        'root_gnn/scripts/keras/merge_npz',
-        'root_gnn/scripts/keras/train_keras',
-        'root_gnn/scripts/keras/apply_keras',
+        'root_gnn/scripts/create_npz',
+        'root_gnn/scripts/merge_npz',
         'root_gnn/scripts/pytorch/train_torch.py',
         'root_gnn/scripts/pytorch/apply_torch.py',
         'data_analysis/plotting_scripts/analyze_inclusive.py'

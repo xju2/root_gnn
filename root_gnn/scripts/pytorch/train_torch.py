@@ -31,8 +31,8 @@ class RecurrentEncoder(torch.nn.Module):
 
         #TODO: Add conditional for wirings with AutoNCP    
         if ltc_block:
-            self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, units=lstm_units_1_1, num_layers=1, batch_first=True)
-            self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, units=lstm_units_1_2, num_layers=1, batch_first=True)
+            self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, units=lstm_units_1_1, batch_first=True)
+            self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, units=lstm_units_1_2, batch_first=True)
         else:
             self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, hidden_size=lstm_units_1_1, num_layers=1, batch_first=True)
             self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, hidden_size=lstm_units_1_2, num_layers=1, batch_first=True)
@@ -43,8 +43,8 @@ class RecurrentEncoder(torch.nn.Module):
             self.shared_dense_2_2 = torch.nn.Linear(dense_units_2_1, dense_units_2_2)
 
             if ltc_block:
-                self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, units=lstm_units_2_1, num_layers=1, batch_first=True)
-                self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, units=lstm_units_2_2, num_layers=1, batch_first=True)
+                self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, units=lstm_units_2_1, batch_first=True)
+                self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, units=lstm_units_2_2, batch_first=True)
             else:
                 self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, hidden_size=lstm_units_2_1, num_layers=1, batch_first=True)
                 self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, hidden_size=lstm_units_2_2, num_layers=1, batch_first=True)
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=True)
 
 
-    if config['name'] == 'ltc':
+    if args.name == "ltc":
         rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=LTC, ltc_block=True)
     else:
         rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
