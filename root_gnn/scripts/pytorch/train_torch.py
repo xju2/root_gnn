@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.nn.utils import rnn
 from sklearn.model_selection import train_test_split
-from ncps.torch import LTC
+from ncps.torch import LTC, CfC
 from ncps.wirings import AutoNCP
 import wandb
 import os
@@ -22,7 +22,7 @@ class RecurrentEncoder(torch.nn.Module):
         lstm_units_2_1=32, lstm_units_2_2=32, \
         dense_units_3_1=128, dense_units_3_2=128, dense_units_3_3=16, \
         merge_dense_units_1=64, merge_dense_units_2=32, \
-        incl_clusters=True, rnn_block=nn.LSTM, wirings=False, ltc_block=False):
+        incl_clusters=True, rnn_block=nn.LSTM, wirings=False, lnn_block=False):
         super(RecurrentEncoder, self).__init__()
         self.incl_clusters = incl_clusters
 
@@ -30,7 +30,7 @@ class RecurrentEncoder(torch.nn.Module):
         self.shared_dense_1_2 = torch.nn.Linear(dense_units_1_1, dense_units_1_2)
 
         #TODO: Add conditional for wirings with AutoNCP    
-        if ltc_block:
+        if lnn_block:
             self.rnn_1_1 = rnn_block(input_size=dense_units_1_2, units=lstm_units_1_1, batch_first=True)
             self.rnn_1_2 = rnn_block(input_size=lstm_units_1_1, units=lstm_units_1_2, batch_first=True)
         else:
@@ -42,7 +42,7 @@ class RecurrentEncoder(torch.nn.Module):
             self.shared_dense_2_1 = torch.nn.Linear(input_shape_2[1], dense_units_2_1)
             self.shared_dense_2_2 = torch.nn.Linear(dense_units_2_1, dense_units_2_2)
 
-            if ltc_block:
+            if lnn_block:
                 self.rnn_2_1 = rnn_block(input_size=dense_units_2_2, units=lstm_units_2_1, batch_first=True)
                 self.rnn_2_2 = rnn_block(input_size=lstm_units_2_1, units=lstm_units_2_2, batch_first=True)
             else:
@@ -86,7 +86,7 @@ class RecurrentEncoder(torch.nn.Module):
         hidden_state, _ = self.rnn_1_1(hidden_state)
         hidden_state_relu = nn.functional.relu(hidden_state)
         hidden_state, _ = self.rnn_1_2(hidden_state_relu)
-        return nn.functional.relu(hidden_state[:, -1, :]).squeeze(0)
+        return nn.functional.relu(hidden_state[:, -1, :])
 
     def apply_branch_2(self, x2):
         hidden_state = nn.functional.relu(self.shared_dense_2_1(x2))
@@ -95,7 +95,7 @@ class RecurrentEncoder(torch.nn.Module):
         hidden_state_relu = nn.functional.relu(hidden_state)
         hidden_state, _ = self.rnn_2_2(hidden_state_relu)
         hidden_state_relu = nn.functional.relu(hidden_state)
-        return nn.functional.relu(hidden_state_relu[:, -1, :]).squeeze(0)
+        return nn.functional.relu(hidden_state_relu[:, -1, :])
 
     def apply_branch_3(self, x3):
         hidden_state = nn.functional.relu(self.dense_3_1(x3))
@@ -111,21 +111,17 @@ if __name__ == "__main__":
     parser.add_argument('--model-path','-m',default=None, help='Model path')
     parser.add_argument('--loss_weights', '-l', default=None, type=int, help='Loss weight')
     parser.add_argument('--name', '-n', default=None, help='model name')
-    parser.add_argument('--batch_size', '-b', default=500, type=int, help='Batch size')
     parser.add_argument('--patience', '-p', default=10, type=int, help='Patience')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs')
-
+    parser.add_argument('--batch_size', default=500, type=int, help='Batch size')
+    parser.add_argument('--lstm_units_1_1', default=32, type=int, help='LSTM units for layer 1_1')
+    parser.add_argument('--lstm_units_1_2', default=32, type=int, help='LSTM units for layer 1_2')
+    parser.add_argument('--merge_dense_units_1', default=64, type=int, help='Dense units for merge layer 1')
+    parser.add_argument('--learning_rate', default=1e-3, type=float, help='Learning rate')
     args = parser.parse_args()
 
-    config = {
-        "learning_rate": 1e-3,
-        "batch_size": args.batch_size,
-        "loss_weights": args.loss_weights,
-        "name": args.name,
-        "patience": args.patience,
-    }
-    train_run = wandb.init(project="root-gnn", config=config, notes="First train run", tags=["torch", "ltc", "run1", "train"])
-    val_run = wandb.init(project="root-gnn", config=config, notes="First run", tags=["torch", "ltc", "run1", "val"])
+    run = wandb.init(project="root-gnn", notes="Sweep", tags=[f"{args.name}"])
+    config = wandb.config
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_shape_1 = (10,6)
@@ -172,14 +168,19 @@ if __name__ == "__main__":
     train_dataset = TensorDataset(track_train_tensor, cluster_train_tensor, hlv_train_tensor, y_train_tensor)
     val_dataset = TensorDataset(track_val_tensor, cluster_val_tensor, hlv_val_tensor, y_val_tensor)
 
-    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=True)
 
+    lstm_units_1_1 = config['lstm_units_1_1']
+    lstm_units_1_2 = config['lstm_units_1_2']
+    merge_dense_units_1 = config['merge_dense_units_1']
 
     if args.name == "ltc":
-        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=LTC, ltc_block=True)
+        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=LTC, lnn_block=True, lstm_units_1_1=lstm_units_1_1, lstm_units_1_2=lstm_units_1_2, merge_dense_units_1=merge_dense_units_1)
+    elif args.name == "cfc":
+        rnn_model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=CfC, lnn_block=True, lstm_units_1_1=lstm_units_1_1, lstm_units_1_2=lstm_units_1_2, merge_dense_units_1=merge_dense_units_1)
     else:
-        rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3)
+        rnn_model = RecurrentEncoder(input_shape_1,input_shape_2,input_shape_3, lstm_units_1_1=lstm_units_1_1, lstm_units_1_2=lstm_units_1_2, merge_dense_units_1=merge_dense_units_1)
 
     if args.model_path:
         model_file = os.path.join(args.model_path, "model.pt")
@@ -190,8 +191,8 @@ if __name__ == "__main__":
     rnn_model.to(device)
 
     # TODO: Let an already trained model be loaded and continue training
-    if config['loss_weights'] is not None:
-        loss = nn.BCELoss(weight=torch.tensor([config['loss_weights']], device=device))
+    if args.loss_weights is not None:
+        loss = nn.BCELoss(weight=torch.tensor([args.loss_weights], device=device))
     else:
         loss = nn.BCELoss()
     
@@ -200,8 +201,7 @@ if __name__ == "__main__":
     train_auroc_metric = AUROC(task='binary').to(device)
     val_auroc_metric = AUROC(task='binary').to(device)
 
-    train_run.watch(rnn_model, log_freq=100)
-    val_run.watch(rnn_model, log_freq=100)
+    run.watch(rnn_model, log_freq=100)
 
     # Training Loop
     best_val_loss = float('inf') # for early stopping
@@ -230,7 +230,6 @@ if __name__ == "__main__":
         avg_train_loss = running_loss / len(train_loader)
         epoch_train_auroc = train_auroc_metric.compute().item()
         print(f"Epoch {epoch+1}, Train Loss: {avg_train_loss:.4f}, Train AUROC: {epoch_train_auroc:.4f}")
-        train_run.log({"train_loss": avg_train_loss, "train_auroc": epoch_train_auroc})
 
         rnn_model.eval()
         val_running_loss = 0.0
@@ -252,7 +251,7 @@ if __name__ == "__main__":
         avg_val_loss = val_running_loss / len(val_loader)
         epoch_val_auroc = val_auroc_metric.compute().item()
         print(f"Epoch {epoch+1}, Val Loss: {avg_val_loss:.4f}, Val AUROC: {epoch_val_auroc:.4f}")
-        val_run.log({"val_loss": avg_val_loss, "val_auroc": epoch_val_auroc})
+        run.log({"train_loss": avg_train_loss, "train_auroc": epoch_train_auroc, "val_loss": avg_val_loss, "val_auroc": epoch_val_auroc})
 
         # model checkpointing (save the best model)
         if avg_val_loss < best_val_loss:
@@ -279,10 +278,9 @@ if __name__ == "__main__":
         print(f"Model saved to {args.model_path}")
         model_file = os.path.join(args.model_path, "model.pt")
         if os.path.exists(model_file):
-            train_run.log_artifact(model_file, name='model', type='model')
+            run.log_artifact(model_file, name='model', type='model')
     else:
         print("Model not saved")
 
-    train_run.finish()
-    val_run.finish()
+    run.finish()
 

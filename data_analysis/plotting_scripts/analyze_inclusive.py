@@ -16,13 +16,34 @@ os.makedirs(output_dir, exist_ok=True)
 # This script attempts to plot the distribution of the features in the ditau inclusive dataset and the qcd dataset
 # THIS SCRIPT IS NOT USED IN THE FINAL ANALYSIS; JUST WAS AN INTERMEDIARY ATTEMPT THAT WORKED ONLY FOR THE HLVs AND WAS IN THE PROCESS OF BEING EXTENDED TO THE LLVs AND TRACKS
 
-def plot_feature_dist(signal_data, bg_data, feature_name, feature_label, output_filename, bins=100, range=None, use_log_scale=False):
+def plot_histogram_with_errors(data, bins, range, use_log_scale, label, color):
+    raw_counts, bin_edges = np.histogram(data, bins=bins, range=range)
+    normalized_counts, _, _ = plt.hist(data, bins=bin_edges, density=True, histtype='step', linewidth = 2, label=label, color=color)
+    errors = np.sqrt(normalized_counts)
+    total_count = np.sum(raw_counts)
+    bin_widths = np.diff(bin_edges)
+    normalized_errors = np.zeros_like(normalized_counts)
+
+    if total_count > 0:
+        non_zero_bin_widths_mask = bin_widths > 0
+        if np.any(non_zero_bin_widths_mask):
+            valid_errors = errors[non_zero_bin_widths_mask]
+            valid_bin_widths = bin_widths[non_zero_bin_widths_mask]
+            normalized_errors[non_zero_bin_widths_mask] = valid_errors / (total_count * valid_bin_widths)
+
+    bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    plt.errorbar(bin_centers, normalized_counts, yerr=normalized_errors, fmt='none', ecolor=color, capsize=3)
+
+
+def plot_feature_dist(signal_data_below_threshold, signal_data_above_threshold, bg_data_below_threshold, bg_data_above_threshold, feature_name, feature_label, output_filename, bins=100, plot_range=None, use_log_scale=False, threshold=0.2):
     plt.figure(figsize=(12, 7))
 
     #pt_range = (0, 250)
 
-    plt.hist(signal_data, bins=bins, range=range_of_vals,density=True, histtype='step', linewidth = 2, label='Signal Inclusive (Ditau, label=1)', color='dodgerblue')
-    plt.hist(bg_data, bins=bins, density=True, range=range_of_vals, histtype='step', linewidth = 2, label='Background (QCD, label=0)', color='red')
+    plot_histogram_with_errors(signal_data_below_threshold, bins, plot_range, use_log_scale, f'Signal Inclusive + prediction below {threshold} (Ditau, label=1)', 'dodgerblue')
+    plot_histogram_with_errors(bg_data_below_threshold, bins, plot_range, use_log_scale, f'Background + prediction below {threshold} (QCD, label=0)', 'red')
+    plot_histogram_with_errors(signal_data_above_threshold, bins, plot_range, use_log_scale, f'Signal Inclusive + prediction above {1 - threshold} (Ditau, label=1)', 'green')
+    plot_histogram_with_errors(bg_data_above_threshold, bins, plot_range, use_log_scale, f'Background + prediction above {1 - threshold} (QCD, label=0)', 'orange')
 
     plt.title(f'{feature_label} distribution')
     plt.xlabel(f'{feature_label}')
@@ -40,14 +61,14 @@ def plot_feature_dist(signal_data, bg_data, feature_name, feature_label, output_
     plt.close()
 
 hlv_features_meta = {
-    0: ('JetPt', 'Jet $p_T$ [GeV]', 25, (0, 250), False),
-    1: ('JetEta', 'Jet $\eta$', 18, (-3.5, 3.5), False),
-    2: ('JetPhi', 'Jet $\phi$', 20, (-3.5, 3.5), False),
-    3: ('JetLeadingTrackFracP', 'Jet Leading Track $p/p_{jet}$', 100, (0, 1), False),
-    4: ('JetTrackRadius', 'Jet Track Radius [GeV*rad?]', 100, (0, 0.7), False),
-    5: ('JetNumISOTracks', 'Jet Num ISO Tracks', 100, (0, 30), False),
-    6: ('JetMaxDRInCore', 'Jet Max $\Delta R$ in Core', 100, (0.10, 0.20), False),
-    7: ('JetTrackMass', 'Jet Track Mass [GeV]', 100, (0, 150), False), 
+    0: ('JetPt', 'Jet $p_T$ [GeV]', 20, (0, 250), False),
+    1: ('JetEta', 'Jet $\eta$', 15, (-3.5, 3.5), False),
+    2: ('JetPhi', 'Jet $\phi$', 15, (-3.5, 3.5), False),
+    3: ('JetLeadingTrackFracP', 'Jet Leading Track $p/p_{jet}$', 40, (0, 1), False),
+    4: ('JetTrackRadius', 'Jet Track Radius [GeV*rad?]', 40, (0, 0.7), False),
+    5: ('JetNumISOTracks', 'Jet Num ISO Tracks', 30, (0, 30), False),
+    6: ('JetMaxDRInCore', 'Jet Max $\Delta R$ in Core', 25, (0.10, 0.20), False),
+    7: ('JetTrackMass', 'Jet Track Mass [GeV]', 50, (0, 150), False), 
 }
 output_hlv_dir = os.path.join(output_dir, "hlv")
 os.makedirs(output_hlv_dir, exist_ok=True)
@@ -101,20 +122,33 @@ print(f"\nThere are {len(qcd_hlv[:, 0])} qcd events.")
 print("Processing ditau inclusive hlv features...")
 for index, (name, label, bins, range_of_vals, use_log) in hlv_features_meta.items():
     print(f" - processing feature: {label} (Index {index})")
-    ditau_feature_data = ditau_hlv[:, index]
-    qcd_feature_data = qcd_hlv[:, index]
+    threshold = 0.2
+    ditau_indices_below_threshold = np.where((ditau_truth == 1) & (ditau_predictions <= threshold))[0]
+    ditau_indices_above_threshold = np.where((ditau_truth == 1) & (ditau_predictions >= 1 - threshold))[0]
+
+    qcd_indices_below_threshold = np.where((qcd_truth == 0) & (qcd_predictions <= threshold))[0]
+    qcd_indices_above_threshold = np.where((qcd_truth == 0) & (qcd_predictions >= 1 - threshold))[0]
+
+    ditau_feature_data_below_threshold = ditau_hlv[ditau_indices_below_threshold, index]
+    ditau_feature_data_above_threshold = ditau_hlv[ditau_indices_above_threshold, index]
+
+    qcd_feature_data_below_threshold = qcd_hlv[qcd_indices_below_threshold, index]
+    qcd_feature_data_above_threshold = qcd_hlv[qcd_indices_above_threshold, index]
 
     output_filename = os.path.join(output_hlv_dir, f'{name}_distribution.png')
 
     plot_feature_dist(
-        signal_data=ditau_feature_data,
-        bg_data=qcd_feature_data, 
+        signal_data_below_threshold=ditau_feature_data_below_threshold,
+        signal_data_above_threshold=ditau_feature_data_above_threshold,
+        bg_data_below_threshold=qcd_feature_data_below_threshold,
+        bg_data_above_threshold=qcd_feature_data_above_threshold,
         feature_name=name,
         feature_label=label, 
         output_filename=output_filename,
         bins=bins,
-        range=range_of_vals,
-        use_log_scale=use_log
+        plot_range=range_of_vals,
+        use_log_scale=use_log,
+        threshold=threshold
     )
 
 ditau_inclusive_data.close()

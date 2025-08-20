@@ -1,0 +1,26 @@
+method: bayes
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  learning_rate:
+    distribution: uniform
+    min: 0.0001
+    max: 0.01
+  batch_size:
+    distribution: q_uniform
+    q: 8
+    min: 32
+    max: 256
+  lstm_units_1_1:
+    values: [32, 64, 128]
+  lstm_units_1_2:
+    values: [32, 64, 128]
+  merge_dense_units_1:
+    values: [64, 128, 256]
+command:
+  - bash
+  - -c
+  - |
+    mamba activate ltc_torch
+    ${env} python train_torch.py ${NPZ_DIR}/ditau_inclusive_train_val.npz ${NPZ_DIR}/qcd_inclusive_train_val.npz --name cfc ${args}

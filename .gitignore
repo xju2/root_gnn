@@ -14,3 +14,4 @@ build
 */read_test_npz.py
 wandb
 keras_models
+*/.env

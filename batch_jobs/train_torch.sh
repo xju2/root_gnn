@@ -16,19 +16,19 @@ npz_dir=/global/cfs/cdirs/m3443/usr/akaul/tau_id/rnn_1/npz
 
 echo "Training $1"
 
-model_path=/global/cfs/cdirs/m3443/usr/akaul/torch/rnn_1/model
-train_torch.py ${npz_dir}/ditau_inclusive_train_val.npz ${npz_dir}/qcd_inclusive_train_val.npz --m ${model_path} -l 10 -n $1
+model_path=/global/cfs/cdirs/m3443/usr/akaul/torch/$1_1/model
+# train_torch.py ${npz_dir}/ditau_inclusive_train_val.npz ${npz_dir}/qcd_inclusive_train_val.npz --m ${model_path} -l 10 -n $1
 
 echo "Training complete"
 
 ### Inference ###
 
 # Create testing files
-out_dir=/global/cfs/cdirs/m3443/usr/akaul/torch/rnn_1
+out_dir=/global/cfs/cdirs/m3443/usr/akaul/torch/$1_1
 
 # Apply on testing files
-apply_torch.py ${model_path} -i ${npz_dir}/ditau_inclusive_test.npz -o ${out_dir}/output_ditau.npz -l 5 -n $1
-apply_torch.py ${model_path} -i ${npz_dir}/qcd_inclusive_test.npz -o ${out_dir}/output_qcd.npz -l 5 -n $1
+apply_torch.py ${model_path} -i ${npz_dir}/ditau_inclusive.npz -o ${out_dir}/output_ditau_all.npz -l 5 -n $1
+apply_torch.py ${model_path} -i ${npz_dir}/qcd_inclusive.npz -o ${out_dir}/output_qcd_all.npz -l 5 -n $1
 
 echo "Model applied to testing files"
 

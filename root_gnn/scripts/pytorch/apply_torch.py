@@ -15,7 +15,7 @@ from torch.nn import BCELoss
 from torch.utils.data import DataLoader, TensorDataset
 
 from torch.nn import LSTM
-from ncps.torch import LTC
+from ncps.torch import LTC, CfC
 import wandb
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,20 +83,23 @@ if __name__ == "__main__":
         "input": args.input,
         "output": args.output,
     }
-    run = wandb.init(project="root-gnn", config=config, notes="First run", tags=["torch", "ltc", "run1", "apply"])
+    run = wandb.init(project="root-gnn", config=config, notes="First run", tags=["torch", args.name, "run1", "apply"])
 
     input_shape_1 = (10, 6)
     input_shape_2 = (6, 4)
     input_shape_3 =  8
 
     if args.name == "ltc":
-        lstm_block = LTC
-        ltc_block = True
+        rnn_block = LTC
+        lnn_block = True
+    elif args.name == "cfc":
+        rnn_block = CfC
+        lnn_block = True
     else:
-        lstm_block = LSTM
-        ltc_block = False
+        rnn_block = LSTM
+        lnn_block = False
 
-    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=lstm_block, ltc_block=ltc_block)
+    model = RecurrentEncoder(input_shape_1, input_shape_2, input_shape_3, rnn_block=rnn_block, lnn_block=lnn_block)
     model_file = os.path.join(args.model_path, "model.pt")
     model.load_state_dict(torch.load(model_file, map_location=device))
 
