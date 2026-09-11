@@ -1,3 +1,5 @@
+
+
 # root_gnn
 GNN classification/Regression for reconstructed HEP events. 
 
@@ -92,7 +94,7 @@ create_tfrecord data/wboson.txt \
 	--max-evts 95000 --evts-per-record 1000
 ```
 
-* Graphc osntruction for q* events
+* Graph construction for q* events
 ```bash
 create_tfrecord data/qstar.txt \
 	tfRec_ljet/qcd \
